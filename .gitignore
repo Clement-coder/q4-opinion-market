@@ -1,0 +1,19 @@
+# Dependencies
+front_end/node_modules/
+
+# Build output
+front_end/dist/
+front_end/.vite/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Foundry build artifacts
+smart_contract/out/
+smart_contract/cache/
+
+# OS
+.DS_Store
+Thumbs.db
