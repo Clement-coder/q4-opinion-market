@@ -12,9 +12,10 @@ import {
   CheckCircle2, RefreshCcw, ChevronRight, ChevronDown, ArrowRight,
   Menu, X, TrendingUp, TrendingDown, WalletCards,
   ShieldCheck, Globe, Award, LogOut, Bell, ArrowLeftRight,
-  User,
+  User, Mail,
 } from "../components/icons";
 import { Q4Logo } from "../components/icons";
+import { useAuth } from "../context/AuthContext";
 
 /* ════════════════════════════════════════════════
    DESIGN TOKENS  (mirror landing page palette)
@@ -45,7 +46,8 @@ const T = {
 /* ════════════════════════════════════════════════
    DATA
 ════════════════════════════════════════════════ */
-const USER = { name: "Alex", fullName: "Alex Johnson", level: 4, balance: 120.5, wallet: "0x4f2a…c3d1" };
+// USER is now sourced from Firebase auth — see useAuth() in components below
+const FALLBACK_USER = { name: "You", fullName: "Q4 User", level: 1, balance: 0, wallet: "—" };
 
 const STATS = {
   todayAnswered: 7, todayTotal: 10,
@@ -341,10 +343,14 @@ function Sidebar({ active, onNavigate, onLogout }) {
    FIXED TOP HEADER
 ════════════════════════════════════════════════ */
 
-function TopHeader({ pageLabel, onOpenMobileSidebar, onNavigate }) {
+function TopHeader({ pageLabel, onOpenMobileSidebar, onNavigate, user }) {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const now = new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  const firstName = user?.displayName?.split(" ")[0] ?? "there";
+  const initials  = user?.displayName
+    ? user.displayName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase()
+    : "Q4";
 
   return (
     <header style={{
@@ -382,7 +388,7 @@ function TopHeader({ pageLabel, onOpenMobileSidebar, onNavigate }) {
         {/* Page label */}
         <div>
           <p style={{ fontSize: 14, fontWeight: 700, color: "#ffffff", margin: 0, letterSpacing: "-0.02em" }}>{pageLabel}</p>
-          <p style={{ fontSize: 11, color: T.textDim, margin: 0 }}>{greeting}, {USER.name} · {now}</p>
+          <p style={{ fontSize: 11, color: T.textDim, margin: 0 }}>{greeting}, {firstName} · {now}</p>
         </div>
       </div>
 
@@ -406,12 +412,18 @@ function TopHeader({ pageLabel, onOpenMobileSidebar, onNavigate }) {
           type="button"
           onClick={() => onNavigate("profile")}
           aria-label="Profile"
-          style={{ width: 34, height: 34, borderRadius: "50%", background: "linear-gradient(135deg,#ffffff,rgba(255,255,255,0.45))", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#080808", cursor: "pointer", border: "none", flexShrink: 0, transition: "opacity 0.15s" }}
-          onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.85"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.opacity = "1"; }}
-          title={USER.fullName}
+          style={{ width: 34, height: 34, borderRadius: "50%", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", border: "2px solid rgba(255,255,255,0.15)", flexShrink: 0, transition: "border-color 0.15s", padding: 0, background: "transparent" }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.4)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)"; }}
+          title={user?.displayName ?? "Profile"}
         >
-          {USER.fullName.split(" ").map(w => w[0]).join("")}
+          {user?.photoURL ? (
+            <img src={user.photoURL} alt={user.displayName ?? "avatar"} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} referrerPolicy="no-referrer" />
+          ) : (
+            <span style={{ width: "100%", height: "100%", borderRadius: "50%", background: "linear-gradient(135deg,#ffffff,rgba(255,255,255,0.45))", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#080808" }}>
+              {initials}
+            </span>
+          )}
         </button>
       </div>
     </header>
@@ -1362,6 +1374,79 @@ function PageHowItWorks({ onNavigate }) {
 }
 
 /* ════════════════════════════════════════════════
+   PAGE: PROFILE
+════════════════════════════════════════════════ */
+
+function PageProfile({ user, onLogout }) {
+  const joinDate = user?.metadata?.creationTime
+    ? new Date(user.metadata.creationTime).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
+    : "—";
+  const initials = user?.displayName
+    ? user.displayName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase()
+    : "Q4";
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 600 }}>
+      <div>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>Profile</h1>
+        <p style={{ fontSize: 13, color: T.textMuted, margin: "4px 0 0" }}>Your account details.</p>
+      </div>
+
+      {/* Avatar + name card */}
+      <GCard style={{ padding: "28px 24px", display: "flex", alignItems: "center", gap: 20 }}>
+        <div style={{ width: 72, height: 72, borderRadius: "50%", overflow: "hidden", flexShrink: 0, border: "2px solid rgba(255,255,255,0.15)" }}>
+          {user?.photoURL ? (
+            <img src={user.photoURL} alt={user.displayName ?? "avatar"} style={{ width: "100%", height: "100%", objectFit: "cover" }} referrerPolicy="no-referrer" />
+          ) : (
+            <div style={{ width: "100%", height: "100%", background: "linear-gradient(135deg,#ffffff,rgba(255,255,255,0.4))", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 800, color: "#080808" }}>
+              {initials}
+            </div>
+          )}
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <p style={{ fontSize: 20, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>
+            {user?.displayName ?? "Q4 User"}
+          </p>
+          <p style={{ fontSize: 13, color: T.textMuted, margin: "3px 0 0" }}>{user?.email ?? "—"}</p>
+          <p style={{ fontSize: 11, color: T.textDim, margin: "6px 0 0" }}>Member since {joinDate}</p>
+        </div>
+      </GCard>
+
+      {/* Account info rows */}
+      <GCard style={{ padding: "0 24px" }}>
+        {[
+          { label: "Display Name", value: user?.displayName ?? "—",  icon: User  },
+          { label: "Email",        value: user?.email ?? "—",         icon: Mail  },
+          { label: "Provider",     value: "Google",                   icon: ShieldCheck },
+          { label: "Account ID",   value: user?.uid ? `${user.uid.slice(0, 16)}…` : "—", icon: Info },
+        ].map(({ label, value, icon: Icon }, i, arr) => (
+          <div key={label} style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 0", borderBottom: i < arr.length - 1 ? `1px solid ${T.border}` : "none" }}>
+            <div style={{ width: 34, height: 34, borderRadius: 8, background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Icon size={14} strokeWidth={1.8} style={{ color: T.textMuted }} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontSize: 10, color: T.textDim, margin: 0, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</p>
+              <p style={{ fontSize: 13, color: T.textPrimary, margin: "2px 0 0", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</p>
+            </div>
+          </div>
+        ))}
+      </GCard>
+
+      {/* Sign out */}
+      <button
+        type="button"
+        onClick={onLogout}
+        style={{ display: "flex", alignItems: "center", gap: 10, padding: "13px 18px", borderRadius: 10, background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.2)", color: "#ef4444", fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "background 0.15s, border-color 0.15s", width: "fit-content" }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.14)"; e.currentTarget.style.borderColor = "rgba(239,68,68,0.4)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.07)"; e.currentTarget.style.borderColor = "rgba(239,68,68,0.2)"; }}
+      >
+        <LogOut size={15} strokeWidth={2} /> Sign Out
+      </button>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════
    PAGE: COMING SOON
 ════════════════════════════════════════════════ */
 
@@ -1395,10 +1480,11 @@ export default function DashboardPage() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
 
   const handleNavigate = (key) => { setSelectedQ(null); setPage(key); setMobileSidebarOpen(false); };
   const handleOpenQ    = (id)  => { setSelectedQ(id); setPage("question-detail"); setMobileSidebarOpen(false); };
-  const handleLogout   = ()    => navigate("/");
+  const handleLogout   = async () => { await logout(); navigate("/"); };
   const handleConfettiTrigger = () => {
     setShowConfetti(true);
     setTimeout(() => setShowConfetti(false), 3500);
@@ -1435,7 +1521,7 @@ export default function DashboardPage() {
 
       {/* ── Main area ── */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", marginLeft: 240, minHeight: "100vh" }} className="dash-main-area">
-        <TopHeader pageLabel={pageLabelMap[page] || page} onOpenMobileSidebar={() => setMobileSidebarOpen(true)} onNavigate={handleNavigate} />
+        <TopHeader pageLabel={pageLabelMap[page] || page} onOpenMobileSidebar={() => setMobileSidebarOpen(true)} onNavigate={handleNavigate} user={user} />
 
         <main style={{ flex: 1, overflowY: "auto", padding: "28px 28px 48px", position: "relative" }}>
           <Confetti active={showConfetti} />
@@ -1446,7 +1532,7 @@ export default function DashboardPage() {
             {page === "convictions"     && <PageMyConvictions />}
             {page === "how"             && <PageHowItWorks onNavigate={handleNavigate} />}
             {page === "wallet"          && <ComingSoon page="wallet" />}
-            {page === "profile"         && <ComingSoon page="profile" />}
+            {page === "profile"         && <PageProfile user={user} onLogout={handleLogout} />}
             {(page === "results" || page === "leaderboard" || page === "rewards") && <ComingSoon page={page} />}
           </div>
         </main>

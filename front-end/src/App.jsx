@@ -1,3 +1,5 @@
+import { Navigate } from "react-router-dom";
+import { useAuth } from "./context/AuthContext";
 import { Routes, Route } from "react-router-dom";
 import Navbar  from "./components/Header";
 import Footer  from "./components/Footer";
@@ -21,18 +23,35 @@ function PublicLayout({ children }) {
   );
 }
 
+/** Redirect to /dashboard if already signed in */
+function AuthRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (user) return <Navigate to="/dashboard" replace />;
+  return children;
+}
+
+/** Redirect to /login if not signed in */
+function ProtectedRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (!user) return <Navigate to="/login" replace />;
+  return children;
+}
+
 export default function App() {
   return (
     <Routes>
-      <Route path="/"            element={<PublicLayout><HomePage /></PublicLayout>} />
-      <Route path="/how-it-works"element={<PublicLayout><HowItWorksPage /></PublicLayout>} />
-      <Route path="/questions"   element={<PublicLayout><QuestionsPage /></PublicLayout>} />
-      <Route path="/about"       element={<PublicLayout><AboutPage /></PublicLayout>} />
-      <Route path="/faq"         element={<PublicLayout><FaqPage /></PublicLayout>} />
+      <Route path="/"             element={<PublicLayout><HomePage /></PublicLayout>} />
+      <Route path="/how-it-works" element={<PublicLayout><HowItWorksPage /></PublicLayout>} />
+      <Route path="/questions"    element={<PublicLayout><QuestionsPage /></PublicLayout>} />
+      <Route path="/about"        element={<PublicLayout><AboutPage /></PublicLayout>} />
+      <Route path="/faq"          element={<PublicLayout><FaqPage /></PublicLayout>} />
 
-      <Route path="/signup"    element={<SignUpPage />} />
-      <Route path="/login"     element={<LoginPage />} />
-      <Route path="/dashboard" element={<DashboardPage />} />
+      <Route path="/signup"    element={<AuthRoute><SignUpPage /></AuthRoute>} />
+      <Route path="/login"     element={<AuthRoute><LoginPage /></AuthRoute>} />
+
+      <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
     </Routes>
   );
 }
