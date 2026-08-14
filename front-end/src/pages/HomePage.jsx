@@ -8,6 +8,7 @@ import {
   ClipboardList, WalletCards, PieChart,
   ArrowRight,
 } from "../components/icons";
+import { useAuth } from "../context/AuthContext";
 
 /* ── Data ─────────────────────────────────────────── */
 
@@ -57,6 +58,7 @@ const TRUST = [
 /* ── Page ─────────────────────────────────────────── */
 
 export default function HomePage() {
+  const { user } = useAuth();
   return (
     <>
 
@@ -133,14 +135,15 @@ export default function HomePage() {
                 outcome is right.
               </p>
 
-              {/* Buttons — equal width, same row, full width */}
+              {/* Buttons */}
               <div className="mt-8 flex items-center gap-3" style={{ width: "100%", maxWidth: 440 }}>
-                <Link to="/signup" className="btn-primary" style={{ flex: 1, justifyContent: "center" }}>
-                  Get Started
+                <Link
+                  to={user ? "/dashboard" : "/signup"}
+                  className="btn-primary"
+                  style={{ flex: 1, justifyContent: "center" }}
+                >
+                  {user ? "Go to Dashboard" : "Get Started"}
                   <ArrowRight size={14} strokeWidth={2.5} />
-                </Link>
-                <Link to="/login" className="btn-secondary" style={{ flex: 1, justifyContent: "center" }}>
-                  Log In
                 </Link>
               </div>
 

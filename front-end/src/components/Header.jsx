@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { Menu, X, Q4Logo } from "./icons";
+import { useAuth } from "../context/AuthContext";
 
 const NAV_ITEMS = [
   { label: "Home",         to: "/" },
@@ -13,6 +14,7 @@ const NAV_ITEMS = [
 export default function Navbar() {
   const [open,     setOpen]    = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const { user } = useAuth();
 
   useEffect(() => {
     const fn = () => setScrolled(window.scrollY > 12);
@@ -33,7 +35,6 @@ export default function Navbar() {
         borderBottom: scrolled
           ? "1px solid rgba(255,255,255,0.07)"
           : "1px solid transparent",
-        /* needed so the absolute mobile menu positions against this */
         isolation: "isolate",
       }}
     >
@@ -98,51 +99,81 @@ export default function Navbar() {
 
         {/* ── Desktop auth ── */}
         <div className="hidden md:flex" style={{ alignItems: "center", gap: 8 }}>
-          <Link
-            to="/login"
-            style={{
-              padding: "7px 16px",
-              borderRadius: 6,
-              fontSize: 13.5,
-              fontWeight: 500,
-              color: "rgba(255,255,255,0.65)",
-              textDecoration: "none",
-              border: "1px solid rgba(255,255,255,0.13)",
-              background: "transparent",
-              transition: "color 0.15s, border-color 0.15s, background 0.15s",
-              letterSpacing: "-0.01em",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = "rgba(255,255,255,0.9)";
-              e.currentTarget.style.borderColor = "rgba(255,255,255,0.28)";
-              e.currentTarget.style.background = "rgba(255,255,255,0.05)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = "rgba(255,255,255,0.65)";
-              e.currentTarget.style.borderColor = "rgba(255,255,255,0.13)";
-              e.currentTarget.style.background = "transparent";
-            }}
-          >
-            Log In
-          </Link>
-          <Link
-            to="/signup"
-            style={{
-              padding: "7px 16px",
-              borderRadius: 6,
-              fontSize: 13.5,
-              fontWeight: 600,
-              color: "#080808",
-              textDecoration: "none",
-              background: "#ffffff",
-              transition: "background 0.15s",
-              letterSpacing: "-0.01em",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "#ebebeb"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "#ffffff"; }}
-          >
-            Sign Up
-          </Link>
+          {user ? (
+            /* ── Signed in → Dashboard button ── */
+            <Link
+              to="/dashboard"
+              style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "7px 16px",
+                borderRadius: 6,
+                fontSize: 13.5,
+                fontWeight: 600,
+                color: "#080808",
+                textDecoration: "none",
+                background: "#ffffff",
+                transition: "background 0.15s",
+                letterSpacing: "-0.01em",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "#ebebeb"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "#ffffff"; }}
+            >
+              {user.photoURL && (
+                <img src={user.photoURL} alt="" referrerPolicy="no-referrer"
+                  style={{ width: 20, height: 20, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+              )}
+              Dashboard
+            </Link>
+          ) : (
+            /* ── Signed out → Log In + Sign Up ── */
+            <>
+              <Link
+                to="/login"
+                style={{
+                  padding: "7px 16px",
+                  borderRadius: 6,
+                  fontSize: 13.5,
+                  fontWeight: 500,
+                  color: "rgba(255,255,255,0.65)",
+                  textDecoration: "none",
+                  border: "1px solid rgba(255,255,255,0.13)",
+                  background: "transparent",
+                  transition: "color 0.15s, border-color 0.15s, background 0.15s",
+                  letterSpacing: "-0.01em",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = "rgba(255,255,255,0.9)";
+                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.28)";
+                  e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = "rgba(255,255,255,0.65)";
+                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.13)";
+                  e.currentTarget.style.background = "transparent";
+                }}
+              >
+                Log In
+              </Link>
+              <Link
+                to="/signup"
+                style={{
+                  padding: "7px 16px",
+                  borderRadius: 6,
+                  fontSize: 13.5,
+                  fontWeight: 600,
+                  color: "#080808",
+                  textDecoration: "none",
+                  background: "#ffffff",
+                  transition: "background 0.15s",
+                  letterSpacing: "-0.01em",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "#ebebeb"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "#ffffff"; }}
+              >
+                Sign Up
+              </Link>
+            </>
+          )}
         </div>
 
         {/* ── Mobile hamburger ── */}
@@ -168,7 +199,7 @@ export default function Navbar() {
         </button>
       </div>
 
-      {/* ── Mobile menu — absolute overlay, never shifts content ── */}
+      {/* ── Mobile menu ── */}
       {open && (
         <div
           style={{
@@ -207,39 +238,61 @@ export default function Navbar() {
               </NavLink>
             ))}
           </nav>
-          <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <Link
-              to="/login"
-              onClick={() => setOpen(false)}
-              style={{
-                padding: "10px",
-                textAlign: "center",
-                borderRadius: 6,
-                fontSize: 13.5,
-                fontWeight: 500,
-                color: "rgba(255,255,255,0.7)",
-                textDecoration: "none",
-                border: "1px solid rgba(255,255,255,0.12)",
-              }}
-            >
-              Log In
-            </Link>
-            <Link
-              to="/signup"
-              onClick={() => setOpen(false)}
-              style={{
-                padding: "10px",
-                textAlign: "center",
-                borderRadius: 6,
-                fontSize: 13.5,
-                fontWeight: 600,
-                color: "#080808",
-                textDecoration: "none",
-                background: "#ffffff",
-              }}
-            >
-              Sign Up
-            </Link>
+
+          <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: user ? "1fr" : "1fr 1fr", gap: 8 }}>
+            {user ? (
+              <Link
+                to="/dashboard"
+                onClick={() => setOpen(false)}
+                style={{
+                  padding: "10px",
+                  textAlign: "center",
+                  borderRadius: 6,
+                  fontSize: 13.5,
+                  fontWeight: 600,
+                  color: "#080808",
+                  textDecoration: "none",
+                  background: "#ffffff",
+                }}
+              >
+                Go to Dashboard
+              </Link>
+            ) : (
+              <>
+                <Link
+                  to="/login"
+                  onClick={() => setOpen(false)}
+                  style={{
+                    padding: "10px",
+                    textAlign: "center",
+                    borderRadius: 6,
+                    fontSize: 13.5,
+                    fontWeight: 500,
+                    color: "rgba(255,255,255,0.7)",
+                    textDecoration: "none",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                  }}
+                >
+                  Log In
+                </Link>
+                <Link
+                  to="/signup"
+                  onClick={() => setOpen(false)}
+                  style={{
+                    padding: "10px",
+                    textAlign: "center",
+                    borderRadius: 6,
+                    fontSize: 13.5,
+                    fontWeight: 600,
+                    color: "#080808",
+                    textDecoration: "none",
+                    background: "#ffffff",
+                  }}
+                >
+                  Sign Up
+                </Link>
+              </>
+            )}
           </div>
         </div>
       )}

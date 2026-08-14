@@ -575,51 +575,6 @@ function PageDashboard({ onOpenQuestion, onNavigate }) {
             </div>
           </div>
 
-          {/* Today's question cards */}
-          <div>
-            <SectionHeading action={
-              <button type="button" onClick={() => onNavigate("questions")} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, color: T.textMuted, background: "none", border: "none", cursor: "pointer" }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = T.textPrimary; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = T.textMuted; }}
-              >View all <ChevronRight size={12} /></button>
-            }>Today's Questions</SectionHeading>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
-              {TODAYS_Q.map(q => (
-                <div key={q.id} onClick={() => onOpenQuestion(q.id)} style={{
-                  backgroundColor: "#0d0d0d",
-                  backgroundImage: "radial-gradient(ellipse 80% 55% at 50% 0%, rgba(255,255,255,0.04) 0%, transparent 70%), radial-gradient(circle, rgba(255,255,255,0.26) 1px, transparent 1px)",
-                  backgroundSize: "auto, 32px 32px",
-                  backgroundPosition: "center top, 0 0",
-                  border: `1px solid ${T.border}`,
-                  borderRadius: 16,
-                  overflow: "hidden",
-                  cursor: "pointer",
-                  transition: "border-color 0.15s, box-shadow 0.15s",
-                }}
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.boxShadow = "0 8px 28px rgba(0,0,0,0.5)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.boxShadow = "none"; }}
-                >
-                  <div style={{ padding: "14px 14px 12px" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                      <CategoryBadge category={q.category} />
-                      <span style={{ fontSize: 10, color: T.textDim, display: "flex", alignItems: "center", gap: 3 }}>
-                        <Clock size={10} strokeWidth={2} />{q.closes}
-                      </span>
-                    </div>
-                    <p style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary, margin: "0 0 10px", lineHeight: 1.35, letterSpacing: "-0.01em" }} className="line-clamp-2">{q.question}</p>
-                    <p style={{ fontSize: 11, color: T.textDim, margin: 0 }}>
-                      Pool <span style={{ color: T.textMuted, fontWeight: 600 }}>${q.totalPool.toLocaleString()}</span>
-                    </p>
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderTop: `1px solid ${T.border}` }}>
-                    <GalaxyBtn side="YES" onClick={() => onOpenQuestion(q.id)} />
-                    <GalaxyBtn side="NO"  onClick={() => onOpenQuestion(q.id)} hasBorderLeft />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
           {/* Performance chart */}
           <GCard style={{ padding: "18px 20px" }}>
             <SectionHeading>Performance — Last 7 Markets</SectionHeading>
