@@ -267,25 +267,39 @@ export default function HomePage() {
                 </p>
               </div>
 
-              {/* Right buttons — equal width, same row */}
+              {/* Right buttons */}
               <div className="flex shrink-0 items-stretch gap-3" style={{ width: 320 }}>
-                <div className="flex flex-col items-center gap-2" style={{ flex: 1 }}>
-                  <Link to="/signup" className="btn-primary" style={{ width: "100%", justifyContent: "center" }}>
-                    Sign Up
-                    <ArrowRight size={14} strokeWidth={2.4} />
-                  </Link>
-                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.28)", margin: 0 }}>
-                    Create your account in seconds.
-                  </p>
-                </div>
-                <div className="flex flex-col items-center gap-2" style={{ flex: 1 }}>
-                  <Link to="/login" className="btn-secondary" style={{ width: "100%", justifyContent: "center" }}>
-                    Log In
-                  </Link>
-                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.28)", margin: 0 }}>
-                    Already have an account?
-                  </p>
-                </div>
+                {user ? (
+                  <div className="flex flex-col items-center gap-2" style={{ flex: 1 }}>
+                    <Link to="/dashboard" className="btn-primary" style={{ width: "100%", justifyContent: "center" }}>
+                      Go to Dashboard
+                      <ArrowRight size={14} strokeWidth={2.4} />
+                    </Link>
+                    <p style={{ fontSize: 11, color: "rgba(255,255,255,0.28)", margin: 0 }}>
+                      Welcome back — your conviction awaits.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex flex-col items-center gap-2" style={{ flex: 1 }}>
+                      <Link to="/signup" className="btn-primary" style={{ width: "100%", justifyContent: "center" }}>
+                        Sign Up
+                        <ArrowRight size={14} strokeWidth={2.4} />
+                      </Link>
+                      <p style={{ fontSize: 11, color: "rgba(255,255,255,0.28)", margin: 0 }}>
+                        Create your account in seconds.
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-center gap-2" style={{ flex: 1 }}>
+                      <Link to="/login" className="btn-secondary" style={{ width: "100%", justifyContent: "center" }}>
+                        Log In
+                      </Link>
+                      <p style={{ fontSize: 11, color: "rgba(255,255,255,0.28)", margin: 0 }}>
+                        Already have an account?
+                      </p>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
