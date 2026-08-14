@@ -273,15 +273,24 @@ h1, h2, h3, h4 {
     radial-gradient(circle, rgba(255,255,255,0.18) 1px, transparent 1px);
   background-size: auto, 36px 36px;
   background-position: center, 0 0;
-  /* removed: display flex / align-items center / justify-content center
-     so the page scrolls naturally on small screens */
-  padding: 3rem 1.25rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 2rem 1.25rem 3rem;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+@media (min-height: 700px) {
+  .auth-bg {
+    align-items: center;
+    padding: 2rem 1.25rem;
+  }
 }
 
 .auth-inner {
   width: 100%;
   max-width: 420px;
-  margin: 0 auto;
 }
 
 .auth-card {
