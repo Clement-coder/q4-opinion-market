@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* ─── Override Tailwind's default sans stack with Bai Jamjuree ─── */
+@theme {
+  --font-family-sans: 'Bai Jamjuree', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-family-mono: 'Monorama', 'Courier New', monospace;
+}
+
 /* ─── Font families ─── */
 :root {
   color-scheme: dark;
@@ -10,6 +16,15 @@
 
 html {
   scroll-behavior: smooth;
+  font-family: var(--font-body);
+}
+
+/* Force every element to inherit Bai Jamjuree unless explicitly overridden */
+*,
+*::before,
+*::after {
+  font-family: inherit;
+  box-sizing: border-box;
 }
 
 body {
@@ -17,31 +32,32 @@ body {
   min-width: 320px;
   background: #080808;
   color: #f0f0f0;
-  /* Bai Jamjuree for all body copy */
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ─── Display headlines use Yapari ─── */
+/* ─── Display headlines — Yapari ─── */
 h1, h2, h3 {
   font-family: var(--font-display);
 }
 
-/* ─── Utility class for forcing each font ─── */
+/* ─── Monorama for uppercase UI labels, badges, tags, stat labels ─── */
+/* target the common patterns used throughout the app */
+.label-mono,
+[style*="textTransform: \"uppercase\""],
+[style*="letterSpacing: \"0.1em\""],
+[style*="letterSpacing: \"0.08em\""],
+[style*="letterSpacing: \"0.06em\""],
+[style*="letterSpacing: \"0.12em\""],
+[style*="letterSpacing: \"0.14em\""] {
+  font-family: var(--font-mono) !important;
+}
+
+/* ─── Utility overrides ─── */
 .font-display { font-family: var(--font-display) !important; }
 .font-body    { font-family: var(--font-body)    !important; }
 .font-mono    { font-family: var(--font-mono)    !important; }
-
-/* ─── Monorama for uppercase UI labels, badges, tags, stat labels ─── */
-.label-mono,
-.category-badge,
-[class*="uppercase"][class*="tracking"],
-.text-xs.font-semibold.uppercase,
-.text-xs.font-bold.uppercase {
-  font-family: var(--font-mono);
-  letter-spacing: 0.08em;
-}
 
 /* ─── Nav glass ─── */
 .nav-glass {
