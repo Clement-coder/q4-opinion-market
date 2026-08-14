@@ -99,8 +99,8 @@ export default function Footer() {
           {cols.map(({ heading, links }) => (
             <div key={heading}>
               <h4
-                className="mb-4 text-xs font-semibold uppercase tracking-widest"
-                style={{ color: "rgba(255,255,255,0.4)", letterSpacing: "0.1em" }}
+                className="mb-4 mono-label text-xs font-semibold"
+                style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, letterSpacing: "0.14em" }}
               >
                 {heading}
               </h4>

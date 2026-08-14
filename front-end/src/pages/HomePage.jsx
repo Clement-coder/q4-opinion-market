@@ -126,8 +126,8 @@ export default function HomePage() {
 
               {/* Body */}
               <p
-                className="mt-6 leading-7"
-                style={{ color: "rgba(255,255,255,0.48)", maxWidth: 440, fontSize: 15 }}
+                className="hero-copy mt-6"
+                style={{ color: "rgba(255,255,255,0.55)", maxWidth: 460 }}
               >
                 Q4 is a prediction platform where your belief is measured by
                 economic conviction, not the number of voters. Answer daily

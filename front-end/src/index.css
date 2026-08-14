@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
-/* ─── Override Tailwind's default sans stack with Bai Jamjuree ─── */
+/* ─── Override Tailwind's default sans stack with Monorama ─── */
 @theme {
-  --font-family-sans: 'Bai Jamjuree', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-family-sans: 'Monorama', 'Courier New', monospace;
   --font-family-mono: 'Monorama', 'Courier New', monospace;
 }
 
@@ -10,7 +10,7 @@
 :root {
   color-scheme: dark;
   --font-display: 'YapariTrial', 'Yapari Trial', 'Yapari', sans-serif;
-  --font-body:    'Bai Jamjuree', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-body:    'Monorama', 'Courier New', monospace;
   --font-mono:    'Monorama', 'Courier New', monospace;
 }
 
@@ -19,10 +19,8 @@ html {
   font-family: var(--font-body);
 }
 
-/* Force every element to inherit Bai Jamjuree unless explicitly overridden */
-*,
-*::before,
-*::after {
+/* Force every element to inherit Monorama unless overridden */
+*, *::before, *::after {
   font-family: inherit;
   box-sizing: border-box;
 }
@@ -33,25 +31,46 @@ body {
   background: #080808;
   color: #f0f0f0;
   font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.7;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 /* ─── Display headlines — Yapari ─── */
-h1, h2, h3 {
+h1, h2, h3, h4 {
   font-family: var(--font-display);
+  letter-spacing: -0.03em;
 }
 
-/* ─── Monorama for uppercase UI labels, badges, tags, stat labels ─── */
-/* target the common patterns used throughout the app */
-.label-mono,
-[style*="textTransform: \"uppercase\""],
-[style*="letterSpacing: \"0.1em\""],
-[style*="letterSpacing: \"0.08em\""],
-[style*="letterSpacing: \"0.06em\""],
-[style*="letterSpacing: \"0.12em\""],
-[style*="letterSpacing: \"0.14em\""] {
+/* ─── Body copy — Monorama ───────────────────────────────────────
+   Use .body-copy on descriptive paragraphs & hero text.
+─────────────────────────────────────────────────────────────────── */
+.body-copy {
+  font-family: var(--font-body) !important;
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.75;
+  letter-spacing: 0.01em;
+}
+
+/* ─── Hero copy — Monorama, technical data-platform voice ────────
+   Used for the hero sub-paragraph where a distinct font family
+   reinforces the economic/data signal identity of Q4.
+─────────────────────────────────────────────────────────────────── */
+.hero-copy {
   font-family: var(--font-mono) !important;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.85;
+  letter-spacing: 0.01em;
+}
+
+/* ─── Monorama — uppercase UI labels, tags, stat labels ─── */
+.mono-label {
+  font-family: var(--font-mono) !important;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 /* ─── Utility overrides ─── */
