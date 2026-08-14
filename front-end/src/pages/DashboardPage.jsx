@@ -1439,7 +1439,7 @@ export default function DashboardPage() {
 
   const handleNavigate = (key) => { setSelectedQ(null); setPage(key); setMobileSidebarOpen(false); };
   const handleOpenQ    = (id)  => { setSelectedQ(id); setPage("question-detail"); setMobileSidebarOpen(false); };
-  const handleLogout   = async () => { await logout(); navigate("/"); };
+  const handleLogout   = async () => { await logout(); navigate("/login"); };
   const handleConfettiTrigger = () => {
     setShowConfetti(true);
     setTimeout(() => setShowConfetti(false), 3500);
@@ -1453,7 +1453,7 @@ export default function DashboardPage() {
   };
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: T.bg, color: T.textPrimary, fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, sans-serif" }}>
+    <div style={{ display: "flex", minHeight: "100vh", background: T.bg, color: T.textPrimary }}>
 
       {/* ── Fixed sidebar desktop ── */}
       <div className="dash-sidebar-desktop">

@@ -1,6 +1,12 @@
 @import "tailwindcss";
 
-:root { color-scheme: dark; }
+/* ─── Font families ─── */
+:root {
+  color-scheme: dark;
+  --font-display: 'YapariTrial', 'Yapari Trial', 'Yapari', sans-serif;
+  --font-body:    'Bai Jamjuree', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono:    'Monorama', 'Courier New', monospace;
+}
 
 html {
   scroll-behavior: smooth;
@@ -11,9 +17,30 @@ body {
   min-width: 320px;
   background: #080808;
   color: #f0f0f0;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  /* Bai Jamjuree for all body copy */
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Display headlines use Yapari ─── */
+h1, h2, h3 {
+  font-family: var(--font-display);
+}
+
+/* ─── Utility class for forcing each font ─── */
+.font-display { font-family: var(--font-display) !important; }
+.font-body    { font-family: var(--font-body)    !important; }
+.font-mono    { font-family: var(--font-mono)    !important; }
+
+/* ─── Monorama for uppercase UI labels, badges, tags, stat labels ─── */
+.label-mono,
+.category-badge,
+[class*="uppercase"][class*="tracking"],
+.text-xs.font-semibold.uppercase,
+.text-xs.font-bold.uppercase {
+  font-family: var(--font-mono);
+  letter-spacing: 0.08em;
 }
 
 /* ─── Nav glass ─── */
