@@ -98,7 +98,7 @@ export default function HomePage() {
           <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
 
             {/* Left copy */}
-            <div style={{ maxWidth: 520 }}>
+            <div style={{ maxWidth: 520, width: "100%" }}>
 
               {/* Pill */}
               <div className="pill mb-7">
@@ -136,7 +136,7 @@ export default function HomePage() {
               </p>
 
               {/* Buttons */}
-              <div className="mt-8 flex items-center gap-3" style={{ width: "100%", maxWidth: 440 }}>
+              <div className="mt-8 flex items-center gap-3" style={{ width: "100%" }}>
                 <Link
                   to={user ? "/dashboard" : "/signup"}
                   className="btn-primary"
@@ -170,7 +170,7 @@ export default function HomePage() {
             </div>
 
             {/* Right — Market card */}
-            <div className="flex justify-center lg:justify-end">
+            <div className="flex w-full justify-center lg:justify-end">
               <MarketPreview />
             </div>
 

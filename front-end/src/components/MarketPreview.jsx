@@ -18,7 +18,7 @@ export default function MarketPreview() {
   };
 
   return (
-    <div className="select-none w-full" style={{ maxWidth: 440 }}>
+    <div className="select-none w-full" style={{ maxWidth: 440, width: "100%" }}>
 
       {/* ── Outer card ── */}
       <div style={{
