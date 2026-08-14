@@ -269,16 +269,19 @@ h1, h2, h3, h4 {
   min-height: 100vh;
   background-color: #080808;
   background-image:
-    /* centre radial glow */
     radial-gradient(ellipse 70% 60% at 60% 50%, rgba(255,255,255,0.028) 0%, transparent 65%),
-    /* dot grid */
     radial-gradient(circle, rgba(255,255,255,0.18) 1px, transparent 1px);
   background-size: auto, 36px 36px;
   background-position: center, 0 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem 1.25rem;
+  /* removed: display flex / align-items center / justify-content center
+     so the page scrolls naturally on small screens */
+  padding: 3rem 1.25rem;
+}
+
+.auth-inner {
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
 }
 
 .auth-card {
