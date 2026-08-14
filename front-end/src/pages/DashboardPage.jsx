@@ -568,10 +568,17 @@ function PageDashboard({ onOpenQuestion, onNavigate }) {
               </p>
             </div>
 
-            {/* Galaxy YES / NO */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderTop: `1px solid ${T.border}` }}>
+            {/* Galaxy YES / VS / NO */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", borderTop: `1px solid ${T.border}`, alignItems: "stretch" }}>
               <GalaxyBtn side="YES" onClick={() => onOpenQuestion(featured.id)} />
-              <GalaxyBtn side="NO"  onClick={() => onOpenQuestion(featured.id)} hasBorderLeft />
+              {/* VS badge */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "0 2px", background: T.surface, borderLeft: `1px solid ${T.border}`, borderRight: `1px solid ${T.border}` }}>
+                <div style={{ width: 44, height: 44, borderRadius: "50%", background: "rgba(255,255,255,0.04)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.14)", boxShadow: "0 0 0 5px rgba(255,255,255,0.025), 0 6px 20px rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", flexShrink: 0 }}>
+                  <div style={{ position: "absolute", inset: 2, borderRadius: "50%", background: "radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%)" }} />
+                  <span style={{ fontFamily: "'YapariTrial','Yapari Trial','Yapari',sans-serif", fontSize: 14, fontWeight: 900, letterSpacing: "-0.02em", color: "rgba(255,255,255,0.7)", position: "relative", zIndex: 1, lineHeight: 1 }}>VS</span>
+                </div>
+              </div>
+              <GalaxyBtn side="NO" onClick={() => onOpenQuestion(featured.id)} />
             </div>
           </div>
 
@@ -821,15 +828,22 @@ function QuestionCard({ q, onOpen }) {
         </p>
       </div>
 
-      {/* Galaxy YES / NO buttons */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderTop: `1px solid ${T.border}` }}>
+      {/* Galaxy YES / VS / NO buttons */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", borderTop: `1px solid ${T.border}`, alignItems: "stretch" }}>
         <GalaxyBtn side="YES" onClick={() => onOpen(q.id)} />
-        <GalaxyBtn side="NO"  onClick={() => onOpen(q.id)} hasBorderLeft />
+        {/* VS badge */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "0 2px", background: "#0d0d0d", borderLeft: `1px solid ${T.border}`, borderRight: `1px solid ${T.border}` }}>
+          <div style={{ width: 44, height: 44, borderRadius: "50%", background: "rgba(255,255,255,0.04)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.14)", boxShadow: "0 0 0 5px rgba(255,255,255,0.025), 0 6px 20px rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", flexShrink: 0 }}>
+            <div style={{ position: "absolute", inset: 2, borderRadius: "50%", background: "radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%)" }} />
+            <span style={{ fontFamily: "'YapariTrial','Yapari Trial','Yapari',sans-serif", fontSize: 14, fontWeight: 900, letterSpacing: "-0.02em", color: "rgba(255,255,255,0.7)", position: "relative", zIndex: 1, lineHeight: 1 }}>VS</span>
+          </div>
+        </div>
+        <GalaxyBtn side="NO" onClick={() => onOpen(q.id)} />
       </div>
     </div>
   );
 }
-function GalaxyBtn({ side, onClick, hasBorderLeft }) {
+function GalaxyBtn({ side, onClick }) {
   const isYes  = side === "YES";
   const col    = isYes ? "#22c55e" : "#ef4444";
   const colA   = isYes ? "rgba(34,197,94," : "rgba(239,68,68,";
@@ -842,7 +856,6 @@ function GalaxyBtn({ side, onClick, hasBorderLeft }) {
         position: "relative",
         padding: "18px 10px",
         border: "none",
-        borderLeft: hasBorderLeft ? `1px solid ${T.border}` : "none",
         cursor: "pointer",
         overflow: "hidden",
         display: "flex",
@@ -850,24 +863,15 @@ function GalaxyBtn({ side, onClick, hasBorderLeft }) {
         alignItems: "center",
         justifyContent: "center",
         gap: 4,
-        background: isYes ? `${colA}0.05)` : `${colA}0.05)`,
+        background: `${colA}0.05)`,
         transition: "background 0.2s",
       }}
       onMouseEnter={(e) => { e.currentTarget.style.background = `${colA}0.14)`; }}
       onMouseLeave={(e) => { e.currentTarget.style.background = `${colA}0.05)`; }}
     >
-      {/* Animated nebula bg */}
       <div className={`${animCls}-nebula`} style={{ position: "absolute", inset: 0, pointerEvents: "none", opacity: 0.5 }} />
-
-      {/* Pulsing ring */}
-      <div style={{
-        position: "absolute", inset: 0, borderRadius: 0,
-        boxShadow: `inset 0 0 0 1px ${colA}0.25)`,
-        pointerEvents: "none",
-      }} />
-
-      {/* Label */}
-      <span style={{ fontSize: 16, fontWeight: 900, color: col, letterSpacing: "0.06em", position: "relative", zIndex: 1, textShadow: `0 0 12px ${colA}0.8)` }}>{side}</span>
+      <div style={{ position: "absolute", inset: 0, borderRadius: 0, boxShadow: `inset 0 0 0 1px ${colA}0.25)`, pointerEvents: "none" }} />
+      <span style={{ fontFamily: "'YapariTrial','Yapari Trial','Yapari',sans-serif", fontSize: 16, fontWeight: 900, color: col, letterSpacing: "-0.01em", position: "relative", zIndex: 1, textShadow: `0 0 12px ${colA}0.8)` }}>{side}</span>
       <span style={{ fontSize: 10, fontWeight: 600, color: `${colA}0.6)`, position: "relative", zIndex: 1 }}>
         {isYes ? "Believe it" : "Doubt it"}
       </span>
@@ -1031,9 +1035,17 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
             <>
               <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.1em", textTransform: "uppercase", margin: "0 0 16px" }}>Your Conviction</p>
 
-              {/* YES / NO buttons */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
-                {["YES", "NO"].map(side => {
+              {/* YES / VS / NO buttons */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 6, marginBottom: 20, alignItems: "center" }}>
+                {["YES", "VS", "NO"].map(side => {
+                  if (side === "VS") return (
+                    <div key="vs" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <div style={{ width: 44, height: 44, borderRadius: "50%", background: "rgba(255,255,255,0.04)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.14)", boxShadow: "0 0 0 5px rgba(255,255,255,0.025), 0 6px 20px rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", flexShrink: 0 }}>
+                        <div style={{ position: "absolute", inset: 2, borderRadius: "50%", background: "radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%)" }} />
+                        <span style={{ fontFamily: "'YapariTrial','Yapari Trial','Yapari',sans-serif", fontSize: 14, fontWeight: 900, letterSpacing: "-0.02em", color: "rgba(255,255,255,0.7)", position: "relative", zIndex: 1, lineHeight: 1 }}>VS</span>
+                      </div>
+                    </div>
+                  );
                   const isActive = selected === side;
                   const isYes = side === "YES";
                   const col  = isYes ? "#22c55e" : "#ef4444";
@@ -1052,21 +1064,15 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
                         border: isActive ? `2px solid ${col}` : `1px solid ${isYes ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)"}`,
                         background: isActive ? colB : isYes ? "rgba(34,197,94,0.05)" : "rgba(239,68,68,0.05)",
                         color: col,
-                        fontSize: 22,
-                        fontWeight: 900,
-                        letterSpacing: "0.04em",
                         cursor: "pointer",
                         transition: "all 0.22s cubic-bezier(0.34,1.56,0.64,1)",
                         boxShadow: isActive ? `0 0 28px ${glow}, 0 0 0 1px ${colD} inset` : "none",
                         transform: isActive ? "translateY(-3px) scale(1.03)" : "scale(1)",
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        gap: 6,
+                        display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
                       }}
                     >
-                      <span style={{ fontSize: 22, fontWeight: 900, lineHeight: 1 }}>{side}</span>
-                      <span style={{ fontSize: 10, fontWeight: 600, opacity: 0.65, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                      <span style={{ fontFamily: "'YapariTrial','Yapari Trial','Yapari',sans-serif", fontSize: 22, fontWeight: 900, lineHeight: 1, color: col, letterSpacing: "-0.02em" }}>{side}</span>
+                      <span style={{ fontSize: 10, fontWeight: 600, opacity: 0.65, letterSpacing: "0.06em", textTransform: "uppercase", color: col }}>
                         {isYes ? "Believe it" : "Doubt it"}
                       </span>
                     </button>
