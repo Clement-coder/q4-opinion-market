@@ -50,7 +50,7 @@ export default function MarketPreview() {
 
           {/* ── YES / VS / NO ── */}
           {!staked ? (
-            <div style={{ position: "relative", display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 10, marginBottom: 16, alignItems: "center" }}>
+            <div style={{ position: "relative", display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 6, marginBottom: 16, alignItems: "center" }}>
 
               {/* YES */}
               <button
@@ -84,28 +84,29 @@ export default function MarketPreview() {
 
               {/* ── VS badge ── */}
               <div style={{
-                position: "relative",
-                width: 36,
-                height: 36,
+                width: 44,
+                height: 44,
                 borderRadius: "50%",
                 background: "rgba(255,255,255,0.04)",
-                backdropFilter: "blur(8px)",
-                WebkitBackdropFilter: "blur(8px)",
-                border: "1px solid rgba(255,255,255,0.12)",
-                boxShadow: "0 0 0 4px rgba(255,255,255,0.03), 0 4px 16px rgba(0,0,0,0.5)",
+                backdropFilter: "blur(12px)",
+                WebkitBackdropFilter: "blur(12px)",
+                border: "1px solid rgba(255,255,255,0.14)",
+                boxShadow: "0 0 0 5px rgba(255,255,255,0.025), 0 6px 20px rgba(0,0,0,0.6)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 flexShrink: 0,
                 zIndex: 2,
+                position: "relative",
               }}>
-                {/* inner glow ring */}
-                <div style={{ position: "absolute", inset: 2, borderRadius: "50%", background: "radial-gradient(circle, rgba(255,255,255,0.06) 0%, transparent 70%)", pointerEvents: "none" }} />
+                {/* inner radial glow */}
+                <div style={{ position: "absolute", inset: 2, borderRadius: "50%", background: "radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%)", pointerEvents: "none" }} />
                 <span style={{
-                  fontSize: 10,
+                  fontFamily: "'YapariTrial','Yapari Trial','Yapari',sans-serif",
+                  fontSize: 14,
                   fontWeight: 900,
-                  letterSpacing: "0.04em",
-                  color: "rgba(255,255,255,0.55)",
+                  letterSpacing: "-0.02em",
+                  color: "rgba(255,255,255,0.7)",
                   position: "relative",
                   zIndex: 1,
                   lineHeight: 1,
