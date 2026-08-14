@@ -6,7 +6,7 @@ import Footer  from "./components/Footer";
 
 import HomePage       from "./pages/HomePage";
 import HowItWorksPage from "./pages/HowItWorksPage";
-import QuestionsPage  from "./pages/QuestionsPage";
+import PollsPage      from "./pages/PollsPage";
 import AboutPage      from "./pages/AboutPage";
 import FaqPage        from "./pages/FaqPage";
 import SignUpPage     from "./pages/SignUpPage";
@@ -44,7 +44,7 @@ export default function App() {
     <Routes>
       <Route path="/"             element={<PublicLayout><HomePage /></PublicLayout>} />
       <Route path="/how-it-works" element={<PublicLayout><HowItWorksPage /></PublicLayout>} />
-      <Route path="/questions"    element={<PublicLayout><QuestionsPage /></PublicLayout>} />
+      <Route path="/polls"        element={<PublicLayout><PollsPage /></PublicLayout>} />
       <Route path="/about"        element={<PublicLayout><AboutPage /></PublicLayout>} />
       <Route path="/faq"          element={<PublicLayout><FaqPage /></PublicLayout>} />
 

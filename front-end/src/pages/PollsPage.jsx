@@ -79,7 +79,7 @@ function QCard({ question }) {
   );
 }
 
-export default function QuestionsPage() {
+export default function PollsPage() {
   const [active, setActive] = useState("All");
   const filtered = active === "All" ? QUESTIONS : QUESTIONS.filter((q) => q.cat === active);
 
@@ -89,10 +89,10 @@ export default function QuestionsPage() {
       <section className="hero-bg">
         <div className="mx-auto max-w-7xl px-5 py-16 sm:px-8">
           <p className="mb-2 text-xs font-semibold uppercase tracking-widest" style={{ color: "rgba(255,255,255,0.35)", letterSpacing: "0.14em" }}>
-            Live Markets
+            Live Polls
           </p>
           <h1 className="font-bold text-white" style={{ fontSize: "clamp(32px, 4vw, 52px)", letterSpacing: "-0.04em" }}>
-            Today's Questions
+            Today's Polls
           </h1>
           <p className="mt-3 text-sm" style={{ color: "rgba(255,255,255,0.45)" }}>
             Pick a side, stake your conviction, earn rewards.
@@ -131,7 +131,7 @@ export default function QuestionsPage() {
           </div>
           {filtered.length === 0 && (
             <div className="py-20 text-center text-sm" style={{ color: "rgba(255,255,255,0.3)" }}>
-              No questions in this category yet.
+              No polls in this category yet.
             </div>
           )}
         </div>

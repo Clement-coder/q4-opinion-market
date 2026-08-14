@@ -12,7 +12,7 @@ const cols = [
   {
     heading: "Platform",
     links: [
-      { label: "Questions",    to: "/questions"    },
+      { label: "Polls",         to: "/polls"         },
       { label: "How It Works", to: "/how-it-works" },
       { label: "Rewards",      to: "/dashboard"    },
       { label: "Leaderboard",  to: "/dashboard"    },
@@ -135,7 +135,7 @@ export default function Footer() {
             <div>
               <p className="text-sm font-semibold text-white">Stay Updated</p>
               <p className="mt-1 text-sm" style={{ color: "rgba(255,255,255,0.4)" }}>
-                Get the latest questions and updates delivered to your inbox.
+                Get the latest polls and updates delivered to your inbox.
               </p>
             </div>
             <form

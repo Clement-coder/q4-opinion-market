@@ -7,7 +7,7 @@ const FAQS = [
     cat: "General",
     items: [
       { q: "What is Q4?",                         a: "Q4 is a capital-weighted consensus market on Quai Network. Your economic conviction — the amount you commit — determines the market percentages, not headcount." },
-      { q: "Is Q4 free to use?",                  a: "Browsing questions is always free. You only need Q4 tokens when you want to stake a position." },
+      { q: "Is Q4 free to use?",                  a: "Browsing polls is always free. You only need Q4 tokens when you want to stake a position." },
       { q: "Which blockchain is Q4 built on?",    a: "Q4 runs on Quai Network, an EVM-compatible proof-of-work blockchain. Smart contracts handle all settlement on-chain." },
     ],
   },

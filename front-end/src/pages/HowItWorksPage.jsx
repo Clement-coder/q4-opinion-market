@@ -6,7 +6,7 @@ import {
 } from "../components/icons";
 
 const STEPS = [
-  { number: "01", icon: ClipboardList, title: "Answer",            description: "Browse daily questions across politics, finance, sports, and more." },
+  { number: "01", icon: ClipboardList, title: "Answer",            description: "Browse daily polls across politics, finance, sports, and more." },
   { number: "02", icon: WalletCards,   title: "Stake",             description: "Commit a small amount of Q4 tokens to the side you believe in."      },
   { number: "03", icon: PieChart,      title: "Conviction Builds", description: "Capital on each side determines the live YES / NO percentages."      },
   { number: "04", icon: ArrowLeftRight,title: "Switch Once",       description: "Flip your position once if the other side grows stronger."            },
@@ -75,8 +75,8 @@ export default function HowItWorksPage() {
               Get Started
               <ArrowRight size={14} strokeWidth={2.4} />
             </Link>
-            <Link to="/questions" className="btn-secondary-dark">
-              Browse Questions
+            <Link to="/polls" className="btn-secondary-dark">
+              Browse Polls
             </Link>
           </div>
         </div>

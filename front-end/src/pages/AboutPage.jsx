@@ -141,8 +141,8 @@ export default function AboutPage() {
               Get Started
               <ArrowRight size={14} strokeWidth={2.4} />
             </Link>
-            <Link to="/questions" className="btn-secondary">
-              Browse Questions
+            <Link to="/polls" className="btn-secondary">
+              Browse Polls
             </Link>
           </div>
         </div>

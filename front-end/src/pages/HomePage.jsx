@@ -41,7 +41,7 @@ const FEATURES = [
 ];
 
 const STEPS = [
-  { number: "01", icon: ClipboardList, title: "Answer",           description: "Answer daily questions across multiple categories."                 },
+  { number: "01", icon: ClipboardList, title: "Answer",           description: "Answer daily polls across multiple categories."                 },
   { number: "02", icon: WalletCards,   title: "Stake",            description: "Commit a small amount of Q4 to the side you believe in."            },
   { number: "03", icon: PieChart,      title: "Conviction Builds",description: "Total capital on each side determines the YES / NO percentages."    },
   { number: "04", icon: ArrowLeftRight,title: "Switch Once",      description: "Change your position once if the other side becomes stronger."      },
@@ -131,7 +131,7 @@ export default function HomePage() {
               >
                 Q4 is a prediction platform where your belief is measured by
                 economic conviction, not the number of voters. Answer daily
-                questions, stake a small amount, and earn rewards when the
+                polls, stake a small amount, and earn rewards when the
                 outcome is right.
               </p>
 

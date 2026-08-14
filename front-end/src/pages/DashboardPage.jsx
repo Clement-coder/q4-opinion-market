@@ -91,7 +91,7 @@ const CONVICTIONS = [
 ];
 
 const HOW_IT_WORKS = [
-  { step: "01", title: "Answer Questions",          desc: "Answer daily questions across politics, general knowledge, math, psychology, crypto and more." },
+  { step: "01", title: "Answer Polls",             desc: "Answer daily polls across politics, general knowledge, math, psychology, crypto and more." },
   { step: "02", title: "Pick YES or NO",            desc: "Choose the outcome you believe is more likely to happen." },
   { step: "03", title: "Stake Your Conviction",     desc: "Commit a small amount of Quai to back your answer." },
   { step: "04", title: "Market Reflects Conviction",desc: "YES / NO percentages show total capital on each side." },
@@ -220,7 +220,7 @@ function SectionHeading({ children, action }) {
 
 const NAV_ITEMS = [
   { key: "dashboard",   label: "Dashboard",     icon: LayoutGrid,  desc: "Overview & stats"    },
-  { key: "questions",   label: "Questions",     icon: HelpCircle,  desc: "Daily markets"       },
+  { key: "questions",   label: "Polls",     icon: HelpCircle,  desc: "Daily markets"       },
   { key: "convictions", label: "Convictions",   icon: BookMarked,  desc: "Your positions"      },
   { key: "results",     label: "Results",       icon: BarChart3,   desc: "Market outcomes"     },
   { key: "leaderboard", label: "Leaderboard",   icon: Trophy,      desc: "Top predictors"      },
@@ -451,7 +451,7 @@ function PageDashboard({ onOpenQuestion, onNavigate }) {
               <p style={{ fontSize: 26, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.04em" }}>
                 {STATS.todayAnswered}<span style={{ color: T.textMuted, fontSize: 18 }}>/{STATS.todayTotal}</span>
               </p>
-              <p style={{ fontSize: 11, color: T.textDim, margin: "4px 0 0" }}>Questions answered</p>
+              <p style={{ fontSize: 11, color: T.textDim, margin: "4px 0 0" }}>Polls answered</p>
             </div>
             <div style={{ position: "relative", flexShrink: 0 }}>
               <RingProgress value={STATS.todayAnswered} max={STATS.todayTotal} size={52} stroke={3.5} color="#ffffff" />
@@ -532,7 +532,7 @@ function PageDashboard({ onOpenQuestion, onNavigate }) {
       {/* ── MAIN 2-COL ── */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 16 }} className="dash-main-grid">
 
-        {/* LEFT: featured market + today's questions */}
+        {/* LEFT: featured market + today's polls */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
           {/* Featured market */}
@@ -605,7 +605,7 @@ function PageDashboard({ onOpenQuestion, onNavigate }) {
             <SectionHeading>Quick Actions</SectionHeading>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {[
-                { label: "Browse Markets",    icon: HelpCircle,  key: "questions",   desc: "Answer today's questions" },
+                { label: "Browse Polls",     icon: HelpCircle,  key: "questions",   desc: "Answer today's polls" },
                 { label: "My Convictions",    icon: BookMarked,  key: "convictions", desc: "Track open positions"     },
                 { label: "Claim Rewards",     icon: Gift,        key: "rewards",     desc: `${STATS.potentialRewards.toFixed(1)} Quai pending` },
                 { label: "Leaderboard",       icon: Trophy,      key: "leaderboard", desc: "See top predictors"       },
@@ -702,7 +702,7 @@ function PageQuestions({ onOpenQuestion }) {
       {/* ── Header ── */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>Questions</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>Polls</h1>
           <p style={{ fontSize: 13, color: T.textMuted, margin: "4px 0 0" }}>Pick a side. Stake your conviction. Earn rewards.</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -976,7 +976,7 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
           onMouseEnter={(e) => { e.currentTarget.style.color = T.textPrimary; }}
           onMouseLeave={(e) => { e.currentTarget.style.color = T.textMuted; }}
         >
-          <ArrowLeft size={15} strokeWidth={2} /> Back to Questions
+          <ArrowLeft size={15} strokeWidth={2} /> Back to Polls
         </button>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <CategoryBadge category={q.category} />
@@ -1447,7 +1447,7 @@ export default function DashboardPage() {
 
   const activeNav = page === "question-detail" ? "questions" : page;
   const pageLabelMap = {
-    dashboard: "Dashboard", questions: "Questions", "question-detail": "Market Detail",
+    dashboard: "Dashboard", questions: "Polls", "question-detail": "Poll Detail",
     convictions: "My Convictions", results: "Results", leaderboard: "Leaderboard",
     rewards: "Rewards", how: "How It Works", wallet: "Wallet", profile: "Profile",
   };
