@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Clock, Info, ArrowRight } from "./icons";
+import { Clock, Info, ArrowRight, ShieldCheck, Globe, CheckCircle2 } from "./icons";
 
 const POOL  = "$10,000";
 const CLOSE = "1h 24m";
@@ -8,18 +8,14 @@ export default function MarketPreview() {
   const [selected, setSelected] = useState(null);
   const [staked,   setStaked]   = useState(false);
 
-  const handleStake = (side) => {
-    setSelected(side);
-    setStaked(false);
-  };
-
-  const handleConfirm = () => {
-    if (selected) setStaked(true);
-  };
+  const handleStake = (side) => { setSelected(side); setStaked(false); };
+  const handleConfirm = () => { if (selected) setStaked(true); };
 
   return (
-    <div className="select-none w-full" style={{ maxWidth: 440, width: "100%" }}>
-
+    <div
+      className="select-none"
+      style={{ width: "100%", maxWidth: 440, minWidth: 0 }}
+    >
       {/* ── Outer card ── */}
       <div style={{
         background: "#0f0f0f",
@@ -29,91 +25,124 @@ export default function MarketPreview() {
         boxShadow: "0 40px 100px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.03)",
         position: "relative",
       }}>
-
-        {/* Subtle top glow */}
+        {/* Top glow line */}
         <div style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", width: "60%", height: 1, background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent)", pointerEvents: "none" }} />
 
         {/* ── Header bar ── */}
-        <div style={{ padding: "16px 22px", borderBottom: "1px solid rgba(255,255,255,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ padding: "14px 20px", borderBottom: "1px solid rgba(255,255,255,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 8px rgba(34,197,94,0.9)", flexShrink: 0 }} />
             <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.45)" }}>Politics</span>
           </div>
-          <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "rgba(255,255,255,0.35)", fontVariantNumeric: "tabular-nums" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
             <Clock size={11} strokeWidth={2} /> {CLOSE} remaining
           </span>
         </div>
 
         {/* ── Body ── */}
-        <div style={{ padding: "22px 22px 0" }}>
-          <p style={{ fontSize: 15, fontWeight: 600, color: "rgba(255,255,255,0.92)", lineHeight: 1.5, letterSpacing: "-0.015em", margin: "0 0 8px" }}>
+        <div style={{ padding: "20px 20px 0" }}>
+          <p style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.92)", lineHeight: 1.5, letterSpacing: "-0.015em", margin: "0 0 6px" }}>
             Will the United States hold presidential elections in 2024?
           </p>
-          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.28)", margin: "0 0 22px" }}>
+          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.28)", margin: "0 0 18px" }}>
             Total pool: <span style={{ color: "rgba(255,255,255,0.55)", fontWeight: 600 }}>{POOL}</span>
           </p>
 
-          {/* ── YES / NO buttons ── */}
+          {/* ── YES / VS / NO ── */}
           {!staked ? (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+            <div style={{ position: "relative", display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 10, marginBottom: 16, alignItems: "center" }}>
 
               {/* YES */}
-              <button type="button" onClick={() => handleStake("YES")} style={{
-                position: "relative",
-                padding: "22px 14px",
-                borderRadius: 14,
-                border: selected === "YES" ? "1.5px solid rgba(34,197,94,0.7)" : "1px solid rgba(34,197,94,0.2)",
-                background: selected === "YES"
-                  ? "linear-gradient(135deg, rgba(34,197,94,0.18), rgba(34,197,94,0.08))"
-                  : "linear-gradient(135deg, rgba(34,197,94,0.07), rgba(34,197,94,0.03))",
-                cursor: "pointer",
-                overflow: "hidden",
-                transition: "all 0.25s cubic-bezier(0.34,1.56,0.64,1)",
-                transform: selected === "YES" ? "translateY(-3px) scale(1.02)" : "scale(1)",
-                boxShadow: selected === "YES"
-                  ? "0 8px 32px rgba(34,197,94,0.3), 0 0 0 1px rgba(34,197,94,0.2) inset"
-                  : "0 2px 8px rgba(0,0,0,0.3)",
-              }}
-                onMouseEnter={(e) => { if (selected !== "YES") { e.currentTarget.style.borderColor = "rgba(34,197,94,0.4)"; e.currentTarget.style.background = "linear-gradient(135deg, rgba(34,197,94,0.1), rgba(34,197,94,0.05))"; } }}
-                onMouseLeave={(e) => { if (selected !== "YES") { e.currentTarget.style.borderColor = "rgba(34,197,94,0.2)"; e.currentTarget.style.background = "linear-gradient(135deg, rgba(34,197,94,0.07), rgba(34,197,94,0.03))"; } }}
+              <button
+                type="button"
+                onClick={() => handleStake("YES")}
+                style={{
+                  position: "relative",
+                  padding: "20px 12px",
+                  borderRadius: 14,
+                  border: selected === "YES" ? "1.5px solid rgba(34,197,94,0.7)" : "1px solid rgba(34,197,94,0.2)",
+                  background: selected === "YES"
+                    ? "linear-gradient(135deg, rgba(34,197,94,0.18), rgba(34,197,94,0.08))"
+                    : "linear-gradient(135deg, rgba(34,197,94,0.07), rgba(34,197,94,0.03))",
+                  cursor: "pointer",
+                  overflow: "hidden",
+                  transition: "all 0.25s cubic-bezier(0.34,1.56,0.64,1)",
+                  transform: selected === "YES" ? "translateY(-3px) scale(1.02)" : "scale(1)",
+                  boxShadow: selected === "YES"
+                    ? "0 8px 32px rgba(34,197,94,0.3), 0 0 0 1px rgba(34,197,94,0.2) inset"
+                    : "0 2px 8px rgba(0,0,0,0.3)",
+                }}
+                onMouseEnter={(e) => { if (selected !== "YES") { e.currentTarget.style.borderColor = "rgba(34,197,94,0.4)"; e.currentTarget.style.background = "linear-gradient(135deg, rgba(34,197,94,0.1), rgba(34,197,94,0.05))"; }}}
+                onMouseLeave={(e) => { if (selected !== "YES") { e.currentTarget.style.borderColor = "rgba(34,197,94,0.2)"; e.currentTarget.style.background = "linear-gradient(135deg, rgba(34,197,94,0.07), rgba(34,197,94,0.03))"; }}}
               >
-                {/* Glow orb */}
                 {selected === "YES" && <div style={{ position: "absolute", top: -20, left: "50%", transform: "translateX(-50%)", width: 80, height: 80, borderRadius: "50%", background: "rgba(34,197,94,0.2)", filter: "blur(20px)", pointerEvents: "none" }} />}
                 <div style={{ position: "relative" }}>
-                  <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", color: "#22c55e", margin: "0 0 8px", textTransform: "uppercase", opacity: selected === "YES" ? 1 : 0.7 }}>YES</p>
-                  <p style={{ fontSize: 13, fontWeight: 500, color: "rgba(34,197,94,0.65)", margin: 0, lineHeight: 1.3 }}>Believe it'll happen</p>
+                  <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", color: "#22c55e", margin: "0 0 6px", textTransform: "uppercase", opacity: selected === "YES" ? 1 : 0.7 }}>YES</p>
+                  <p style={{ fontSize: 11, fontWeight: 500, color: "rgba(34,197,94,0.65)", margin: 0, lineHeight: 1.3 }}>Believe it</p>
                 </div>
               </button>
 
-              {/* NO */}
-              <button type="button" onClick={() => handleStake("NO")} style={{
+              {/* ── VS badge ── */}
+              <div style={{
                 position: "relative",
-                padding: "22px 14px",
-                borderRadius: 14,
-                border: selected === "NO" ? "1.5px solid rgba(239,68,68,0.7)" : "1px solid rgba(239,68,68,0.2)",
-                background: selected === "NO"
-                  ? "linear-gradient(135deg, rgba(239,68,68,0.18), rgba(239,68,68,0.08))"
-                  : "linear-gradient(135deg, rgba(239,68,68,0.07), rgba(239,68,68,0.03))",
-                cursor: "pointer",
-                overflow: "hidden",
-                transition: "all 0.25s cubic-bezier(0.34,1.56,0.64,1)",
-                transform: selected === "NO" ? "translateY(-3px) scale(1.02)" : "scale(1)",
-                boxShadow: selected === "NO"
-                  ? "0 8px 32px rgba(239,68,68,0.3), 0 0 0 1px rgba(239,68,68,0.2) inset"
-                  : "0 2px 8px rgba(0,0,0,0.3)",
-              }}
-                onMouseEnter={(e) => { if (selected !== "NO") { e.currentTarget.style.borderColor = "rgba(239,68,68,0.4)"; e.currentTarget.style.background = "linear-gradient(135deg, rgba(239,68,68,0.1), rgba(239,68,68,0.05))"; } }}
-                onMouseLeave={(e) => { if (selected !== "NO") { e.currentTarget.style.borderColor = "rgba(239,68,68,0.2)"; e.currentTarget.style.background = "linear-gradient(135deg, rgba(239,68,68,0.07), rgba(239,68,68,0.03))"; } }}
+                width: 36,
+                height: 36,
+                borderRadius: "50%",
+                background: "rgba(255,255,255,0.04)",
+                backdropFilter: "blur(8px)",
+                WebkitBackdropFilter: "blur(8px)",
+                border: "1px solid rgba(255,255,255,0.12)",
+                boxShadow: "0 0 0 4px rgba(255,255,255,0.03), 0 4px 16px rgba(0,0,0,0.5)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                zIndex: 2,
+              }}>
+                {/* inner glow ring */}
+                <div style={{ position: "absolute", inset: 2, borderRadius: "50%", background: "radial-gradient(circle, rgba(255,255,255,0.06) 0%, transparent 70%)", pointerEvents: "none" }} />
+                <span style={{
+                  fontSize: 10,
+                  fontWeight: 900,
+                  letterSpacing: "0.04em",
+                  color: "rgba(255,255,255,0.55)",
+                  position: "relative",
+                  zIndex: 1,
+                  lineHeight: 1,
+                }}>VS</span>
+              </div>
+
+              {/* NO */}
+              <button
+                type="button"
+                onClick={() => handleStake("NO")}
+                style={{
+                  position: "relative",
+                  padding: "20px 12px",
+                  borderRadius: 14,
+                  border: selected === "NO" ? "1.5px solid rgba(239,68,68,0.7)" : "1px solid rgba(239,68,68,0.2)",
+                  background: selected === "NO"
+                    ? "linear-gradient(135deg, rgba(239,68,68,0.18), rgba(239,68,68,0.08))"
+                    : "linear-gradient(135deg, rgba(239,68,68,0.07), rgba(239,68,68,0.03))",
+                  cursor: "pointer",
+                  overflow: "hidden",
+                  transition: "all 0.25s cubic-bezier(0.34,1.56,0.64,1)",
+                  transform: selected === "NO" ? "translateY(-3px) scale(1.02)" : "scale(1)",
+                  boxShadow: selected === "NO"
+                    ? "0 8px 32px rgba(239,68,68,0.3), 0 0 0 1px rgba(239,68,68,0.2) inset"
+                    : "0 2px 8px rgba(0,0,0,0.3)",
+                }}
+                onMouseEnter={(e) => { if (selected !== "NO") { e.currentTarget.style.borderColor = "rgba(239,68,68,0.4)"; e.currentTarget.style.background = "linear-gradient(135deg, rgba(239,68,68,0.1), rgba(239,68,68,0.05))"; }}}
+                onMouseLeave={(e) => { if (selected !== "NO") { e.currentTarget.style.borderColor = "rgba(239,68,68,0.2)"; e.currentTarget.style.background = "linear-gradient(135deg, rgba(239,68,68,0.07), rgba(239,68,68,0.03))"; }}}
               >
                 {selected === "NO" && <div style={{ position: "absolute", top: -20, left: "50%", transform: "translateX(-50%)", width: 80, height: 80, borderRadius: "50%", background: "rgba(239,68,68,0.2)", filter: "blur(20px)", pointerEvents: "none" }} />}
                 <div style={{ position: "relative" }}>
-                  <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", color: "#ef4444", margin: "0 0 8px", textTransform: "uppercase", opacity: selected === "NO" ? 1 : 0.7 }}>NO</p>
-                  <p style={{ fontSize: 13, fontWeight: 500, color: "rgba(239,68,68,0.65)", margin: 0, lineHeight: 1.3 }}>Doubt it'll happen</p>
+                  <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", color: "#ef4444", margin: "0 0 6px", textTransform: "uppercase", opacity: selected === "NO" ? 1 : 0.7 }}>NO</p>
+                  <p style={{ fontSize: 11, fontWeight: 500, color: "rgba(239,68,68,0.65)", margin: 0, lineHeight: 1.3 }}>Doubt it</p>
                 </div>
               </button>
             </div>
           ) : (
-            /* Staked success */
             <div style={{ marginBottom: 16, padding: "20px", borderRadius: 14, background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.25)", textAlign: "center" }}>
               <p style={{ fontSize: 22, margin: "0 0 4px" }}>✓</p>
               <p style={{ fontSize: 14, fontWeight: 700, color: "#22c55e", margin: "0 0 4px" }}>Position Confirmed — {selected}</p>
@@ -123,26 +152,27 @@ export default function MarketPreview() {
         </div>
 
         {/* ── Footer ── */}
-        <div style={{ padding: "0 22px 22px" }}>
+        <div style={{ padding: "0 20px 20px" }}>
           {!staked ? (
-            <button type="button" onClick={handleConfirm} disabled={!selected}
+            <button
+              type="button"
+              onClick={handleConfirm}
+              disabled={!selected}
               style={{
-                width: "100%", padding: "14px", borderRadius: 10, border: "none",
+                width: "100%", padding: "13px", borderRadius: 10, border: "none",
                 background: selected
                   ? selected === "YES"
                     ? "linear-gradient(135deg, #16a34a, #22c55e)"
                     : "linear-gradient(135deg, #dc2626, #ef4444)"
                   : "rgba(255,255,255,0.07)",
                 color: selected ? "#ffffff" : "rgba(255,255,255,0.28)",
-                fontSize: 14, fontWeight: 700,
+                fontSize: 13, fontWeight: 700,
                 cursor: selected ? "pointer" : "default",
                 transition: "all 0.2s",
                 letterSpacing: "-0.01em",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                 boxShadow: selected
-                  ? selected === "YES"
-                    ? "0 4px 20px rgba(34,197,94,0.35)"
-                    : "0 4px 20px rgba(239,68,68,0.35)"
+                  ? selected === "YES" ? "0 4px 20px rgba(34,197,94,0.35)" : "0 4px 20px rgba(239,68,68,0.35)"
                   : "none",
               }}
             >
@@ -150,24 +180,47 @@ export default function MarketPreview() {
               {selected && <ArrowRight size={14} strokeWidth={2.5} />}
             </button>
           ) : (
-            <button type="button" onClick={() => { setSelected(null); setStaked(false); }}
-              style={{ width: "100%", padding: "13px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.45)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            <button
+              type="button"
+              onClick={() => { setSelected(null); setStaked(false); }}
+              style={{ width: "100%", padding: "13px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.45)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+            >
               View another market
             </button>
           )}
 
-          <p style={{ marginTop: 12, display: "flex", alignItems: "flex-start", gap: 6, fontSize: 11, lineHeight: 1.6, color: "rgba(255,255,255,0.2)" }}>
+          <p style={{ marginTop: 10, display: "flex", alignItems: "flex-start", gap: 6, fontSize: 11, lineHeight: 1.6, color: "rgba(255,255,255,0.2)" }}>
             <Info size={11} strokeWidth={1.8} style={{ marginTop: 1, flexShrink: 0 }} />
             Conviction is measured by capital staked, not number of participants.
           </p>
         </div>
       </div>
 
-      {/* ── Tags ── */}
-      <div style={{ marginTop: 12, display: "flex", justifyContent: "center", gap: 6 }}>
-        {["Live Market", "Capital Weighted", "On-chain Settlement"].map(tag => (
-          <span key={tag} style={{ fontSize: 10, fontWeight: 500, letterSpacing: "0.04em", color: "rgba(255,255,255,0.22)", padding: "4px 10px", borderRadius: 4, border: "1px solid rgba(255,255,255,0.07)", background: "rgba(255,255,255,0.025)" }}>
-            {tag}
+      {/* ── Tags / badges ── */}
+      <div style={{ marginTop: 14, display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8 }}>
+        {[
+          { icon: ShieldCheck,   label: "Live Market"         },
+          { icon: CheckCircle2,  label: "Capital Weighted"    },
+          { icon: Globe,         label: "On-chain Settlement" },
+        ].map(({ icon: Icon, label }) => (
+          <span
+            key={label}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              fontSize: 11,
+              fontWeight: 500,
+              letterSpacing: "0.02em",
+              color: "rgba(255,255,255,0.38)",
+              padding: "5px 12px",
+              borderRadius: 6,
+              border: "1px solid rgba(255,255,255,0.09)",
+              background: "rgba(255,255,255,0.03)",
+            }}
+          >
+            <Icon size={11} strokeWidth={1.8} style={{ flexShrink: 0 }} />
+            {label}
           </span>
         ))}
       </div>

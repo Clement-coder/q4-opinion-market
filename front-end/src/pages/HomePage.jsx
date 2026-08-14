@@ -65,7 +65,7 @@ export default function HomePage() {
       {/* ═══════════════════════════════════════════════
           1. HERO
       ═══════════════════════════════════════════════ */}
-      <section className="hero-bg relative overflow-hidden" style={{ minHeight: "calc(100vh - 60px)" }}>
+      <section className="hero-bg relative" style={{ minHeight: "calc(100vh - 60px)", overflowX: "hidden" }}>
 
         {/* Futuristic decorative layer */}
         <svg
@@ -94,8 +94,8 @@ export default function HomePage() {
             fill="rgba(255,255,255,0.018)" />
         </svg>
 
-        <div className="relative mx-auto max-w-7xl px-5 sm:px-8" style={{ paddingTop: "10vh", paddingBottom: "10vh" }}>
-          <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
+        <div className="relative mx-auto max-w-7xl px-5 sm:px-8" style={{ paddingTop: "8vh", paddingBottom: "8vh" }}>
+          <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
 
             {/* Left copy */}
             <div style={{ maxWidth: 520, width: "100%" }}>
@@ -112,9 +112,9 @@ export default function HomePage() {
               <h1
                 className="font-bold text-white"
                 style={{
-                  fontSize: "clamp(42px, 5.5vw, 68px)",
-                  letterSpacing: "-0.045em",
-                  lineHeight: 1.01,
+                  fontSize: "clamp(32px, 5.5vw, 68px)",
+                  letterSpacing: "-0.04em",
+                  lineHeight: 1.04,
                 }}
               >
                 Answer Today.
@@ -127,7 +127,7 @@ export default function HomePage() {
               {/* Body */}
               <p
                 className="hero-copy mt-6"
-                style={{ color: "rgba(255,255,255,0.55)", maxWidth: 460 }}
+                style={{ color: "rgba(255,255,255,0.55)", maxWidth: 460, wordBreak: "break-word" }}
               >
                 Q4 is a prediction platform where your belief is measured by
                 economic conviction, not the number of voters. Answer daily
