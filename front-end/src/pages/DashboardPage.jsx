@@ -1218,72 +1218,139 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
 
 const CONV_TABS = ["Open", "Resolved", "Cancelled"];
 
+function ConvictionCard({ c }) {
+  const isYes     = c.answer === "YES";
+  const col       = isYes ? T.yes  : T.no;
+  const colBg     = isYes ? T.yesBg : T.noBg;
+  const colBorder = isYes ? T.yesBorder : T.noBorder;
+  const switched  = c.switched !== "No";
+
+  return (
+    <GCard style={{ padding: "18px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
+
+      {/* Top row: category + status + timer */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <CategoryBadge category={c.category} />
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {switched && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 600, color: T.violet, background: T.violetBg, border: `1px solid rgba(124,111,247,0.2)` }}>
+              <ArrowLeftRight size={10} strokeWidth={2.5} /> Switched
+            </span>
+          )}
+          <span style={{ padding: "2px 8px", borderRadius: 999, background: T.glass, border: `1px solid ${T.border}`, color: T.textDim, fontSize: 10, fontWeight: 600 }}>
+            {c.status}
+          </span>
+        </div>
+      </div>
+
+      {/* Question text */}
+      <p style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary, margin: 0, lineHeight: 1.45, letterSpacing: "-0.01em" }}>
+        {c.question}
+      </p>
+
+      {/* Conviction bar */}
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <span style={{ fontSize: 10, color: T.textDim, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Market Conviction</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: col }}>{c.side}% {c.answer}</span>
+        </div>
+        <ConvictionBar yes={c.answer === "YES" ? c.side : 100 - c.side} no={c.answer === "NO" ? c.side : 100 - c.side} />
+      </div>
+
+      {/* Stats row */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+
+        {/* Your side */}
+        <div style={{ padding: "10px 12px", borderRadius: 10, background: colBg, border: `1px solid ${colBorder}`, display: "flex", flexDirection: "column", gap: 3, alignItems: "center" }}>
+          <span style={{ fontSize: 10, color: col, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", opacity: 0.8 }}>Your Side</span>
+          <span style={{ fontSize: 18, fontWeight: 900, color: col, letterSpacing: "-0.02em" }}>{c.answer}</span>
+        </div>
+
+        {/* Staked */}
+        <div style={{ padding: "10px 12px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, display: "flex", flexDirection: "column", gap: 3, alignItems: "center" }}>
+          <span style={{ fontSize: 10, color: T.textDim, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>Staked</span>
+          <span style={{ fontSize: 15, fontWeight: 800, color: T.textPrimary, letterSpacing: "-0.02em" }}>{c.staked.toFixed(2)}<span style={{ fontSize: 10, color: T.textDim, fontWeight: 500, marginLeft: 3 }}>Q</span></span>
+        </div>
+
+        {/* Pool */}
+        <div style={{ padding: "10px 12px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, display: "flex", flexDirection: "column", gap: 3, alignItems: "center" }}>
+          <span style={{ fontSize: 10, color: T.textDim, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>Pool</span>
+          <span style={{ fontSize: 15, fontWeight: 800, color: T.textPrimary, letterSpacing: "-0.02em" }}>${(c.totalPool / 1000).toFixed(1)}<span style={{ fontSize: 10, color: T.textDim, fontWeight: 500, marginLeft: 2 }}>K</span></span>
+        </div>
+      </div>
+
+      {/* Switch info */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: switched ? T.violet : T.textDim }}>
+        <ArrowLeftRight size={11} strokeWidth={2} style={{ flexShrink: 0 }} />
+        <span>{switched ? `Switched: ${c.switched}` : "No switch used — 1 switch remaining"}</span>
+      </div>
+    </GCard>
+  );
+}
+
 function PageMyConvictions() {
   const [tab, setTab] = useState("Open");
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <div>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>My Convictions</h1>
-        <p style={{ fontSize: 13, color: T.textMuted, margin: "4px 0 0" }}>Track your answers, switches, and performance.</p>
-      </div>
 
-      <div style={{ display: "flex", gap: 4, padding: 4, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 8, width: "fit-content" }}>
-        {CONV_TABS.map(t => (
-          <button key={t} type="button" onClick={() => setTab(t)}
-            style={{ padding: "6px 16px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", border: "none", background: tab === t ? "#ffffff" : "transparent", color: tab === t ? "#080808" : T.textMuted, transition: "all 0.15s" }}>
-            {t}
-          </button>
-        ))}
-      </div>
-
-      <GCard style={{ overflow: "hidden" }}>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", minWidth: 720, borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ borderBottom: `1px solid ${T.border}` }}>
-                {["Question","Category","Answer","Staked","Side %","Pool","Switched","Status"].map(h => (
-                  <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: T.textDim, textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {tab === "Open" ? CONVICTIONS.map((c, i) => (
-                <tr key={i} style={{ borderBottom: i < CONVICTIONS.length - 1 ? `1px solid ${T.border}` : "none" }}>
-                  <td style={{ padding: "13px 16px", maxWidth: 220, color: T.textPrimary, fontWeight: 500, lineHeight: 1.3 }}>{c.question}</td>
-                  <td style={{ padding: "13px 16px", whiteSpace: "nowrap" }}><CategoryBadge category={c.category} /></td>
-                  <td style={{ padding: "13px 16px" }}><span style={{ padding: "3px 9px", borderRadius: 4, background: T.yesBg, color: T.yes, fontSize: 11, fontWeight: 700 }}>{c.answer}</span></td>
-                  <td style={{ padding: "13px 16px", fontWeight: 600, color: T.textPrimary, whiteSpace: "nowrap" }}>{c.staked.toFixed(2)} Quai</td>
-                  <td style={{ padding: "13px 16px", fontWeight: 700, color: T.yes }}>{c.side}%</td>
-                  <td style={{ padding: "13px 16px", color: T.textMuted, whiteSpace: "nowrap" }}>${c.totalPool.toLocaleString()}</td>
-                  <td style={{ padding: "13px 16px", color: T.textMuted, fontSize: 12 }}>{c.switched}</td>
-                  <td style={{ padding: "13px 16px" }}><span style={{ padding: "3px 10px", borderRadius: 999, background: T.glass, border: `1px solid ${T.border}`, color: T.textMuted, fontSize: 11, fontWeight: 600 }}>{c.status}</span></td>
-                </tr>
-              )) : (
-                <tr><td colSpan={8} style={{ padding: "40px 16px", textAlign: "center", color: T.textDim, fontSize: 13 }}>No {tab.toLowerCase()} convictions yet.</td></tr>
-              )}
-            </tbody>
-          </table>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>My Convictions</h1>
+          <p style={{ fontSize: 13, color: T.textMuted, margin: "4px 0 0" }}>Track your open positions, switches, and performance.</p>
         </div>
-      </GCard>
 
+        {/* Tab switcher */}
+        <div style={{ display: "flex", gap: 4, padding: 4, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 8 }}>
+          {CONV_TABS.map(t => (
+            <button key={t} type="button" onClick={() => setTab(t)}
+              style={{ padding: "6px 16px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", border: "none", background: tab === t ? "#ffffff" : "transparent", color: tab === t ? "#080808" : T.textMuted, transition: "all 0.15s" }}>
+              {t}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* KPI summary strip */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 10 }} className="dash-conv-grid">
         {[
-          { label: "Total Markets",      value: 47 },
-          { label: "Correct",            value: 32,   accent: T.yes },
-          { label: "Accuracy",           value: "68%",accent: T.yes },
-          { label: "Total Staked",       value: "85.4 Quai" },
-          { label: "Potential Rewards",  value: "24.8 Quai", accent: T.yes },
-        ].map(({ label, value, accent }) => (
-          <GCard key={label} style={{ padding: "14px 16px", textAlign: "center" }}>
-            <p style={{ fontSize: 18, fontWeight: 800, color: accent || T.textPrimary, margin: "0 0 4px", letterSpacing: "-0.03em" }}>{value}</p>
-            <p style={{ fontSize: 10, color: T.textDim, margin: 0, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>{label}</p>
+          { label: "Total Markets",     value: 47,            icon: BookMarked,     accent: null    },
+          { label: "Correct",           value: 32,            icon: CheckCircle2,   accent: T.yes   },
+          { label: "Accuracy",          value: "68%",         icon: BarChart3,      accent: T.yes   },
+          { label: "Total Staked",      value: "85.4 Q",      icon: WalletCards,    accent: null    },
+          { label: "Potential Rewards", value: "24.8 Q",      icon: Gift,           accent: T.yes   },
+        ].map(({ label, value, icon: Icon, accent }) => (
+          <GCard key={label} style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 8, background: accent ? (accent === T.yes ? T.yesBg : T.noBg) : T.glass, border: `1px solid ${accent ? (accent === T.yes ? T.yesBorder : T.noBorder) : T.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Icon size={14} strokeWidth={1.8} style={{ color: accent || T.textMuted }} />
+            </div>
+            <div>
+              <p style={{ fontSize: 16, fontWeight: 800, color: accent || T.textPrimary, margin: 0, letterSpacing: "-0.03em" }}>{value}</p>
+              <p style={{ fontSize: 10, color: T.textDim, margin: 0, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>{label}</p>
+            </div>
           </GCard>
         ))}
       </div>
 
+      {/* Cards grid or empty state */}
+      {tab === "Open" ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
+          {CONVICTIONS.map((c, i) => <ConvictionCard key={i} c={c} />)}
+        </div>
+      ) : (
+        <GCard style={{ padding: "60px 24px", textAlign: "center" }}>
+          <div style={{ width: 48, height: 48, borderRadius: 14, background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
+            <BookMarked size={20} strokeWidth={1.5} style={{ color: T.textDim }} />
+          </div>
+          <p style={{ fontSize: 14, fontWeight: 600, color: T.textMuted, margin: 0 }}>No {tab.toLowerCase()} convictions yet.</p>
+          <p style={{ fontSize: 12, color: T.textDim, margin: "6px 0 0" }}>Your {tab.toLowerCase()} markets will appear here.</p>
+        </GCard>
+      )}
+
+      {/* Switch rule reminder */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 14px", borderRadius: 8, background: T.glass, border: `1px solid ${T.border}`, fontSize: 12, color: T.textMuted }}>
-        <Info size={13} strokeWidth={1.8} style={{ flexShrink: 0 }} />
-        Switch once per game only — minimum 5 minutes must remain before market close.
+        <Info size={13} strokeWidth={1.8} style={{ flexShrink: 0, color: T.violet }} />
+        Switch once per market only — at least 5 minutes must remain before market close.
       </div>
     </div>
   );
