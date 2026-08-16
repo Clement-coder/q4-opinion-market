@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Clock, TrendingUp, TrendingDown, ArrowRight } from "../components/icons";
+import { Clock, TrendingUp, TrendingDown, ArrowRight, Share2, Check } from "../components/icons";
 
 const CATEGORIES = ["All", "Politics", "Sports", "Finance", "Technology", "Science", "Culture"];
 
@@ -17,9 +17,27 @@ const QUESTIONS = [
 
 function QCard({ question }) {
   const [side, setSide] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  const handleShare = async (e) => {
+    e.stopPropagation();
+    const url = `${window.location.origin}/polls?q=${question.id}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: question.q, text: question.q, url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
+    } catch {
+      // user cancelled or clipboard unavailable — silently ignore
+    }
+  };
 
   return (
     <div className="flex flex-col overflow-hidden transition-all" style={{
+      position: "relative",
       borderRadius: 16,
       border: "1px solid rgba(255,255,255,0.08)",
       backgroundColor: "#0d0d0d",
@@ -36,10 +54,50 @@ function QCard({ question }) {
           >
             {question.cat}
           </span>
-          <span className="flex items-center gap-1.5 text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>
-            <Clock size={11} strokeWidth={2} />
-            {question.closes}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="flex items-center gap-1.5 text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>
+              <Clock size={11} strokeWidth={2} />
+              {question.closes}
+            </span>
+            {/* Share button */}
+            <button
+              type="button"
+              onClick={handleShare}
+              title="Share poll"
+              aria-label="Share this poll"
+              className="flex items-center justify-center transition-all"
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 6,
+                border: "1px solid rgba(255,255,255,0.1)",
+                background: copied ? "rgba(34,197,94,0.12)" : "rgba(255,255,255,0.05)",
+                color: copied ? "#22c55e" : "rgba(255,255,255,0.4)",
+                cursor: "pointer",
+                flexShrink: 0,
+                transition: "background 0.15s, color 0.15s, border-color 0.15s",
+              }}
+              onMouseEnter={(e) => {
+                if (!copied) {
+                  e.currentTarget.style.background = "rgba(255,255,255,0.1)";
+                  e.currentTarget.style.color = "rgba(255,255,255,0.85)";
+                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.2)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!copied) {
+                  e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+                  e.currentTarget.style.color = "rgba(255,255,255,0.4)";
+                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)";
+                }
+              }}
+            >
+              {copied
+                ? <Check size={12} strokeWidth={2.5} />
+                : <Share2 size={12} strokeWidth={2} />
+              }
+            </button>
+          </div>
         </div>
 
         <h3 className="flex-1 text-sm font-medium leading-snug" style={{ color: "rgba(255,255,255,0.9)", marginBottom: 14 }}>
@@ -74,6 +132,32 @@ function QCard({ question }) {
         >
           NO
         </button>
+      </div>
+
+      {/* Copied toast */}
+      <div
+        aria-live="polite"
+        style={{
+          position: "absolute",
+          bottom: 12,
+          left: "50%",
+          transform: copied ? "translate(-50%, 0)" : "translate(-50%, 8px)",
+          opacity: copied ? 1 : 0,
+          pointerEvents: "none",
+          transition: "opacity 0.2s, transform 0.2s",
+          background: "rgba(8,8,8,0.92)",
+          border: "1px solid rgba(34,197,94,0.3)",
+          borderRadius: 8,
+          padding: "6px 14px",
+          fontSize: 12,
+          fontWeight: 600,
+          color: "#22c55e",
+          whiteSpace: "nowrap",
+          backdropFilter: "blur(12px)",
+          zIndex: 10,
+        }}
+      >
+        Link copied!
       </div>
     </div>
   );

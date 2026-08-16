@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"/>
+<style>
+  @import url('https://fonts.cdnfonts.com/css/yapari-trial');
+  @import url('https://fonts.cdnfonts.com/css/monorama');
+
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    width: 1200px;
+    height: 630px;
+    overflow: hidden;
+    background: #080808;
+    font-family: 'Monorama', 'Courier New', monospace;
+    position: relative;
+  }
+
+  /* ── LAYERS ── */
+
+  /* 1. Deep noise texture via SVG filter */
+  .noise {
+    position: absolute; inset: 0; z-index: 1;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 200px 200px;
+  }
+
+  /* 2. Dot grid */
+  .dots {
+    position: absolute; inset: 0; z-index: 2;
+    background-image: radial-gradient(circle, rgba(255,255,255,0.22) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+
+  /* 3. Diagonal gradient bands — gives depth */
+  .bands {
+    position: absolute; inset: 0; z-index: 3;
+    background:
+      linear-gradient(135deg,
+        rgba(134,59,255,0.06) 0%,
+        transparent 40%,
+        transparent 60%,
+        rgba(34,197,94,0.04) 100%);
+  }
+
+  /* 4. Centre radial spotlight */
+  .spotlight {
+    position: absolute; inset: 0; z-index: 4;
+    background: radial-gradient(ellipse 75% 70% at 42% 50%,
+      rgba(255,255,255,0.07) 0%,
+      rgba(255,255,255,0.02) 45%,
+      transparent 70%);
+  }
+
+  /* 5. Purple left-edge accent glow */
+  .left-glow {
+    position: absolute;
+    left: -60px; top: 50%;
+    transform: translateY(-50%);
+    width: 320px; height: 400px;
+    background: radial-gradient(ellipse, rgba(134,59,255,0.18) 0%, transparent 70%);
+    z-index: 4;
+    filter: blur(20px);
+  }
+
+  /* 6. Green right-edge accent glow */
+  .right-glow {
+    position: absolute;
+    right: -40px; bottom: -60px;
+    width: 280px; height: 280px;
+    background: radial-gradient(ellipse, rgba(34,197,94,0.12) 0%, transparent 70%);
+    z-index: 4;
+    filter: blur(24px);
+  }
+
+  /* ── CHROME LINES ── */
+  /* Top border accent */
+  .top-line {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(134,59,255,0.8) 20%,
+      rgba(255,255,255,0.5) 50%,
+      rgba(34,197,94,0.6) 80%,
+      transparent 100%);
+    z-index: 20;
+  }
+
+  /* Bottom border accent */
+  .bottom-line {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg,
+      transparent,
+      rgba(255,255,255,0.08) 30%,
+      rgba(255,255,255,0.08) 70%,
+      transparent);
+    z-index: 20;
+  }
+
+  /* Corner brackets */
+  .corner { position: absolute; z-index: 20; }
+  .corner-tl { top: 14px; left: 14px; border-top: 1.5px solid rgba(255,255,255,0.2); border-left: 1.5px solid rgba(255,255,255,0.2); width: 28px; height: 28px; }
+  .corner-tr { top: 14px; right: 14px; border-top: 1.5px solid rgba(255,255,255,0.2); border-right: 1.5px solid rgba(255,255,255,0.2); width: 28px; height: 28px; }
+  .corner-bl { bottom: 14px; left: 14px; border-bottom: 1.5px solid rgba(255,255,255,0.2); border-left: 1.5px solid rgba(255,255,255,0.2); width: 28px; height: 28px; }
+  .corner-br { bottom: 14px; right: 14px; border-bottom: 1.5px solid rgba(255,255,255,0.2); border-right: 1.5px solid rgba(255,255,255,0.2); width: 28px; height: 28px; }
+
+  /* Vertical centre divider line */
+  .v-divider {
+    position: absolute;
+    left: 585px; top: 48px; bottom: 48px;
+    width: 1px;
+    background: linear-gradient(180deg,
+      transparent 0%,
+      rgba(255,255,255,0.06) 20%,
+      rgba(255,255,255,0.1) 50%,
+      rgba(255,255,255,0.06) 80%,
+      transparent 100%);
+    z-index: 10;
+  }
+
+  /* ── CONTENT ── */
+  .content {
+    position: absolute; inset: 0; z-index: 15;
+    display: flex;
+    align-items: center;
+    padding: 52px 60px 52px 64px;
+    gap: 52px;
+  }
+
+  /* ────── LEFT ────── */
+  .left { flex: 1; min-width: 0; }
+
+  /* Logo */
+  .logo-row {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 28px;
+  }
+  .logo-mark { flex-shrink: 0; }
+  .logo-name {
+    font-family: 'YapariTrial','Yapari Trial','Yapari',sans-serif;
+    font-size: 26px; font-weight: 900;
+    color: #fff; letter-spacing: -0.03em;
+  }
+  /* small network badge */
+  .network-badge {
+    margin-left: 6px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: rgba(134,59,255,0.15);
+    border: 1px solid rgba(134,59,255,0.3);
+    font-size: 9px; font-weight: 700;
+    color: rgba(134,59,255,0.9);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    align-self: center;
+  }
+
+  /* Eyebrow label */
+  .eyebrow {
+    display: flex; align-items: center; gap: 7px;
+    margin-bottom: 16px;
+  }
+  .eyebrow-dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: #22c55e;
+    box-shadow: 0 0 6px rgba(34,197,94,0.8);
+  }
+  .eyebrow-text {
+    font-size: 11px; font-weight: 700;
+    color: rgba(255,255,255,0.4);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  /* Headline */
+  .headline {
+    font-family: 'YapariTrial','Yapari Trial','Yapari',sans-serif;
+    font-size: 58px; font-weight: 900;
+    line-height: 1.0; letter-spacing: -0.04em;
+    margin-bottom: 20px;
+  }
+  .hl-white { color: #ffffff; display: block; }
+  .hl-dim   { color: rgba(255,255,255,0.28); display: block; }
+
+  /* Subline */
+  .subline {
+    font-size: 13.5px; line-height: 1.7;
+    color: rgba(255,255,255,0.45);
+    letter-spacing: 0.01em;
+    margin-bottom: 28px;
+    max-width: 390px;
+  }
+
+  /* Stats row */
+  .stats-row {
+    display: flex; align-items: stretch; gap: 0;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px; overflow: hidden;
+    background: rgba(255,255,255,0.02);
+    width: fit-content;
+  }
+  .stat {
+    padding: 10px 18px;
+    border-right: 1px solid rgba(255,255,255,0.07);
+  }
+  .stat:last-child { border-right: none; }
+  .stat-val {
+    font-family: 'YapariTrial','Yapari Trial','Yapari',sans-serif;
+    font-size: 18px; font-weight: 900;
+    color: #fff; letter-spacing: -0.03em;
+    line-height: 1;
+  }
+  .stat-val.green { color: #22c55e; }
+  .stat-label {
+    font-size: 9px; font-weight: 700;
+    color: rgba(255,255,255,0.3);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-top: 3px;
+  }
+
+  /* ────── RIGHT — CARD ────── */
+  .card {
+    width: 420px; flex-shrink: 0;
+    border-radius: 18px;
+    background: rgba(14,14,14,0.95);
+    border: 1px solid rgba(255,255,255,0.1);
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.03),
+      0 32px 64px rgba(0,0,0,0.8),
+      inset 0 1px 0 rgba(255,255,255,0.06);
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* card inner glow */
+  .card-glow {
+    position: absolute;
+    top: -40px; left: 50%; transform: translateX(-50%);
+    width: 200px; height: 100px;
+    background: radial-gradient(ellipse, rgba(255,255,255,0.07) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  /* card top border gradient */
+  .card-top-border {
+    position: absolute; top: 0; left: 15%; right: 15%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  }
+
+  /* card header */
+  .card-header {
+    padding: 14px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .card-cat {
+    display: flex; align-items: center; gap: 7px;
+  }
+  .cat-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #22c55e;
+    box-shadow: 0 0 6px rgba(34,197,94,0.9);
+  }
+  .cat-name {
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: rgba(255,255,255,0.4);
+  }
+  .card-timer {
+    font-size: 10px; color: rgba(255,255,255,0.28);
+    display: flex; align-items: center; gap: 4px;
+  }
+  .timer-dot {
+    width: 4px; height: 4px; border-radius: 50%;
+    background: rgba(239,68,68,0.7);
+    animation: none;
+  }
+
+  /* card body */
+  .card-body { padding: 16px 18px 14px; }
+  .card-q {
+    font-family: 'YapariTrial','Yapari Trial','Yapari',sans-serif;
+    font-size: 13.5px; font-weight: 700;
+    color: rgba(255,255,255,0.9);
+    line-height: 1.45; letter-spacing: -0.01em;
+    margin-bottom: 10px;
+  }
+  .card-meta {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 14px;
+  }
+  .pool-badge {
+    font-size: 10px; font-weight: 600;
+    color: rgba(255,255,255,0.5);
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    padding: 3px 9px; border-radius: 4px;
+  }
+  .pool-badge span { color: rgba(255,255,255,0.8); }
+
+  /* YES / VS / NO */
+  .sides {
+    display: grid;
+    grid-template-columns: 1fr 40px 1fr;
+    gap: 6px;
+    margin-bottom: 14px;
+    align-items: center;
+  }
+  .side-yes, .side-no {
+    border-radius: 10px;
+    padding: 14px 8px;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+  }
+  .side-yes {
+    background: rgba(34,197,94,0.07);
+    border: 1px solid rgba(34,197,94,0.22);
+  }
+  .side-no {
+    background: rgba(239,68,68,0.07);
+    border: 1px solid rgba(239,68,68,0.22);
+  }
+  .side-label-yes {
+    font-family: 'YapariTrial','Yapari Trial','Yapari',sans-serif;
+    font-size: 16px; font-weight: 900;
+    color: #22c55e; letter-spacing: -0.01em;
+  }
+  .side-label-no {
+    font-family: 'YapariTrial','Yapari Trial','Yapari',sans-serif;
+    font-size: 16px; font-weight: 900;
+    color: #ef4444; letter-spacing: -0.01em;
+  }
+  .side-sub { font-size: 9px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+  .side-sub-yes { color: rgba(34,197,94,0.55); }
+  .side-sub-no  { color: rgba(239,68,68,0.55); }
+
+  .vs-wrap {
+    display: flex; align-items: center; justify-content: center;
+  }
+  .vs {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.12);
+    box-shadow:
+      0 0 0 4px rgba(255,255,255,0.02),
+      inset 0 0 12px rgba(255,255,255,0.04);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .vs-text {
+    font-family: 'YapariTrial','Yapari Trial','Yapari',sans-serif;
+    font-size: 12px; font-weight: 900;
+    color: rgba(255,255,255,0.6);
+    letter-spacing: -0.02em;
+  }
+
+  /* conviction bars */
+  .bar-section { margin-bottom: 12px; }
+  .bar-row { margin-bottom: 7px; }
+  .bar-info {
+    display: flex; justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  .bar-name-yes { font-size: 10px; font-weight: 700; color: rgba(34,197,94,0.7); letter-spacing: 0.06em; }
+  .bar-name-no  { font-size: 10px; font-weight: 700; color: rgba(239,68,68,0.7);  letter-spacing: 0.06em; }
+  .bar-pct-yes  { font-size: 11px; font-weight: 800; color: #22c55e; }
+  .bar-pct-no   { font-size: 11px; font-weight: 800; color: #ef4444; }
+  .bar-track {
+    height: 5px; border-radius: 3px;
+    background: rgba(255,255,255,0.06); overflow: hidden;
+  }
+  .bar-fill-yes {
+    height: 100%; width: 70%; border-radius: 3px;
+    background: linear-gradient(90deg, #15803d, #22c55e);
+  }
+  .bar-fill-no {
+    height: 100%; width: 30%; border-radius: 3px;
+    background: linear-gradient(90deg, #b91c1c, #ef4444);
+  }
+
+  /* card footer */
+  .card-footer {
+    padding: 10px 18px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .footer-chain {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 9px; font-weight: 700;
+    color: rgba(255,255,255,0.25); letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .chain-dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: rgba(134,59,255,0.7);
+    box-shadow: 0 0 5px rgba(134,59,255,0.5);
+  }
+  .footer-tags { display: flex; gap: 5px; }
+  .ftag {
+    font-size: 9px; font-weight: 600;
+    color: rgba(255,255,255,0.2);
+    padding: 2px 7px; border-radius: 3px;
+    border: 1px solid rgba(255,255,255,0.07);
+    background: rgba(255,255,255,0.02);
+    letter-spacing: 0.04em;
+  }
+</style>
+</head>
+<body>
+
+  <!-- Background layers -->
+  <div class="noise"></div>
+  <div class="dots"></div>
+  <div class="bands"></div>
+  <div class="spotlight"></div>
+  <div class="left-glow"></div>
+  <div class="right-glow"></div>
+
+  <!-- Chrome -->
+  <div class="top-line"></div>
+  <div class="bottom-line"></div>
+  <div class="corner corner-tl"></div>
+  <div class="corner corner-tr"></div>
+  <div class="corner corner-bl"></div>
+  <div class="corner corner-br"></div>
+  <div class="v-divider"></div>
+
+  <!-- Content -->
+  <div class="content">
+
+    <!-- LEFT -->
+    <div class="left">
+
+      <div class="logo-row">
+        <!-- Q4 logo mark -->
+        <svg class="logo-mark" width="34" height="32" viewBox="0 0 48 46" fill="none">
+          <path fill="#863bff" d="M25.946 44.938c-.664.845-2.021.375-2.021-.698V33.937a2.26 2.26 0 0 0-2.262-2.262H10.287c-.92 0-1.456-1.04-.92-1.788l7.48-10.471c1.07-1.497 0-3.578-1.842-3.578H1.237c-.92 0-1.456-1.04-.92-1.788L10.013.474c.214-.297.556-.474.92-.474h28.894c.92 0 1.456 1.04.92 1.788l-7.48 10.471c-1.07 1.498 0 3.579 1.842 3.579h11.377c.943 0 1.473 1.088.89 1.83L25.947 44.94z"/>
+        </svg>
+        <span class="logo-name">Q4</span>
+        <span class="network-badge">Quai Network</span>
+      </div>
+
+      <div class="eyebrow">
+        <span class="eyebrow-dot"></span>
+        <span class="eyebrow-text">Conviction Market · Live Now</span>
+      </div>
+
+      <div class="headline">
+        <span class="hl-white">Answer Today.</span>
+        <span class="hl-dim">Shape Tomorrow.</span>
+      </div>
+
+      <p class="subline">
+        Your belief measured by economic conviction,<br/>
+        not the number of voters. Stake. Earn. Repeat.
+      </p>
+
+      <!-- Stats -->
+      <div class="stats-row">
+        <div class="stat">
+          <div class="stat-val green">$4.2M+</div>
+          <div class="stat-label">Capital Staked</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val">38K+</div>
+          <div class="stat-label">Participants</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val">9.8K+</div>
+          <div class="stat-label">Markets Resolved</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val green">99.97%</div>
+          <div class="stat-label">Uptime</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT — Card -->
+    <div class="card">
+      <div class="card-glow"></div>
+      <div class="card-top-border"></div>
+
+      <div class="card-header">
+        <div class="card-cat">
+          <span class="cat-dot"></span>
+          <span class="cat-name">Politics · Live</span>
+        </div>
+        <div class="card-timer">
+          <span class="timer-dot"></span>
+          Closes in 1h 24m
+        </div>
+      </div>
+
+      <div class="card-body">
+        <p class="card-q">Will the United States hold<br/>presidential elections in 2024?</p>
+
+        <div class="card-meta">
+          <span class="pool-badge">Pool <span>$10,000</span></span>
+          <span class="pool-badge">Switch once allowed</span>
+        </div>
+
+        <div class="sides">
+          <div class="side-yes">
+            <span class="side-label-yes">YES</span>
+            <span class="side-sub side-sub-yes">Believe it</span>
+          </div>
+          <div class="vs-wrap">
+            <div class="vs"><span class="vs-text">VS</span></div>
+          </div>
+          <div class="side-no">
+            <span class="side-label-no">NO</span>
+            <span class="side-sub side-sub-no">Doubt it</span>
+          </div>
+        </div>
+
+        <div class="bar-section">
+          <div class="bar-row">
+            <div class="bar-info">
+              <span class="bar-name-yes">YES</span>
+              <span class="bar-pct-yes">70%</span>
+            </div>
+            <div class="bar-track"><div class="bar-fill-yes"></div></div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-info">
+              <span class="bar-name-no">NO</span>
+              <span class="bar-pct-no">30%</span>
+            </div>
+            <div class="bar-track"><div class="bar-fill-no"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-footer">
+        <div class="footer-chain">
+          <span class="chain-dot"></span>
+          On-chain · Quai Network
+        </div>
+        <div class="footer-tags">
+          <span class="ftag">Capital Weighted</span>
+          <span class="ftag">Non-custodial</span>
+          <span class="ftag">Permissionless</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</body>
+</html>

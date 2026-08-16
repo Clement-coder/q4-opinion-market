@@ -474,3 +474,13 @@ h1, h2, h3, h4 {
     to   { opacity: 1; transform: translateY(0);     }
   }
 }
+
+/* ─── Wallet Page ─── */
+.wallet-top-grid {
+  grid-template-columns: 1fr 1fr;
+}
+@media (max-width: 640px) {
+  .wallet-top-grid {
+    grid-template-columns: 1fr;
+  }
+}

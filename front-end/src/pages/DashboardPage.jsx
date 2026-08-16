@@ -2,20 +2,26 @@
  * DashboardPage.jsx — Q4 Futuristic Dashboard
  * Dark theme · Glassmorphism · Fixed sidebar + header · Scrollable main
  * Matches landing page aesthetic: #080808 base, dot-grid, white accents
+ * URL-driven: /dashboard/:section — each sidebar item is its own route
  */
 
-import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useState, useEffect, useCallback } from "react";
+import { useNavigate, useParams, Link } from "react-router-dom";
 import {
   LayoutGrid, HelpCircle, BookMarked, BarChart3, Trophy,
-  Gift, Info, Clock, ArrowLeft, Share2,
+  Gift, Info, Clock, ArrowLeft, Share2, Check, Copy,
   CheckCircle2, RefreshCcw, ChevronRight, ChevronDown, ArrowRight,
   Menu, X, TrendingUp, TrendingDown, WalletCards,
   ShieldCheck, Globe, Award, LogOut, Bell, ArrowLeftRight,
-  User, Mail,
+  User, Mail, TwitterX, Telegram,
+  Medal, Flame, Lock2, Target, Percent, Lightbulb, Zap, Star, Coins,
+  Users, PieChart, Sparkles, ExternalLink, RefreshCw,
 } from "../components/icons";
-import { Q4Logo } from "../components/icons";
-import { useAuth } from "../context/AuthContext";
+import { Q4Logo }   from "../components/icons";
+import { useAuth }  from "../context/AuthContext";
+import { useWallet } from "../context/WalletContext";
+import { useQuaiPrice, useNewsFeed, useBlipLeaderboard } from "../services/useBlipPay";
+import WalletPage   from "./WalletPage";
 
 /* ════════════════════════════════════════════════
    DESIGN TOKENS  (mirror landing page palette)
@@ -44,58 +50,81 @@ const T = {
 };
 
 /* ════════════════════════════════════════════════
-   DATA
+   DATA — Static market demo data
+   (live user data is fetched via hooks / WalletContext)
 ════════════════════════════════════════════════ */
-// USER is now sourced from Firebase auth — see useAuth() in components below
-const FALLBACK_USER = { name: "You", fullName: "Q4 User", level: 1, balance: 0, wallet: "—" };
 
-const STATS = {
-  todayAnswered: 7, todayTotal: 10,
-  totalStaked: 85.4, potentialRewards: 24.8,
-  accuracy: 68, marketsWon: 32, marketsTotal: 47,
-  weeklyPnl: +18.6, allTimeEarned: 246.2,
+// Demo market data — in production these come from the smart contract / Supabase indexer
+const QUESTIONS = [
+  { id: "us-election-2024",  category: "Politics",          question: "Will the United States hold presidential elections in 2024?", closes: "1h 24m", yes: 70, no: 30, yesPool: 7000,  noPool: 3000,  totalPool: 10000, resolves: 'Resolves "Yes" if US presidential election occurs in 2024.', resolution: "Based on official US election authority announcements." },
+  { id: "global-recession",  category: "Politics",          question: "Will a global recession begin in 2025?",                      closes: "1h 30m", yes: 65, no: 35, yesPool: 4030,  noPool: 2170,  totalPool: 6200  },
+  { id: "element-o",         category: "General Knowledge", question: "Which element has the chemical symbol 'O'?",                   closes: "6h 45m", yes: 84, no: 16, yesPool: 2352,  noPool: 448,   totalPool: 2800  },
+  { id: "is-97-prime",       category: "Math",              question: "Is 97 a prime number?",                                        closes: "6h 20m", yes: 92, no:  8, yesPool: 1702,  noPool: 148,   totalPool: 1850  },
+  { id: "first-impressions", category: "Psychology",        question: "Do first impressions shape our long-term perception?",         closes: "1d 2h",  yes: 58, no: 42, yesPool: 2088,  noPool: 1512,  totalPool: 3600  },
+  { id: "ethereum-10k",      category: "Crypto",            question: "Will Ethereum reach $10,000 before 2026?",                     closes: "1d 8h",  yes: 71, no: 29, yesPool: 6390,  noPool: 2610,  totalPool: 9000  },
+];
+
+// Demo settled results — in production sourced from on-chain settlement events
+const RESULTS = [
+  { id: "us-election-2024", question: "Will the United States hold presidential elections in 2024?", category: "Politics",          outcome: "YES", consensus: 70, totalPool: 10000, settledAt: "Aug 12, 2026", yourSide: "YES", yourStake: 1.5, yourReward: 84.20,  won: true  },
+  { id: "is-97-prime",      question: "Is 97 a prime number?",                                       category: "Math",              outcome: "YES", consensus: 92, totalPool: 1850,  settledAt: "Aug 10, 2026", yourSide: "YES", yourStake: 0.5, yourReward: 18.50,  won: true  },
+  { id: "triangle-angles",  question: "Do interior angles of a triangle always sum to 180°?",        category: "Math",              outcome: "YES", consensus: 97, totalPool: 1200,  settledAt: "Aug 08, 2026", yourSide: "YES", yourStake: 0.8, yourReward: 42.00,  won: true  },
+  { id: "global-recession", question: "Will a global recession begin in 2025?",                      category: "Politics",          outcome: "NO",  consensus: 65, totalPool: 6200,  settledAt: "Aug 05, 2026", yourSide: "YES", yourStake: 1.0, yourReward: 0,      won: false },
+  { id: "mars-mission",     question: "Will SpaceX land on Mars before 2027?",                       category: "Science",           outcome: "NO",  consensus: 78, totalPool: 4400,  settledAt: "Jul 30, 2026", yourSide: "NO",  yourStake: 1.2, yourReward: 52.80,  won: true  },
+  { id: "eth-flipped-btc",  question: "Will Ethereum flip Bitcoin by market cap in 2025?",           category: "Crypto",            outcome: "NO",  consensus: 71, totalPool: 12000, settledAt: "Jul 22, 2026", yourSide: "YES", yourStake: 2.0, yourReward: 0,      won: false },
+  { id: "largest-planet-q", question: "What is the largest planet in our solar system?",             category: "General Knowledge", outcome: "YES", consensus: 95, totalPool: 3200,  settledAt: "Jul 15, 2026", yourSide: "YES", yourStake: 0.4, yourReward: 14.20,  won: true  },
+];
+
+// Demo claimable rewards — in production sourced from smart contract read
+const CLAIMABLE_REWARDS = [
+  { id: "us-election-2024", question: "Will the United States hold presidential elections in 2024?", category: "Politics",          outcome: "YES", yourSide: "YES", stake: 1.5, reward: 84.20, claimed: false, settledAt: "Aug 12, 2026" },
+  { id: "is-97-prime",      question: "Is 97 a prime number?",                                       category: "Math",              outcome: "YES", yourSide: "YES", stake: 0.5, reward: 18.50, claimed: false, settledAt: "Aug 10, 2026" },
+  { id: "triangle-angles",  question: "Do interior angles of a triangle always sum to 180°?",        category: "Math",              outcome: "YES", yourSide: "YES", stake: 0.8, reward: 42.00, claimed: false, settledAt: "Aug 08, 2026" },
+  { id: "mars-mission",     question: "Will SpaceX land on Mars before 2027?",                       category: "Science",           outcome: "NO",  yourSide: "NO",  stake: 1.2, reward: 52.80, claimed: true,  settledAt: "Jul 30, 2026" },
+  { id: "largest-planet-q", question: "What is the largest planet in our solar system?",             category: "General Knowledge", outcome: "YES", yourSide: "YES", stake: 0.4, reward: 14.20, claimed: true,  settledAt: "Jul 15, 2026" },
+];
+
+// Demo user conviction positions — in production sourced from on-chain positions
+const CONVICTIONS = [
+  { question: "Will the United States hold presidential elections in 2024?", category: "Politics",          answer: "YES", staked: 1.5, side: 70, totalPool: 10000, switched: "No",       status: "Open" },
+  { question: "Will Bitcoin reach $150,000 before Dec 2026?",               category: "Crypto",            answer: "YES", staked: 2.0, side: 68, totalPool: 8250,  switched: "YES → NO", status: "Open" },
+  { question: "What is the largest planet in our solar system?",             category: "General Knowledge", answer: "YES", staked: 0.6, side: 62, totalPool: 2450,  switched: "No",       status: "Open" },
+  { question: "Do first impressions shape our long-term perception?",        category: "Psychology",        answer: "YES", staked: 1.2, side: 58, totalPool: 3600,  switched: "No",       status: "Open" },
+  { question: "Is 97 a prime number?",                                       category: "Math",              answer: "YES", staked: 0.5, side: 92, totalPool: 1850,  switched: "No",       status: "Open" },
+];
+
+// Demo activity feed — in production sourced from Supabase indexed blockchain events
+const ACTIVITY = [
+  { id: 1, type: "reward", label: "Reward claimed",            detail: "US Elections 2024",           amount: "+84.20 Q",  time: "2h ago",  pos: true  },
+  { id: 2, type: "stake",  label: "Position: YES on BTC",      detail: "Bitcoin $150K market",        amount: "-2.00 Q",   time: "5h ago",  pos: false },
+  { id: 3, type: "switch", label: "Switched to NO",            detail: "AI replace jobs by 2035",     amount: "—",         time: "8h ago",  pos: false },
+  { id: 4, type: "reward", label: "Reward claimed",            detail: "Interior angles of triangle", amount: "+42.00 Q",  time: "1d ago",  pos: true  },
+  { id: 5, type: "stake",  label: "Position: YES on Ethereum", detail: "ETH $10K market",             amount: "-1.50 Q",   time: "2d ago",  pos: false },
+  { id: 6, type: "reward", label: "Reward claimed",            detail: "US Elections market",         amount: "+120.00 Q", time: "4d ago",  pos: true  },
+];
+
+// Demo stats derived from RESULTS / CONVICTIONS — in production computed from chain data
+const DEMO_STATS = {
+  todayAnswered:   7,
+  todayTotal:      10,
+  accuracy:        68,
+  marketsWon:      32,
+  marketsTotal:    47,
+  weeklyPnl:       +18.6,
+  allTimeEarned:   246.2,
 };
 
-const PORTFOLIO_BARS = [42, 68, 55, 80, 47, 91, 74]; // last 7 markets % yes pool share
+// Portfolio performance bars (last 7 markets pool-share %) — demo only
+const PORTFOLIO_BARS = [42, 68, 55, 80, 47, 91, 74];
 
-const QUESTIONS = [
-  { id: "us-election-2024",  category: "Politics",         question: "Will the United States hold presidential elections in 2024?", closes: "1h 24m", yes: 70, no: 30, yesPool: 7000,  noPool: 3000,  totalPool: 10000, yourPosition: "YES", yourStake: 1.5, resolves: 'Resolves "Yes" if US presidential election occurs in 2024.', resolution: "Based on official US election authority announcements." },
-  { id: "global-recession",  category: "Politics",         question: "Will a global recession begin in 2025?",                     closes: "1h 30m", yes: 65, no: 35, yesPool: 4030,  noPool: 2170,  totalPool: 6200  },
-  { id: "element-o",         category: "General Knowledge",question: "Which element has the chemical symbol 'O'?",                  closes: "6h 45m", yes: 84, no: 16, yesPool: 2352,  noPool: 448,   totalPool: 2800  },
-  { id: "is-97-prime",       category: "Math",             question: "Is 97 a prime number?",                                       closes: "6h 20m", yes: 92, no:  8, yesPool: 1702,  noPool: 148,   totalPool: 1850  },
-  { id: "first-impressions", category: "Psychology",       question: "Do first impressions shape our long-term perception?",        closes: "1d 2h",  yes: 58, no: 42, yesPool: 2088,  noPool: 1512,  totalPool: 3600  },
-  { id: "ethereum-10k",      category: "Crypto",           question: "Will Ethereum reach $10,000 before 2026?",                    closes: "1d 8h",  yes: 71, no: 29, yesPool: 6390,  noPool: 2610,  totalPool: 9000  },
-];
-
-const TODAYS_Q = [
-  { id: "largest-planet", category: "General Knowledge", question: "What is the largest planet in our solar system?", closes: "4h 45m", yes: 62, no: 38, totalPool: 2450 },
-  { id: "bitcoin-150k",   category: "Crypto",            question: "Will Bitcoin reach $150,000 before Dec 2026?",    closes: "1d 18h", yes: 68, no: 32, totalPool: 8250 },
-  { id: "sum-of-angles",  category: "Math",              question: "Is 97 a prime number?",                           closes: "6h 20m", yes: 92, no:  8, totalPool: 1850 },
-];
-
-const ACTIVITY = [
-  { id: 1, type: "reward",  label: "Reward claimed",           detail: "US Elections 2024",              amount: "+$84.20", time: "2h ago",  pos: true  },
-  { id: 2, type: "stake",   label: "Position: YES on BTC",     detail: "Bitcoin $150K market",           amount: "-$2.00",  time: "5h ago",  pos: false },
-  { id: 3, type: "switch",  label: "Switched to NO",           detail: "AI replace jobs by 2035",        amount: "—",       time: "8h ago",  pos: false },
-  { id: 4, type: "reward",  label: "Reward claimed",           detail: "Interior angles of triangle",    amount: "+$42.00", time: "1d ago",  pos: true  },
-  { id: 5, type: "stake",   label: "Position: YES on Ethereum","detail": "ETH $10K market",              amount: "-$1.50",  time: "2d ago",  pos: false },
-  { id: 6, type: "reward",  label: "Reward claimed",           detail: "US Elections market",            amount: "+$120.00",time: "4d ago",  pos: true  },
-];
-
-const CONVICTIONS = [
-  { question: "Will the United States hold presidential elections in 2024?", category: "Politics",         answer: "YES", staked: 1.5, side: 70, totalPool: 10000, switched: "No",           status: "Open"   },
-  { question: "Will Bitcoin reach $150,000 before Dec 2026?",               category: "Crypto",           answer: "YES", staked: 2.0, side: 68, totalPool: 8250,  switched: "YES → NO",     status: "Open"   },
-  { question: "What is the largest planet in our solar system?",             category: "General Knowledge",answer: "YES", staked: 0.6, side: 62, totalPool: 2450,  switched: "No",           status: "Open"   },
-  { question: "Do first impressions shape our long-term perception?",        category: "Psychology",       answer: "YES", staked: 1.2, side: 58, totalPool: 3600,  switched: "No",           status: "Open"   },
-  { question: "Is 97 a prime number?",                                       category: "Math",             answer: "YES", staked: 0.5, side: 92, totalPool: 1850,  switched: "No",           status: "Open"   },
-];
-
-const HOW_IT_WORKS = [
-  { step: "01", title: "Answer Polls",             desc: "Answer daily polls across politics, general knowledge, math, psychology, crypto and more." },
-  { step: "02", title: "Pick YES or NO",            desc: "Choose the outcome you believe is more likely to happen." },
-  { step: "03", title: "Stake Your Conviction",     desc: "Commit a small amount of Quai to back your answer." },
-  { step: "04", title: "Market Reflects Conviction",desc: "YES / NO percentages show total capital on each side." },
-  { step: "05", title: "Earn Rewards",              desc: "Correct predictions earn rewards when markets resolve." },
+// Notification seed — in production these come from Supabase user_notifications
+const SEED_NOTIFICATIONS = [
+  { id: 1, type: "reward",  title: "Reward available",     body: "US Elections 2024 has resolved. Claim your 84.20 Q reward.",         time: "2h ago",  read: false },
+  { id: 2, type: "market",  title: "Market closing soon",  body: "\"Will Bitcoin exceed $100k?\" closes in 1 hour.",                   time: "55m ago", read: false },
+  { id: 3, type: "reward",  title: "Reward available",     body: "Interior angles of triangle resolved. Claim your 42.00 Q reward.",  time: "1d ago",  read: false },
+  { id: 4, type: "switch",  title: "Switch reminder",      body: "You have 1 switch remaining on the ETH $10K market.",               time: "2d ago",  read: true  },
+  { id: 5, type: "market",  title: "New poll added",       body: "\"Will GPT-5 launch before December 2026?\" is now live.",          time: "3d ago",  read: true  },
+  { id: 6, type: "system",  title: "Welcome to Q4",        body: "Stake your conviction on live markets and earn rewards.",           time: "7d ago",  read: true  },
 ];
 
 const CATEGORIES = [
@@ -211,6 +240,205 @@ function SectionHeading({ children, action }) {
       <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", color: T.textDim, textTransform: "uppercase" }}>{children}</p>
       {action}
     </div>
+  );
+}
+
+/* ════════════════════════════════════════════════
+   NOTIFICATION SIDEBAR
+════════════════════════════════════════════════ */
+
+const NOTIF_ICONS = {
+  reward:  { icon: Gift,         color: "#22c55e", bg: "rgba(34,197,94,0.12)",   border: "rgba(34,197,94,0.25)"   },
+  market:  { icon: Clock,        color: "#fbbf24", bg: "rgba(251,191,36,0.12)",  border: "rgba(251,191,36,0.25)"  },
+  switch:  { icon: ArrowLeftRight,color: "#7c6ff7", bg: "rgba(124,111,247,0.12)",border: "rgba(124,111,247,0.25)" },
+  system:  { icon: Info,         color: "#38bdf8", bg: "rgba(56,189,248,0.12)",  border: "rgba(56,189,248,0.25)"  },
+};
+
+function NotificationSidebar({ open, onClose, notifications, onMarkAllRead, onMarkRead }) {
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  return (
+    <>
+      {/* Overlay */}
+      {open && (
+        <div
+          onClick={onClose}
+          style={{
+            position: "fixed", inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            zIndex: 44,
+            backdropFilter: "blur(2px)",
+            WebkitBackdropFilter: "blur(2px)",
+          }}
+        />
+      )}
+
+      {/* Panel */}
+      <aside
+        style={{
+          position: "fixed",
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: 360,
+          zIndex: 45,
+          display: "flex",
+          flexDirection: "column",
+          background: "rgba(10,10,10,0.97)",
+          backdropFilter: "blur(28px)",
+          WebkitBackdropFilter: "blur(28px)",
+          borderLeft: `1px solid ${T.border}`,
+          transform: open ? "translateX(0)" : "translateX(100%)",
+          transition: "transform 0.28s cubic-bezier(0.4,0,0.2,1)",
+          boxShadow: open ? "-16px 0 64px rgba(0,0,0,0.6)" : "none",
+        }}
+        aria-label="Notifications"
+        role="dialog"
+        aria-modal="true"
+      >
+        {/* Header */}
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "16px 20px",
+          borderBottom: `1px solid ${T.border}`,
+          flexShrink: 0,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Bell size={16} strokeWidth={1.8} style={{ color: T.textMuted }} />
+            <span style={{ fontSize: 14, fontWeight: 700, color: "#ffffff", letterSpacing: "-0.02em" }}>
+              Notifications
+            </span>
+            {unreadCount > 0 && (
+              <span style={{
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                minWidth: 20, height: 20, borderRadius: 999,
+                background: T.yes, color: "#000000",
+                fontSize: 10, fontWeight: 800, padding: "0 5px",
+              }}>
+                {unreadCount}
+              </span>
+            )}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {unreadCount > 0 && (
+              <button
+                type="button"
+                onClick={onMarkAllRead}
+                style={{
+                  fontSize: 11, fontWeight: 600, color: T.textDim,
+                  background: "none", border: "none", cursor: "pointer",
+                  padding: "4px 8px", borderRadius: 4,
+                  transition: "color 0.15s",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = T.textPrimary; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = T.textDim; }}
+              >
+                Mark all read
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close notifications"
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: 28, height: 28, borderRadius: 6,
+                background: T.glass, border: `1px solid ${T.border}`,
+                color: T.textMuted, cursor: "pointer",
+                transition: "border-color 0.15s, color 0.15s",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.color = T.textPrimary; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; }}
+            >
+              <X size={14} strokeWidth={2} />
+            </button>
+          </div>
+        </div>
+
+        {/* List */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
+          {notifications.length === 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: "64px 24px", textAlign: "center" }}>
+              <div style={{ width: 48, height: 48, borderRadius: 14, background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Bell size={20} strokeWidth={1.4} style={{ color: T.textDim }} />
+              </div>
+              <p style={{ fontSize: 13, color: T.textMuted, margin: 0 }}>No notifications yet.</p>
+            </div>
+          ) : (
+            notifications.map((n, i) => {
+              const meta = NOTIF_ICONS[n.type] || NOTIF_ICONS.system;
+              const NIcon = meta.icon;
+              return (
+                <button
+                  key={n.id}
+                  type="button"
+                  onClick={() => onMarkRead(n.id)}
+                  style={{
+                    display: "flex", alignItems: "flex-start", gap: 12,
+                    width: "100%", padding: "14px 20px",
+                    background: n.read ? "transparent" : "rgba(255,255,255,0.025)",
+                    border: "none",
+                    borderBottom: i < notifications.length - 1 ? `1px solid ${T.border}` : "none",
+                    cursor: "pointer", textAlign: "left",
+                    transition: "background 0.15s",
+                    position: "relative",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = T.glassHover; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = n.read ? "transparent" : "rgba(255,255,255,0.025)"; }}
+                >
+                  {/* Unread dot */}
+                  {!n.read && (
+                    <span style={{
+                      position: "absolute", top: 18, left: 8,
+                      width: 6, height: 6, borderRadius: "50%",
+                      background: T.yes, flexShrink: 0,
+                    }} />
+                  )}
+
+                  {/* Icon */}
+                  <div style={{
+                    width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                    background: meta.bg, border: `1px solid ${meta.border}`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    marginTop: 1,
+                  }}>
+                    <NIcon size={15} strokeWidth={1.8} style={{ color: meta.color }} />
+                  </div>
+
+                  {/* Text */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{
+                      fontSize: 13, fontWeight: n.read ? 500 : 700,
+                      color: n.read ? T.textMuted : T.textPrimary,
+                      margin: "0 0 3px", letterSpacing: "-0.01em",
+                    }}>
+                      {n.title}
+                    </p>
+                    <p style={{ fontSize: 12, color: T.textDim, margin: 0, lineHeight: 1.5 }}>
+                      {n.body}
+                    </p>
+                    <p style={{ fontSize: 10, color: T.textDim, margin: "5px 0 0", opacity: 0.7 }}>
+                      {n.time}
+                    </p>
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          padding: "14px 20px",
+          borderTop: `1px solid ${T.border}`,
+          flexShrink: 0,
+        }}>
+          <p style={{ fontSize: 11, color: T.textDim, margin: 0, textAlign: "center" }}>
+            Notifications are cleared after 30 days.
+          </p>
+        </div>
+      </aside>
+    </>
   );
 }
 
@@ -343,7 +571,7 @@ function Sidebar({ active, onNavigate, onLogout }) {
    FIXED TOP HEADER
 ════════════════════════════════════════════════ */
 
-function TopHeader({ pageLabel, onOpenMobileSidebar, onNavigate, user }) {
+function TopHeader({ pageLabel, onOpenMobileSidebar, onNavigate, user, onOpenNotifications, unreadCount }) {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const now = new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
@@ -398,13 +626,18 @@ function TopHeader({ pageLabel, onOpenMobileSidebar, onNavigate, user }) {
         {/* Notification bell */}
         <button
           type="button"
+          onClick={onOpenNotifications}
           aria-label="Notifications"
           style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", width: 34, height: 34, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 6, color: T.textMuted, cursor: "pointer", transition: "border-color 0.15s, color 0.15s" }}
           onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.color = T.textPrimary; }}
           onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; }}
         >
           <Bell size={15} strokeWidth={1.8} />
-          <span style={{ position: "absolute", top: 6, right: 6, width: 6, height: 6, borderRadius: "50%", background: T.yes, border: "1.5px solid #080808" }} />
+          {unreadCount > 0 && (
+            <span style={{ position: "absolute", top: 5, right: 5, minWidth: 8, height: 8, borderRadius: 999, background: T.yes, border: "1.5px solid #080808", fontSize: 8, fontWeight: 800, color: "#000", display: "flex", alignItems: "center", justifyContent: "center", padding: unreadCount > 9 ? "0 2px" : 0 }}>
+              {unreadCount > 9 ? "9+" : ""}
+            </span>
+          )}
         </button>
 
         {/* User avatar — opens profile page */}
@@ -434,8 +667,18 @@ function TopHeader({ pageLabel, onOpenMobileSidebar, onNavigate, user }) {
 ════════════════════════════════════════════════ */
 
 function PageDashboard({ onOpenQuestion, onNavigate }) {
-  const featured = QUESTIONS[0];
-  const progressPct = (STATS.todayAnswered / STATS.todayTotal) * 100;
+  const featured    = QUESTIONS[0];
+  const { balance, priceData } = useWallet();
+
+  const stats       = DEMO_STATS;
+  const progressPct = (stats.todayAnswered / stats.todayTotal) * 100;
+
+  // Derive staked from convictions
+  const totalStaked     = CONVICTIONS.reduce((s, c) => s + c.staked, 0);
+  const potentialRewards = CLAIMABLE_REWARDS.filter(r => !r.claimed).reduce((s, r) => s + r.reward, 0);
+
+  const quaiPrice    = priceData?.current?.price ?? null;
+  const priceChange  = priceData?.current?.changePercent24h ?? null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -449,12 +692,12 @@ function PageDashboard({ onOpenQuestion, onNavigate }) {
             <div>
               <p style={{ fontSize: 11, color: T.textDim, margin: "0 0 8px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Today's Progress</p>
               <p style={{ fontSize: 26, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.04em" }}>
-                {STATS.todayAnswered}<span style={{ color: T.textMuted, fontSize: 18 }}>/{STATS.todayTotal}</span>
+                {stats.todayAnswered}<span style={{ color: T.textMuted, fontSize: 18 }}>/{stats.todayTotal}</span>
               </p>
               <p style={{ fontSize: 11, color: T.textDim, margin: "4px 0 0" }}>Polls answered</p>
             </div>
             <div style={{ position: "relative", flexShrink: 0 }}>
-              <RingProgress value={STATS.todayAnswered} max={STATS.todayTotal} size={52} stroke={3.5} color="#ffffff" />
+              <RingProgress value={stats.todayAnswered} max={stats.todayTotal} size={52} stroke={3.5} color="#ffffff" />
               <span style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", fontSize: 11, fontWeight: 800, color: "#ffffff" }}>
                 {Math.round(progressPct)}%
               </span>
@@ -465,29 +708,48 @@ function PageDashboard({ onOpenQuestion, onNavigate }) {
           </div>
         </GCard>
 
-        {/* Total Staked */}
+        {/* Wallet balance (live from WalletContext + BlipPay price) */}
         <GCard style={{ padding: "18px 20px" }}>
-          <p style={{ fontSize: 11, color: T.textDim, margin: "0 0 8px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Total Staked</p>
-          <p style={{ fontSize: 26, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.04em" }}>{STATS.totalStaked.toFixed(1)}<span style={{ color: T.textMuted, fontSize: 14, fontWeight: 500, marginLeft: 4 }}>Quai</span></p>
-          <p style={{ fontSize: 11, color: T.textDim, margin: "4px 0 12px" }}>Across all open markets</p>
-          <SparkBars data={[30, 45, 38, 60, 52, 85, 70]} color="rgba(255,255,255,0.7)" />
+          <p style={{ fontSize: 11, color: T.textDim, margin: "0 0 8px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Wallet Balance</p>
+          <p style={{ fontSize: 26, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.04em" }}>
+            {balance.quai.toFixed(2)}<span style={{ color: T.textMuted, fontSize: 14, fontWeight: 500, marginLeft: 4 }}>Q</span>
+          </p>
+          <p style={{ fontSize: 11, color: T.textDim, margin: "4px 0 6px" }}>
+            {balance.usd > 0 ? `≈ $${balance.usd.toFixed(2)} USD` : "—"}
+          </p>
+          {quaiPrice && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 11, color: T.textDim }}>QUAI</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary }}>${quaiPrice.toFixed(5)}</span>
+              {priceChange != null && (
+                <span style={{ fontSize: 10, fontWeight: 600, color: priceChange >= 0 ? T.yes : T.no }}>
+                  {priceChange >= 0 ? "+" : ""}{priceChange.toFixed(2)}%
+                </span>
+              )}
+            </div>
+          )}
         </GCard>
 
-        {/* Potential Rewards */}
+        {/* Claimable rewards */}
         <GCard style={{ padding: "18px 20px" }}>
-          <p style={{ fontSize: 11, color: T.textDim, margin: "0 0 8px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Potential Rewards</p>
-          <p style={{ fontSize: 26, fontWeight: 800, color: T.yes, margin: 0, letterSpacing: "-0.04em" }}>{STATS.potentialRewards.toFixed(1)}<span style={{ color: T.textMuted, fontSize: 14, fontWeight: 500, marginLeft: 4 }}>Quai</span></p>
-          <p style={{ fontSize: 11, color: T.textDim, margin: "4px 0 10px" }}>Estimated if correct</p>
-          <Pill positive>+{((STATS.potentialRewards / STATS.totalStaked) * 100).toFixed(0)}% ROI est.</Pill>
+          <p style={{ fontSize: 11, color: T.textDim, margin: "0 0 8px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Claimable Rewards</p>
+          <p style={{ fontSize: 26, fontWeight: 800, color: T.yes, margin: 0, letterSpacing: "-0.04em" }}>
+            {potentialRewards.toFixed(2)}<span style={{ color: T.textMuted, fontSize: 14, fontWeight: 500, marginLeft: 4 }}>Q</span>
+          </p>
+          <p style={{ fontSize: 11, color: T.textDim, margin: "4px 0 10px" }}>From settled markets</p>
+          <button type="button" onClick={() => onNavigate("rewards")}
+            style={{ fontSize: 11, fontWeight: 700, color: T.yes, background: T.yesBg, border: `1px solid ${T.yesBorder}`, borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>
+            Claim now →
+          </button>
         </GCard>
 
         {/* Accuracy */}
         <GCard style={{ padding: "18px 20px" }}>
           <p style={{ fontSize: 11, color: T.textDim, margin: "0 0 8px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Accuracy Rate</p>
-          <p style={{ fontSize: 26, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.04em" }}>{STATS.accuracy}<span style={{ color: T.textMuted, fontSize: 18 }}>%</span></p>
-          <p style={{ fontSize: 11, color: T.textDim, margin: "4px 0 10px" }}>{STATS.marketsWon} correct / {STATS.marketsTotal} total</p>
+          <p style={{ fontSize: 26, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.04em" }}>{stats.accuracy}<span style={{ color: T.textMuted, fontSize: 18 }}>%</span></p>
+          <p style={{ fontSize: 11, color: T.textDim, margin: "4px 0 10px" }}>{stats.marketsWon} correct / {stats.marketsTotal} total</p>
           <div style={{ height: 4, borderRadius: 2, background: T.border }}>
-            <div style={{ width: `${STATS.accuracy}%`, height: "100%", borderRadius: 2, background: `linear-gradient(90deg, ${T.yes}, rgba(34,197,94,0.6))` }} />
+            <div style={{ width: `${stats.accuracy}%`, height: "100%", borderRadius: 2, background: `linear-gradient(90deg, ${T.yes}, rgba(34,197,94,0.6))` }} />
           </div>
         </GCard>
       </div>
@@ -497,12 +759,12 @@ function PageDashboard({ onOpenQuestion, onNavigate }) {
 
         {/* Weekly P&L */}
         <GCard style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: STATS.weeklyPnl >= 0 ? T.yesBg : T.noBg, border: `1px solid ${STATS.weeklyPnl >= 0 ? T.yesBorder : T.noBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            {STATS.weeklyPnl >= 0 ? <TrendingUp size={18} strokeWidth={2} style={{ color: T.yes }} /> : <TrendingDown size={18} strokeWidth={2} style={{ color: T.no }} />}
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: stats.weeklyPnl >= 0 ? T.yesBg : T.noBg, border: `1px solid ${stats.weeklyPnl >= 0 ? T.yesBorder : T.noBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            {stats.weeklyPnl >= 0 ? <TrendingUp size={18} strokeWidth={2} style={{ color: T.yes }} /> : <TrendingDown size={18} strokeWidth={2} style={{ color: T.no }} />}
           </div>
           <div>
             <p style={{ fontSize: 10, color: T.textDim, margin: "0 0 2px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Weekly P&amp;L</p>
-            <p style={{ fontSize: 18, fontWeight: 800, color: STATS.weeklyPnl >= 0 ? T.yes : T.no, margin: 0, letterSpacing: "-0.03em" }}>{STATS.weeklyPnl >= 0 ? "+" : ""}{STATS.weeklyPnl} Quai</p>
+            <p style={{ fontSize: 18, fontWeight: 800, color: stats.weeklyPnl >= 0 ? T.yes : T.no, margin: 0, letterSpacing: "-0.03em" }}>{stats.weeklyPnl >= 0 ? "+" : ""}{stats.weeklyPnl} Q</p>
           </div>
         </GCard>
 
@@ -513,7 +775,7 @@ function PageDashboard({ onOpenQuestion, onNavigate }) {
           </div>
           <div>
             <p style={{ fontSize: 10, color: T.textDim, margin: "0 0 2px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>All-Time Earned</p>
-            <p style={{ fontSize: 18, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>{STATS.allTimeEarned.toFixed(1)} Quai</p>
+            <p style={{ fontSize: 18, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>{stats.allTimeEarned.toFixed(1)} Q</p>
           </div>
         </GCard>
 
@@ -614,7 +876,7 @@ function PageDashboard({ onOpenQuestion, onNavigate }) {
               {[
                 { label: "Browse Polls",     icon: HelpCircle,  key: "questions",   desc: "Answer today's polls" },
                 { label: "My Convictions",    icon: BookMarked,  key: "convictions", desc: "Track open positions"     },
-                { label: "Claim Rewards",     icon: Gift,        key: "rewards",     desc: `${STATS.potentialRewards.toFixed(1)} Quai pending` },
+                { label: "Claim Rewards",     icon: Gift,        key: "rewards",     desc: `${CLAIMABLE_REWARDS.filter(r=>!r.claimed).reduce((s,r)=>s+r.reward,0).toFixed(1)} Quai pending` },
                 { label: "Leaderboard",       icon: Trophy,      key: "leaderboard", desc: "See top predictors"       },
               ].map(({ label, icon: Icon, key, desc }) => (
                 <button key={key} type="button" onClick={() => onNavigate(key)}
@@ -721,7 +983,7 @@ function PageQuestions({ onOpenQuestion }) {
             </div>
             <div>
               <p style={{ fontSize: 16, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em", lineHeight: 1 }}>
-                {STATS.todayAnswered}<span style={{ color: T.textDim, fontSize: 13, fontWeight: 500 }}>/{STATS.todayTotal}</span>
+                {DEMO_STATS.todayAnswered}<span style={{ color: T.textDim, fontSize: 13, fontWeight: 500 }}>/{DEMO_STATS.todayTotal}</span>
               </p>
               <p style={{ fontSize: 10, color: T.textDim, margin: "2px 0 0", letterSpacing: "0.04em", textTransform: "uppercase" }}>Answered Today</p>
             </div>
@@ -938,6 +1200,165 @@ function Confetti({ active, containerRef }) {
 }
 
 /* ════════════════════════════════════════════════
+   SHARE MODAL
+════════════════════════════════════════════════ */
+
+function ShareModal({ open, onClose, question }) {
+  const [copied, setCopied] = useState(false);
+
+  // Lock body scroll while open
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [open]);
+
+  if (!open) return null;
+
+  const url  = `${window.location.origin}/dashboard/question-detail/${question?.id ?? ""}`;
+  const text = question?.question ?? "Check out this poll on Q4";
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2200);
+    } catch { /* ignore */ }
+  };
+
+  const twitterHref  = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
+  const telegramHref = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
+
+  return (
+    /* Outer — full-viewport flex center, same pattern as WalletPage Modal */
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+      onClick={onClose}
+    >
+      {/* Backdrop */}
+      <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.78)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)" }} />
+
+      {/* Panel */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Share poll"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: "relative",
+          width: "100%",
+          maxWidth: 440,
+          background: "#141414",
+          border: `1px solid ${T.borderHover}`,
+          borderRadius: 20,
+          overflow: "hidden",
+          boxShadow: "0 32px 80px rgba(0,0,0,0.85)",
+          animation: "modal-in 0.22s cubic-bezier(0.34,1.56,0.64,1) both",
+        }}
+      >
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 22px 0" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Share2 size={15} strokeWidth={1.8} style={{ color: T.textMuted }} />
+            </div>
+            <div>
+              <p style={{ fontSize: 15, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.02em" }}>Share Poll</p>
+              <p style={{ fontSize: 11, color: T.textDim, margin: 0 }}>Spread the conviction</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            style={{ width: 32, height: 32, borderRadius: "50%", background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", color: T.textMuted, cursor: "pointer", transition: "border-color 0.15s, color 0.15s" }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.color = "#ffffff"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; }}
+          >
+            <X size={14} strokeWidth={2.5} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: "18px 22px 24px", display: "flex", flexDirection: "column", gap: 18 }}>
+
+          {/* Question preview */}
+          <div style={{ padding: "12px 14px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}` }}>
+            <p style={{ fontSize: 13, color: T.textMuted, margin: 0, lineHeight: 1.55, letterSpacing: "-0.01em" }}>
+              "{question?.question}"
+            </p>
+          </div>
+
+          {/* Copy link */}
+          <div>
+            <p style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 8px" }}>
+              Poll link
+            </p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ flex: 1, padding: "10px 14px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, overflow: "hidden", display: "flex", alignItems: "center" }}>
+                <p style={{ fontSize: 12, color: T.textDim, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "monospace" }}>
+                  {url}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleCopy}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  padding: "10px 16px", borderRadius: 10, flexShrink: 0,
+                  background: copied ? "rgba(34,197,94,0.15)" : T.glass,
+                  border: `1px solid ${copied ? "rgba(34,197,94,0.4)" : T.border}`,
+                  color: copied ? T.yes : T.textMuted,
+                  fontSize: 12, fontWeight: 700,
+                  cursor: "pointer", transition: "all 0.15s",
+                }}
+                onMouseEnter={(e) => { if (!copied) { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.color = "#ffffff"; } }}
+                onMouseLeave={(e) => { if (!copied) { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; } }}
+              >
+                {copied ? <Check size={13} strokeWidth={2.5} /> : <Copy size={13} strokeWidth={2} />}
+                {copied ? "Copied!" : "Copy"}
+              </button>
+            </div>
+          </div>
+
+          {/* Share via */}
+          <div>
+            <p style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 10px" }}>
+              Share via
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <a
+                href={twitterHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "11px 14px", borderRadius: 10, textDecoration: "none", background: T.glass, border: `1px solid ${T.border}`, color: T.textMuted, fontSize: 13, fontWeight: 600, transition: "border-color 0.15s, color 0.15s, background 0.15s" }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.color = "#ffffff"; e.currentTarget.style.background = T.glassHover; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; e.currentTarget.style.background = T.glass; }}
+              >
+                <TwitterX size={15} /> X / Twitter
+              </a>
+              <a
+                href={telegramHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "11px 14px", borderRadius: 10, textDecoration: "none", background: T.glass, border: `1px solid ${T.border}`, color: T.textMuted, fontSize: 13, fontWeight: 600, transition: "border-color 0.15s, color 0.15s, background 0.15s" }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.color = "#ffffff"; e.currentTarget.style.background = T.glassHover; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; e.currentTarget.style.background = T.glass; }}
+              >
+                <Telegram size={15} /> Telegram
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <style>{`@keyframes modal-in{from{opacity:0;transform:scale(0.92) translateY(12px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════
    PAGE: QUESTION DETAIL
 ════════════════════════════════════════════════ */
 
@@ -948,6 +1369,7 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
   const [selected, setSelected] = useState(null);
   const [usdcAmount, setUsdcAmount] = useState("");
   const [confirmed, setConfirmed]   = useState(false);
+  const [shareOpen, setShareOpen]   = useState(false);
 
   const q = QUESTIONS.find(item => item.id === questionId) ?? QUESTIONS[0];
 
@@ -984,11 +1406,20 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
         </button>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <CategoryBadge category={q.category} />
-          <button type="button" style={{ width: 32, height: 32, borderRadius: 6, background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", color: T.textMuted, cursor: "pointer" }}>
+          <button
+            type="button"
+            onClick={() => setShareOpen(true)}
+            aria-label="Share this poll"
+            style={{ width: 32, height: 32, borderRadius: 6, background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", color: T.textMuted, cursor: "pointer", transition: "border-color 0.15s, color 0.15s" }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.color = T.textPrimary; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; }}
+          >
             <Share2 size={13} strokeWidth={1.8} />
           </button>
         </div>
       </div>
+
+      <ShareModal open={shareOpen} onClose={() => setShareOpen(false)} question={q} />
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 16, alignItems: "start" }} className="dash-detail-grid">
 
@@ -1296,6 +1727,10 @@ function ConvictionCard({ c }) {
 
 function PageMyConvictions() {
   const [tab, setTab] = useState("Open");
+
+  const totalStaked    = CONVICTIONS.reduce((s, c) => s + c.staked, 0);
+  const claimablePending = CLAIMABLE_REWARDS.filter(r => !r.claimed).reduce((s, r) => s + r.reward, 0);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
@@ -1320,11 +1755,11 @@ function PageMyConvictions() {
       {/* KPI summary strip */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 10 }} className="dash-conv-grid">
         {[
-          { label: "Total Markets",     value: 47,            icon: BookMarked,     accent: null    },
-          { label: "Correct",           value: 32,            icon: CheckCircle2,   accent: T.yes   },
-          { label: "Accuracy",          value: "68%",         icon: BarChart3,      accent: T.yes   },
-          { label: "Total Staked",      value: "85.4 Q",      icon: WalletCards,    accent: null    },
-          { label: "Potential Rewards", value: "24.8 Q",      icon: Gift,           accent: T.yes   },
+          { label: "Total Markets",     value: DEMO_STATS.marketsTotal,                         icon: BookMarked,  accent: null  },
+          { label: "Correct",           value: DEMO_STATS.marketsWon,                           icon: CheckCircle2,accent: T.yes },
+          { label: "Accuracy",          value: `${DEMO_STATS.accuracy}%`,                       icon: BarChart3,   accent: T.yes },
+          { label: "Total Staked",      value: `${totalStaked.toFixed(1)} Q`,                   icon: WalletCards, accent: null  },
+          { label: "Claimable",         value: `${claimablePending.toFixed(1)} Q`,              icon: Gift,        accent: T.yes },
         ].map(({ label, value, icon: Icon, accent }) => (
           <GCard key={label} style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
             <div style={{ width: 34, height: 34, borderRadius: 8, background: accent ? (accent === T.yes ? T.yesBg : T.noBg) : T.glass, border: `1px solid ${accent ? (accent === T.yes ? T.yesBorder : T.noBorder) : T.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -1365,41 +1800,6 @@ function PageMyConvictions() {
 /* ════════════════════════════════════════════════
    PAGE: HOW IT WORKS
 ════════════════════════════════════════════════ */
-
-function PageHowItWorks({ onNavigate }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      <div>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>How Q4 Works</h1>
-        <p style={{ fontSize: 13, color: T.textMuted, margin: "4px 0 0" }}>A simple process built on economic conviction.</p>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 12 }} className="dash-how-grid">
-        {HOW_IT_WORKS.map(s => (
-          <GCard key={s.step} style={{ padding: 18 }}>
-            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 34, borderRadius: 8, background: T.accentDim, fontSize: 11, fontWeight: 800, color: "#ffffff", marginBottom: 12 }}>{s.step}</span>
-            <h3 style={{ fontSize: 13, fontWeight: 700, color: "#ffffff", margin: "0 0 6px", letterSpacing: "-0.01em" }}>{s.title}</h3>
-            <p style={{ fontSize: 11, color: T.textMuted, margin: 0, lineHeight: 1.5 }}>{s.desc}</p>
-          </GCard>
-        ))}
-      </div>
-      <GCard style={{ padding: "20px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ width: 44, height: 44, borderRadius: "50%", background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.25)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Trophy size={20} strokeWidth={1.8} style={{ color: "#fbbf24" }} />
-          </div>
-          <div>
-            <p style={{ fontSize: 14, fontWeight: 700, color: "#ffffff", margin: 0, letterSpacing: "-0.02em" }}>Q4 measures economic conviction, not popularity.</p>
-            <p style={{ fontSize: 12, color: T.textMuted, margin: "2px 0 0" }}>Your belief has power. Make it count.</p>
-          </div>
-        </div>
-        <button type="button" onClick={() => onNavigate("questions")}
-          style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 18px", borderRadius: 6, background: "#ffffff", color: "#080808", fontSize: 13, fontWeight: 700, border: "none", cursor: "pointer", flexShrink: 0 }}>
-          Start Predicting <ArrowRight size={14} strokeWidth={2.5} />
-        </button>
-      </GCard>
-    </div>
-  );
-}
 
 /* ════════════════════════════════════════════════
    PAGE: PROFILE
@@ -1475,25 +1875,702 @@ function PageProfile({ user, onLogout }) {
 }
 
 /* ════════════════════════════════════════════════
-   PAGE: COMING SOON
+   PAGE: RESULTS
 ════════════════════════════════════════════════ */
 
-function ComingSoon({ page }) {
-  const meta = {
-    results:     { title: "Results",     icon: BarChart3   },
-    leaderboard: { title: "Leaderboard", icon: Trophy      },
-    rewards:     { title: "Rewards",     icon: Gift        },
-    wallet:      { title: "Wallet",      icon: WalletCards },
-    profile:     { title: "Profile",     icon: User        },
-  };
-  const { title, icon: Icon } = meta[page] || { title: page, icon: BarChart3 };
+const RESULT_TABS = ["All", "Won", "Lost"];
+
+function ResultCard({ r }) {
+  const wonColor   = r.won ? T.yes  : T.no;
+  const wonBg      = r.won ? T.yesBg : T.noBg;
+  const wonBorder  = r.won ? T.yesBorder : T.noBorder;
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "60vh", gap: 16, textAlign: "center" }}>
-      <div style={{ width: 64, height: 64, borderRadius: 18, background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <Icon size={28} strokeWidth={1.3} style={{ color: T.textDim }} />
+    <GCard style={{ padding: "18px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Top row */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <CategoryBadge category={r.category} />
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 10, color: T.textDim, fontWeight: 500 }}>{r.settledAt}</span>
+          <span style={{ padding: "2px 10px", borderRadius: 999, fontSize: 10, fontWeight: 700, background: wonBg, border: `1px solid ${wonBorder}`, color: wonColor }}>
+            {r.won ? "✓ Won" : "✗ Lost"}
+          </span>
+        </div>
       </div>
-      <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>{title}</h1>
-      <p style={{ fontSize: 13, color: T.textMuted, margin: 0, maxWidth: 340 }}>This section is coming soon. Check back after your next conviction.</p>
+
+      {/* Question */}
+      <p style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary, margin: 0, lineHeight: 1.45, letterSpacing: "-0.01em" }}>
+        {r.question}
+      </p>
+
+      {/* Consensus bar */}
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+          <span style={{ fontSize: 10, color: T.textDim, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Consensus outcome</span>
+          <span style={{ fontSize: 11, fontWeight: 800, color: r.outcome === "YES" ? T.yes : T.no }}>{r.outcome} · {r.consensus}%</span>
+        </div>
+        <div style={{ height: 5, borderRadius: 3, background: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
+          <div style={{ width: `${r.consensus}%`, height: "100%", borderRadius: 3, background: r.outcome === "YES" ? T.yes : T.no }} />
+        </div>
+      </div>
+
+      {/* Stats row */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+        {[
+          { label: "Your Side",   value: r.yourSide,                  color: r.yourSide === "YES" ? T.yes : T.no },
+          { label: "Staked",      value: `${r.yourStake.toFixed(2)} Q`, color: T.textPrimary },
+          { label: "Pool",        value: `$${(r.totalPool/1000).toFixed(1)}K`, color: T.textPrimary },
+          { label: "Reward",      value: r.won ? `+${r.yourReward.toFixed(2)} Q` : "—", color: r.won ? T.yes : T.textDim },
+        ].map(({ label, value, color }) => (
+          <div key={label} style={{ padding: "8px 10px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, textAlign: "center" }}>
+            <p style={{ fontSize: 9, color: T.textDim, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 3px" }}>{label}</p>
+            <p style={{ fontSize: 13, fontWeight: 800, color, margin: 0, letterSpacing: "-0.01em" }}>{value}</p>
+          </div>
+        ))}
+      </div>
+    </GCard>
+  );
+}
+
+function PageResults() {
+  const [tab, setTab] = useState("All");
+
+  const filtered = tab === "All" ? RESULTS : tab === "Won" ? RESULTS.filter(r => r.won) : RESULTS.filter(r => !r.won);
+
+  const totalWon     = RESULTS.filter(r => r.won).length;
+  const totalLost    = RESULTS.filter(r => !r.won).length;
+  const totalEarned  = RESULTS.reduce((s, r) => s + r.yourReward, 0);
+  const totalStaked  = RESULTS.reduce((s, r) => s + r.yourStake, 0);
+  const accuracy     = Math.round((totalWon / RESULTS.length) * 100);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>Results</h1>
+          <p style={{ fontSize: 13, color: T.textMuted, margin: "4px 0 0" }}>Settled market outcomes and your performance history.</p>
+        </div>
+        <div style={{ display: "flex", gap: 4, padding: 4, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 8 }}>
+          {RESULT_TABS.map(t => (
+            <button key={t} type="button" onClick={() => setTab(t)}
+              style={{ padding: "6px 16px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", border: "none", background: tab === t ? "#ffffff" : "transparent", color: tab === t ? "#080808" : T.textMuted, transition: "all 0.15s" }}>
+              {t}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* KPI strip */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }} className="dash-kpi-grid">
+        {[
+          { label: "Markets Played", value: RESULTS.length,         icon: BarChart3,    accent: null    },
+          { label: "Won",            value: totalWon,               icon: CheckCircle2, accent: T.yes   },
+          { label: "Lost",           value: totalLost,              icon: X,            accent: T.no    },
+          { label: "Accuracy",       value: `${accuracy}%`,         icon: Target,       accent: T.yes   },
+          { label: "Total Earned",   value: `${totalEarned.toFixed(2)} Q`, icon: Coins, accent: T.yes   },
+        ].map(({ label, value, icon: Icon, accent }) => (
+          <GCard key={label} style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: accent ? (accent === T.yes ? T.yesBg : T.noBg) : T.glass, border: `1px solid ${accent ? (accent === T.yes ? T.yesBorder : T.noBorder) : T.border}` }}>
+              <Icon size={15} strokeWidth={1.8} style={{ color: accent || T.textMuted }} />
+            </div>
+            <div>
+              <p style={{ fontSize: 17, fontWeight: 800, color: accent || T.textPrimary, margin: 0, letterSpacing: "-0.03em" }}>{value}</p>
+              <p style={{ fontSize: 10, color: T.textDim, margin: 0, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>{label}</p>
+            </div>
+          </GCard>
+        ))}
+      </div>
+
+      {/* Results grid */}
+      {filtered.length === 0 ? (
+        <GCard style={{ padding: "60px 24px", textAlign: "center" }}>
+          <div style={{ width: 48, height: 48, borderRadius: 14, background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
+            <BarChart3 size={20} strokeWidth={1.5} style={{ color: T.textDim }} />
+          </div>
+          <p style={{ fontSize: 14, fontWeight: 600, color: T.textMuted, margin: 0 }}>No {tab.toLowerCase()} results yet.</p>
+        </GCard>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 14 }}>
+          {filtered.map(r => <ResultCard key={r.id} r={r} />)}
+        </div>
+      )}
+
+      {/* Insight banner */}
+      <GCard style={{ padding: "18px 22px", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ width: 42, height: 42, borderRadius: 12, background: "rgba(124,111,247,0.12)", border: "1px solid rgba(124,111,247,0.25)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <Lightbulb size={18} strokeWidth={1.8} style={{ color: T.violet }} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: T.textPrimary, margin: 0, letterSpacing: "-0.01em" }}>Your best category is Math — 100% accuracy across 2 markets.</p>
+          <p style={{ fontSize: 12, color: T.textDim, margin: "2px 0 0" }}>Focus on your strongest categories to maximise rewards.</p>
+        </div>
+      </GCard>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════
+   PAGE: LEADERBOARD
+════════════════════════════════════════════════ */
+
+const LB_TABS = ["All Time", "This Week", "This Month"];
+
+function LeaderboardRow({ entry, index }) {
+  const isTop3 = entry.rank <= 3;
+  const rankColors = { 1: "#fbbf24", 2: "#94a3b8", 3: "#fb923c" };
+  const rankColor = rankColors[entry.rank] || T.textDim;
+
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 14,
+      padding: "14px 20px",
+      background: entry.isMe ? "rgba(255,255,255,0.04)" : "transparent",
+      borderBottom: `1px solid ${T.border}`,
+      borderLeft: entry.isMe ? `3px solid ${T.yes}` : "3px solid transparent",
+      transition: "background 0.15s",
+    }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = T.glassHover; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = entry.isMe ? "rgba(255,255,255,0.04)" : "transparent"; }}
+    >
+      {/* Rank */}
+      <div style={{ width: 32, textAlign: "center", flexShrink: 0 }}>
+        {entry.badge
+          ? <span style={{ fontSize: 18 }}>{entry.badge}</span>
+          : <span style={{ fontSize: 14, fontWeight: 800, color: rankColor }}>{entry.rank}</span>
+        }
+      </div>
+
+      {/* Avatar */}
+      <div style={{ width: 38, height: 38, borderRadius: "50%", flexShrink: 0, background: isTop3 ? `rgba(255,255,255,0.1)` : T.glass, border: `2px solid ${isTop3 ? rankColor : T.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ fontSize: 12, fontWeight: 800, color: isTop3 ? rankColor : T.textMuted }}>{entry.initials}</span>
+      </div>
+
+      {/* Name */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ fontSize: 13, fontWeight: entry.isMe ? 800 : 600, color: entry.isMe ? T.yes : T.textPrimary, margin: 0, letterSpacing: "-0.01em" }}>
+          {entry.name}{entry.isMe && " (You)"}
+        </p>
+        {entry.streak > 0 && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, color: "#fb923c", fontWeight: 600 }}>
+            <Flame size={10} strokeWidth={2} /> {entry.streak} day streak
+          </span>
+        )}
+      </div>
+
+      {/* Stats */}
+      <div style={{ display: "flex", gap: 24, flexShrink: 0 }} className="lb-stats">
+        <div style={{ textAlign: "right" }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: T.textPrimary, margin: 0 }}>{entry.accuracy}%</p>
+          <p style={{ fontSize: 10, color: T.textDim, margin: 0 }}>Accuracy</p>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: T.textPrimary, margin: 0 }}>{entry.marketsWon}</p>
+          <p style={{ fontSize: 10, color: T.textDim, margin: 0 }}>Won</p>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: T.yes, margin: 0 }}>{entry.totalEarned.toFixed(2)} Q</p>
+          <p style={{ fontSize: 10, color: T.textDim, margin: 0 }}>Earned</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PageLeaderboard() {
+  const [tab, setTab] = useState("All Time");
+  const { entries: liveEntries, loading: lbLoading, error: lbError, refresh: lbRefresh } = useBlipLeaderboard(50);
+
+  // Map BlipPay referral entries to the display shape we need
+  const board = liveEntries.length > 0
+    ? liveEntries.slice(0, 10).map((e, i) => ({
+        rank:        i + 1,
+        name:        e.displayName || `0x${(e.shortCode ?? "????").slice(0, 6)}`,
+        initials:    (e.displayName || "??").split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase(),
+        accuracy:    null,   // not provided by BlipPay referral API
+        marketsWon:  null,
+        totalEarned: null,
+        streak:      0,
+        badge:       i === 0 ? "👑" : i === 1 ? "🥈" : i === 2 ? "🥉" : null,
+        avatarUrl:   e.avatarUrl ?? null,
+        profileUrl:  e.shortUrl ?? null,
+      }))
+    : /* fallback demo */ [
+        { rank: 1,  name: "0xNova",      initials: "NV", accuracy: 91, marketsWon: 88,  totalEarned: 1842.50, streak: 14, badge: "👑" },
+        { rank: 2,  name: "ConvictKing", initials: "CK", accuracy: 87, marketsWon: 74,  totalEarned: 1420.00, streak: 9,  badge: "🥈" },
+        { rank: 3,  name: "Quai_Alpha",  initials: "QA", accuracy: 85, marketsWon: 68,  totalEarned: 1180.75, streak: 7,  badge: "🥉" },
+        { rank: 4,  name: "PredictPro",  initials: "PP", accuracy: 82, marketsWon: 61,  totalEarned:  940.20, streak: 5,  badge: null },
+        { rank: 5,  name: "ZeroSlip",    initials: "ZS", accuracy: 80, marketsWon: 55,  totalEarned:  812.60, streak: 3,  badge: null },
+        { rank: 6,  name: "DataDriven",  initials: "DD", accuracy: 78, marketsWon: 49,  totalEarned:  694.10, streak: 2,  badge: null },
+        { rank: 7,  name: "QuaiMind",    initials: "QM", accuracy: 75, marketsWon: 44,  totalEarned:  580.40, streak: 4,  badge: null },
+        { rank: 8,  name: "EdgeCase",    initials: "EC", accuracy: 73, marketsWon: 40,  totalEarned:  490.00, streak: 1,  badge: null },
+        { rank: 9,  name: "SigmaStake",  initials: "SS", accuracy: 71, marketsWon: 36,  totalEarned:  402.30, streak: 0,  badge: null },
+        { rank: 10, name: "You",         initials: "ME", accuracy: 68, marketsWon: 32,  totalEarned:  246.20, streak: 3,  badge: null, isMe: true },
+      ];
+
+  const isLive = liveEntries.length > 0;
+  const me     = !isLive ? board.find(e => e.isMe) : null;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>Leaderboard</h1>
+          <p style={{ fontSize: 13, color: T.textMuted, margin: "4px 0 0" }}>
+            {isLive ? "Live BlipPay referral standings." : "Top predictors ranked by accuracy and earnings."}
+          </p>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button
+            type="button"
+            onClick={lbRefresh}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 8, background: T.glass, border: `1px solid ${T.border}`, color: T.textMuted, fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "border-color 0.15s, color 0.15s" }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.color = T.textPrimary; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; }}
+          >
+            <RefreshCw size={12} strokeWidth={2} /> Refresh
+          </button>
+          <div style={{ display: "flex", gap: 4, padding: 4, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 8 }}>
+            {LB_TABS.map(t => (
+              <button key={t} type="button" onClick={() => setTab(t)}
+                style={{ padding: "6px 16px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", border: "none", background: tab === t ? "#ffffff" : "transparent", color: tab === t ? "#080808" : T.textMuted, transition: "all 0.15s" }}>
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Live source badge */}
+      {isLive && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 8, background: T.yesBg, border: `1px solid ${T.yesBorder}`, fontSize: 12, color: T.yes, fontWeight: 600 }}>
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: T.yes, boxShadow: `0 0 6px ${T.yes}` }} />
+          Live data from BlipPay referral network · {liveEntries.length} participants
+          <a href="https://blippay.me/leaderboard" target="_blank" rel="noopener noreferrer"
+            style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4, color: T.yes, textDecoration: "none", fontSize: 11 }}>
+            View full leaderboard <ExternalLink size={11} strokeWidth={2} />
+          </a>
+        </div>
+      )}
+
+      {lbLoading && (
+        <div style={{ textAlign: "center", padding: "32px", color: T.textDim, fontSize: 13 }}>Loading leaderboard…</div>
+      )}
+
+      {lbError && !lbLoading && (
+        <div style={{ padding: "12px 16px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", fontSize: 12, color: "#ef4444" }}>
+          Could not load live leaderboard — showing demo data. ({lbError})
+        </div>
+      )}
+
+      {/* Top 3 podium */}
+      {board.length >= 3 && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+          {[board[1], board[0], board[2]].map((entry, i) => {
+            const colors = ["#94a3b8", "#fbbf24", "#fb923c"];
+            return (
+              <GCard key={entry.rank} style={{ padding: "20px 16px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 10, borderColor: i === 1 ? "rgba(251,191,36,0.3)" : T.border }}>
+                <div style={{ fontSize: 28 }}>{entry.badge}</div>
+                <div style={{ width: 52, height: 52, borderRadius: "50%", background: `rgba(255,255,255,0.06)`, border: `2px solid ${colors[i]}`, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                  {entry.avatarUrl
+                    ? <img src={entry.avatarUrl} alt={entry.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} referrerPolicy="no-referrer" />
+                    : <span style={{ fontSize: 14, fontWeight: 800, color: colors[i] }}>{entry.initials}</span>
+                  }
+                </div>
+                <div>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: "#ffffff", margin: 0 }}>{entry.name}</p>
+                  {entry.totalEarned != null && (
+                    <p style={{ fontSize: 11, color: colors[i], margin: "2px 0 0", fontWeight: 700 }}>{entry.totalEarned.toFixed(2)} Q</p>
+                  )}
+                </div>
+                {entry.accuracy != null && (
+                  <div style={{ display: "flex", gap: 12, fontSize: 11, color: T.textDim }}>
+                    <span><span style={{ color: T.textMuted, fontWeight: 600 }}>{entry.accuracy}%</span> acc</span>
+                    <span><span style={{ color: T.textMuted, fontWeight: 600 }}>{entry.marketsWon}</span> won</span>
+                  </div>
+                )}
+              </GCard>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Full table */}
+      <GCard style={{ padding: 0, overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 20px", borderBottom: `1px solid ${T.border}`, background: T.glass }}>
+          <div style={{ width: 32, flexShrink: 0 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase" }}>#</span>
+          </div>
+          <div style={{ width: 38, flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase" }}>Player</span>
+          </div>
+          {!isLive && (
+            <div style={{ display: "flex", gap: 24, flexShrink: 0 }} className="lb-stats">
+              {["Accuracy", "Won", "Earned"].map(h => (
+                <div key={h} style={{ width: 60, textAlign: "right" }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase" }}>{h}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        {board.map((entry, i) => <LeaderboardRow key={entry.rank} entry={entry} index={i} />)}
+      </GCard>
+
+      {/* Your position callout — demo only */}
+      {me && (
+        <GCard style={{ padding: "18px 22px", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", borderColor: "rgba(34,197,94,0.2)" }}>
+          <div style={{ width: 42, height: 42, borderRadius: 12, background: T.yesBg, border: `1px solid ${T.yesBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Trophy size={18} strokeWidth={1.8} style={{ color: T.yes }} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: T.textPrimary, margin: 0 }}>
+              You're ranked <span style={{ color: T.yes }}>#{me.rank}</span> globally with <span style={{ color: T.yes }}>{me.accuracy}% accuracy</span>.
+            </p>
+            <p style={{ fontSize: 12, color: T.textDim, margin: "2px 0 0" }}>Improve your ranking by answering more polls correctly and staking higher amounts.</p>
+          </div>
+        </GCard>
+      )}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════
+   PAGE: REWARDS
+════════════════════════════════════════════════ */
+
+const REWARD_TABS = ["Unclaimed", "Claimed"];
+
+function RewardCard({ r, onClaim, claiming }) {
+  return (
+    <GCard style={{ padding: "18px 20px", display: "flex", flexDirection: "column", gap: 14, borderColor: !r.claimed ? "rgba(34,197,94,0.2)" : T.border }}>
+      {/* Top */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <CategoryBadge category={r.category} />
+        <span style={{ fontSize: 10, color: T.textDim }}>{r.settledAt}</span>
+      </div>
+
+      {/* Question */}
+      <p style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary, margin: 0, lineHeight: 1.45, letterSpacing: "-0.01em" }}>
+        {r.question}
+      </p>
+
+      {/* Outcome + your side */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ padding: "3px 10px", borderRadius: 4, fontSize: 11, fontWeight: 700, background: r.outcome === "YES" ? T.yesBg : T.noBg, border: `1px solid ${r.outcome === "YES" ? T.yesBorder : T.noBorder}`, color: r.outcome === "YES" ? T.yes : T.no }}>
+          Outcome: {r.outcome}
+        </span>
+        <span style={{ fontSize: 11, color: T.textDim }}>·</span>
+        <span style={{ fontSize: 11, color: T.textMuted }}>Your side: <span style={{ fontWeight: 700, color: r.yourSide === "YES" ? T.yes : T.no }}>{r.yourSide}</span></span>
+      </div>
+
+      {/* Reward row */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <div style={{ padding: "10px 12px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}` }}>
+          <p style={{ fontSize: 9, color: T.textDim, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 3px" }}>Staked</p>
+          <p style={{ fontSize: 15, fontWeight: 800, color: T.textPrimary, margin: 0 }}>{r.stake.toFixed(2)} <span style={{ fontSize: 10, color: T.textDim }}>Q</span></p>
+        </div>
+        <div style={{ padding: "10px 12px", borderRadius: 10, background: !r.claimed ? T.yesBg : T.glass, border: `1px solid ${!r.claimed ? T.yesBorder : T.border}` }}>
+          <p style={{ fontSize: 9, color: !r.claimed ? T.yes : T.textDim, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 3px" }}>Reward</p>
+          <p style={{ fontSize: 15, fontWeight: 800, color: !r.claimed ? T.yes : T.textMuted, margin: 0 }}>+{r.reward.toFixed(2)} <span style={{ fontSize: 10, opacity: 0.6 }}>Q</span></p>
+        </div>
+      </div>
+
+      {/* Claim button */}
+      {!r.claimed ? (
+        <button
+          type="button"
+          onClick={() => onClaim(r.id)}
+          disabled={claiming === r.id}
+          style={{ width: "100%", padding: "12px", borderRadius: 10, border: "none", background: claiming === r.id ? "rgba(34,197,94,0.4)" : T.yes, color: "#000000", fontSize: 13, fontWeight: 800, cursor: claiming === r.id ? "not-allowed" : "pointer", transition: "background 0.15s", letterSpacing: "-0.01em" }}
+        >
+          {claiming === r.id ? "Claiming…" : `Claim ${r.reward.toFixed(2)} Q`}
+        </button>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}` }}>
+          <CheckCircle2 size={14} strokeWidth={2} style={{ color: T.textDim }} />
+          <span style={{ fontSize: 12, fontWeight: 600, color: T.textDim }}>Claimed</span>
+        </div>
+      )}
+    </GCard>
+  );
+}
+
+function PageRewards() {
+  const [tab,      setTab]      = useState("Unclaimed");
+  const [rewards,  setRewards]  = useState(CLAIMABLE_REWARDS);
+  const [claiming, setClaiming] = useState(null);
+  const [claimAll, setClaimAll] = useState(false);
+
+  const unclaimed    = rewards.filter(r => !r.claimed);
+  const claimed      = rewards.filter(r =>  r.claimed);
+  const totalPending = unclaimed.reduce((s, r) => s + r.reward, 0);
+  const totalClaimed = claimed.reduce((s,  r) => s + r.reward, 0);
+  const displayed    = tab === "Unclaimed" ? unclaimed : claimed;
+
+  const handleClaim = (id) => {
+    setClaiming(id);
+    setTimeout(() => {
+      setRewards(prev => prev.map(r => r.id === id ? { ...r, claimed: true } : r));
+      setClaiming(null);
+    }, 1400);
+  };
+
+  const handleClaimAll = () => {
+    setClaimAll(true);
+    setTimeout(() => {
+      setRewards(prev => prev.map(r => ({ ...r, claimed: true })));
+      setClaimAll(false);
+    }, 1600);
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>Rewards</h1>
+          <p style={{ fontSize: 13, color: T.textMuted, margin: "4px 0 0" }}>Claim your earnings from settled markets.</p>
+        </div>
+        <div style={{ display: "flex", gap: 4, padding: 4, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 8 }}>
+          {REWARD_TABS.map(t => (
+            <button key={t} type="button" onClick={() => setTab(t)}
+              style={{ padding: "6px 16px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", border: "none", background: tab === t ? "#ffffff" : "transparent", color: tab === t ? "#080808" : T.textMuted, transition: "all 0.15s" }}>
+              {t} {t === "Unclaimed" && unclaimed.length > 0 && `(${unclaimed.length})`}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Summary banner */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+        <GCard style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 14, borderColor: unclaimed.length > 0 ? "rgba(34,197,94,0.25)" : T.border }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: T.yesBg, border: `1px solid ${T.yesBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Gift size={18} strokeWidth={1.8} style={{ color: T.yes }} />
+          </div>
+          <div>
+            <p style={{ fontSize: 10, color: T.textDim, margin: "0 0 2px", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>Pending</p>
+            <p style={{ fontSize: 20, fontWeight: 800, color: T.yes, margin: 0, letterSpacing: "-0.03em" }}>{totalPending.toFixed(2)} <span style={{ fontSize: 13, fontWeight: 500, color: T.textDim }}>Q</span></p>
+          </div>
+        </GCard>
+        <GCard style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <CheckCircle2 size={18} strokeWidth={1.8} style={{ color: T.textMuted }} />
+          </div>
+          <div>
+            <p style={{ fontSize: 10, color: T.textDim, margin: "0 0 2px", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>Claimed</p>
+            <p style={{ fontSize: 20, fontWeight: 800, color: T.textPrimary, margin: 0, letterSpacing: "-0.03em" }}>{totalClaimed.toFixed(2)} <span style={{ fontSize: 13, fontWeight: 500, color: T.textDim }}>Q</span></p>
+          </div>
+        </GCard>
+        <GCard style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Coins size={18} strokeWidth={1.8} style={{ color: T.textMuted }} />
+          </div>
+          <div>
+            <p style={{ fontSize: 10, color: T.textDim, margin: "0 0 2px", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>All Time</p>
+            <p style={{ fontSize: 20, fontWeight: 800, color: T.textPrimary, margin: 0, letterSpacing: "-0.03em" }}>{(totalPending + totalClaimed).toFixed(2)} <span style={{ fontSize: 13, fontWeight: 500, color: T.textDim }}>Q</span></p>
+          </div>
+        </GCard>
+      </div>
+
+      {/* Claim all button */}
+      {tab === "Unclaimed" && unclaimed.length > 1 && (
+        <button
+          type="button"
+          onClick={handleClaimAll}
+          disabled={claimAll}
+          style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 8, padding: "11px 22px", borderRadius: 10, border: "none", background: claimAll ? "rgba(34,197,94,0.4)" : T.yes, color: "#000000", fontSize: 13, fontWeight: 800, cursor: claimAll ? "not-allowed" : "pointer", transition: "background 0.15s" }}
+        >
+          <Zap size={14} strokeWidth={2.5} />
+          {claimAll ? "Claiming all…" : `Claim all — ${totalPending.toFixed(2)} Q`}
+        </button>
+      )}
+
+      {/* Cards */}
+      {displayed.length === 0 ? (
+        <GCard style={{ padding: "60px 24px", textAlign: "center" }}>
+          <div style={{ width: 48, height: 48, borderRadius: 14, background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
+            <Gift size={20} strokeWidth={1.5} style={{ color: T.textDim }} />
+          </div>
+          <p style={{ fontSize: 14, fontWeight: 600, color: T.textMuted, margin: 0 }}>
+            {tab === "Unclaimed" ? "Nothing to claim right now." : "No claimed rewards yet."}
+          </p>
+          <p style={{ fontSize: 12, color: T.textDim, margin: "6px 0 0" }}>Win markets to earn Quai rewards.</p>
+        </GCard>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
+          {displayed.map(r => <RewardCard key={r.id} r={r} onClaim={handleClaim} claiming={claiming} />)}
+        </div>
+      )}
+
+      {/* How rewards work */}
+      <GCard style={{ padding: "18px 22px" }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px" }}>How rewards work</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+          {[
+            { icon: Target,      label: "Stake correctly",  desc: "Pick the winning side and stake Quai on it." },
+            { icon: Lock2,       label: "Market settles",   desc: "Once closed, the contract determines the consensus outcome." },
+            { icon: Gift,        label: "Claim your share", desc: "Winners split the losing pool proportional to their stake." },
+          ].map(({ icon: Icon, label, desc }) => (
+            <div key={label} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+              <div style={{ width: 34, height: 34, borderRadius: 8, background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+                <Icon size={14} strokeWidth={1.8} style={{ color: T.textMuted }} />
+              </div>
+              <div>
+                <p style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary, margin: 0 }}>{label}</p>
+                <p style={{ fontSize: 11, color: T.textDim, margin: "3px 0 0", lineHeight: 1.5 }}>{desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </GCard>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════
+   PAGE: HOW IT WORKS  (full rebuild)
+════════════════════════════════════════════════ */
+
+const HOW_STEPS = [
+  { step: "01", icon: HelpCircle,    title: "Browse Polls",              desc: "Explore daily markets across politics, crypto, science, math, psychology and more. New polls open every day.", color: "#38bdf8"  },
+  { step: "02", icon: Target,        title: "Pick Your Side",            desc: "Study the question and choose YES or NO — the outcome you believe the evidence and logic supports.",           color: "#a78bfa"  },
+  { step: "03", icon: Coins,         title: "Stake Your Conviction",     desc: "Commit Quai to back your answer. The more you stake, the greater your potential reward.",                       color: "#fbbf24"  },
+  { step: "04", icon: PieChart,      title: "Market Reflects Capital",   desc: "The YES/NO split shown is total capital committed — economic conviction, not a popularity vote.",               color: "#22c55e"  },
+  { step: "05", icon: ArrowLeftRight,title: "Switch Once If Needed",     desc: "Changed your mind? You get one free position switch per market, as long as 5+ minutes remain.",               color: "#fb923c"  },
+  { step: "06", icon: ShieldCheck,   title: "Smart Contract Settles",    desc: "When the market closes, the Quai Network smart contract determines the consensus outcome — no human involved.", color: "#f472b6"  },
+  { step: "07", icon: Gift,          title: "Claim Your Rewards",        desc: "Winners share the losing pool proportional to their stake. Claim directly from the contract — non-custodial.",  color: "#22c55e"  },
+];
+
+const FAQ_ITEMS = [
+  { q: "How is the outcome determined?",        a: "The outcome with the highest total capital committed at market close becomes the consensus outcome. This is enforced entirely on-chain by the smart contract — no human or backend is involved." },
+  { q: "Can I withdraw my stake before close?", a: "No. Once you commit capital to a position, your stake is locked until the market settles. You can switch your side once, but you cannot withdraw early." },
+  { q: "What is the switch rule?",              a: "Each participant gets exactly one position switch per market. The switch is only valid if at least 5 minutes remain before market close. Your full stake moves to the new side." },
+  { q: "How are rewards calculated?",           a: "Winners split the entire losing pool proportional to their share of the winning pool. For example, if you hold 10% of the YES pool and YES wins, you receive 10% of the NO pool plus your original stake." },
+  { q: "Is Q4 custodial?",                      a: "No. Q4 is non-custodial. You approve transactions directly from your Quai wallet. The backend never holds or controls your funds. Smart contracts are the sole custodian." },
+  { q: "What network does Q4 run on?",          a: "Q4 is built on Quai Network — a proof-of-work, EVM-compatible blockchain. You need a Quai-compatible wallet and QUAI tokens to participate." },
+];
+
+function FAQItem({ item }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ borderBottom: `1px solid ${T.border}` }}>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "16px 0", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}
+      >
+        <span style={{ fontSize: 13, fontWeight: 600, color: open ? "#ffffff" : T.textMuted, letterSpacing: "-0.01em", transition: "color 0.15s" }}>{item.q}</span>
+        <ChevronDown size={15} strokeWidth={2.2} style={{ color: T.textDim, flexShrink: 0, transform: open ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+      </button>
+      <div style={{ overflow: "hidden", maxHeight: open ? 200 : 0, opacity: open ? 1 : 0, transition: "max-height 0.3s ease, opacity 0.2s ease" }}>
+        <p style={{ fontSize: 13, color: T.textMuted, margin: "0 0 16px", lineHeight: 1.6 }}>{item.a}</p>
+      </div>
+    </div>
+  );
+}
+
+function PageHowItWorks({ onNavigate }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+
+      {/* Header */}
+      <div>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>How Q4 Works</h1>
+        <p style={{ fontSize: 13, color: T.textMuted, margin: "4px 0 0" }}>A capital-weighted conviction protocol — not a popularity poll.</p>
+      </div>
+
+      {/* Core concept banner */}
+      <div style={{ padding: "22px 24px", borderRadius: 16, background: "radial-gradient(ellipse 80% 60% at 50% 0%, rgba(255,255,255,0.05) 0%, transparent 100%)", border: `1px solid ${T.borderHover}`, display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
+        <div style={{ width: 52, height: 52, borderRadius: 14, background: "rgba(124,111,247,0.15)", border: "1px solid rgba(124,111,247,0.3)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <Sparkles size={22} strokeWidth={1.8} style={{ color: T.violet }} />
+        </div>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <p style={{ fontSize: 15, fontWeight: 800, color: "#ffffff", margin: "0 0 4px", letterSpacing: "-0.02em" }}>Capital-weighted consensus, not popularity.</p>
+          <p style={{ fontSize: 13, color: T.textMuted, margin: 0, lineHeight: 1.6 }}>
+            Q4 hides participant counts entirely. What the market surfaces is the <strong style={{ color: T.textPrimary }}>aggregate capital</strong> committed to each outcome — a signal of economic conviction, not bandwagon effect.
+          </p>
+        </div>
+      </div>
+
+      {/* Step-by-step */}
+      <div>
+        <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.1em", textTransform: "uppercase", margin: "0 0 14px" }}>Step by step</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+          {HOW_STEPS.map((s, i) => (
+            <div key={s.step} style={{ display: "flex", gap: 0, position: "relative" }}>
+              {/* Connector line */}
+              {i < HOW_STEPS.length - 1 && (
+                <div style={{ position: "absolute", left: 17, top: 44, width: 2, height: "calc(100% - 16px)", background: `linear-gradient(180deg, ${s.color}40, transparent)`, zIndex: 0 }} />
+              )}
+              {/* Step icon */}
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginRight: 16, flexShrink: 0, zIndex: 1 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: `${s.color}18`, border: `1px solid ${s.color}40`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <s.icon size={16} strokeWidth={1.8} style={{ color: s.color }} />
+                </div>
+              </div>
+              {/* Content */}
+              <div style={{ flex: 1, paddingBottom: i < HOW_STEPS.length - 1 ? 20 : 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, color: s.color, letterSpacing: "0.1em" }}>{s.step}</span>
+                  <h3 style={{ fontSize: 14, fontWeight: 700, color: "#ffffff", margin: 0, letterSpacing: "-0.01em" }}>{s.title}</h3>
+                </div>
+                <p style={{ fontSize: 13, color: T.textMuted, margin: 0, lineHeight: 1.6 }}>{s.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Market lifecycle */}
+      <div>
+        <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.1em", textTransform: "uppercase", margin: "0 0 14px" }}>Market lifecycle</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }} className="dash-how-grid">
+          {[
+            { status: "Created",  color: "#38bdf8", desc: "Deployed with a question, outcomes, open/close times, and settlement config." },
+            { status: "Active",   color: T.yes,    desc: "Participants connect their wallet and commit capital to an outcome." },
+            { status: "Closed",   color: "#fbbf24", desc: "Market reaches closing time. No further commitments accepted." },
+            { status: "Settled",  color: T.violet, desc: "Smart contract determines consensus and makes rewards available to claim." },
+          ].map(({ status, color, desc }) => (
+            <GCard key={status} style={{ padding: "16px 18px" }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 10px", borderRadius: 999, fontSize: 10, fontWeight: 700, background: `${color}18`, border: `1px solid ${color}35`, color, marginBottom: 10 }}>
+                <span style={{ width: 5, height: 5, borderRadius: "50%", background: color }} />{status}
+              </span>
+              <p style={{ fontSize: 12, color: T.textMuted, margin: 0, lineHeight: 1.55 }}>{desc}</p>
+            </GCard>
+          ))}
+        </div>
+      </div>
+
+      {/* FAQ */}
+      <div>
+        <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.1em", textTransform: "uppercase", margin: "0 0 4px" }}>Frequently asked questions</p>
+        <GCard style={{ padding: "0 22px" }}>
+          {FAQ_ITEMS.map(item => <FAQItem key={item.q} item={item} />)}
+        </GCard>
+      </div>
+
+      {/* CTA */}
+      <GCard style={{ padding: "22px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: "50%", background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.25)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Trophy size={20} strokeWidth={1.8} style={{ color: "#fbbf24" }} />
+          </div>
+          <div>
+            <p style={{ fontSize: 14, fontWeight: 700, color: "#ffffff", margin: 0, letterSpacing: "-0.02em" }}>Your conviction has real economic weight.</p>
+            <p style={{ fontSize: 12, color: T.textMuted, margin: "2px 0 0" }}>Back it with capital and earn when you're right.</p>
+          </div>
+        </div>
+        <button type="button" onClick={() => onNavigate("questions")}
+          style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 20px", borderRadius: 8, background: "#ffffff", color: "#080808", fontSize: 13, fontWeight: 700, border: "none", cursor: "pointer", flexShrink: 0 }}>
+          Browse Polls <ArrowRight size={14} strokeWidth={2.5} />
+        </button>
+      </GCard>
     </div>
   );
 }
@@ -1503,21 +2580,43 @@ function ComingSoon({ page }) {
 ════════════════════════════════════════════════ */
 
 export default function DashboardPage() {
-  const [page, setPage] = useState("dashboard");
-  const [selectedQ, setSelectedQ] = useState(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [showConfetti, setShowConfetti] = useState(false);
+  const [showConfetti,      setShowConfetti]      = useState(false);
+  const [notifOpen,         setNotifOpen]         = useState(false);
+  const [notifications,     setNotifications]     = useState(SEED_NOTIFICATIONS);
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { section = "home", questionId: urlQuestionId } = useParams();
 
-  const handleNavigate = (key) => { setSelectedQ(null); setPage(key); setMobileSidebarOpen(false); };
-  const handleOpenQ    = (id)  => { setSelectedQ(id); setPage("question-detail"); setMobileSidebarOpen(false); };
-  const handleLogout   = async () => { await logout(); navigate("/login"); };
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  const handleMarkAllRead = () => setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  const handleMarkRead    = (id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+
+  // Derive page from URL param; map "home" → "dashboard"
+  const urlPage = section === "home" ? "dashboard" : section;
+
+  // selectedQ driven by URL
+  const [selectedQ, setSelectedQ] = useState(urlQuestionId ?? null);
+  useEffect(() => { setSelectedQ(urlQuestionId ?? null); }, [urlQuestionId]);
+
+  const handleNavigate = (key) => {
+    setSelectedQ(null);
+    setMobileSidebarOpen(false);
+    navigate(`/dashboard/${key === "dashboard" ? "home" : key}`);
+  };
+  const handleOpenQ = (id) => {
+    setSelectedQ(id);
+    setMobileSidebarOpen(false);
+    navigate(`/dashboard/question-detail/${id}`);
+  };
+  const handleLogout = async () => { await logout(); navigate("/login"); };
   const handleConfettiTrigger = () => {
     setShowConfetti(true);
     setTimeout(() => setShowConfetti(false), 3500);
   };
 
+  const page      = urlPage;
   const activeNav = page === "question-detail" ? "questions" : page;
   const pageLabelMap = {
     dashboard: "Dashboard", questions: "Polls", "question-detail": "Poll Detail",
@@ -1549,7 +2648,7 @@ export default function DashboardPage() {
 
       {/* ── Main area ── */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", marginLeft: 240, minHeight: "100vh" }} className="dash-main-area">
-        <TopHeader pageLabel={pageLabelMap[page] || page} onOpenMobileSidebar={() => setMobileSidebarOpen(true)} onNavigate={handleNavigate} user={user} />
+        <TopHeader pageLabel={pageLabelMap[page] || page} onOpenMobileSidebar={() => setMobileSidebarOpen(true)} onNavigate={handleNavigate} user={user} onOpenNotifications={() => setNotifOpen(true)} unreadCount={unreadCount} />
 
         <main style={{ flex: 1, overflowY: "auto", padding: "28px 28px 48px", position: "relative" }}>
           <Confetti active={showConfetti} />
@@ -1558,13 +2657,24 @@ export default function DashboardPage() {
             {page === "questions"       && <PageQuestions onOpenQuestion={handleOpenQ} />}
             {page === "question-detail" && <PageQuestionDetail questionId={selectedQ} onBack={() => handleNavigate("questions")} onConfetti={handleConfettiTrigger} />}
             {page === "convictions"     && <PageMyConvictions />}
+            {page === "results"         && <PageResults />}
+            {page === "leaderboard"     && <PageLeaderboard />}
+            {page === "rewards"         && <PageRewards />}
             {page === "how"             && <PageHowItWorks onNavigate={handleNavigate} />}
-            {page === "wallet"          && <ComingSoon page="wallet" />}
+            {page === "wallet"          && <WalletPage />}
             {page === "profile"         && <PageProfile user={user} onLogout={handleLogout} />}
-            {(page === "results" || page === "leaderboard" || page === "rewards") && <ComingSoon page={page} />}
           </div>
         </main>
       </div>
+
+      {/* ── Notification sidebar ── */}
+      <NotificationSidebar
+        open={notifOpen}
+        onClose={() => setNotifOpen(false)}
+        notifications={notifications}
+        onMarkAllRead={handleMarkAllRead}
+        onMarkRead={handleMarkRead}
+      />
     </div>
   );
 }

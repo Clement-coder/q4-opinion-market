@@ -1,4 +1,4 @@
-import { Navigate } from "react-router-dom";
+import { Navigate, useParams } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import { Routes, Route } from "react-router-dom";
 import Navbar  from "./components/Header";
@@ -42,16 +42,27 @@ function ProtectedRoute({ children }) {
 export default function App() {
   return (
     <Routes>
+      {/* ── Public pages ── */}
       <Route path="/"             element={<PublicLayout><HomePage /></PublicLayout>} />
       <Route path="/how-it-works" element={<PublicLayout><HowItWorksPage /></PublicLayout>} />
       <Route path="/polls"        element={<PublicLayout><PollsPage /></PublicLayout>} />
       <Route path="/about"        element={<PublicLayout><AboutPage /></PublicLayout>} />
       <Route path="/faq"          element={<PublicLayout><FaqPage /></PublicLayout>} />
 
-      <Route path="/signup"    element={<AuthRoute><SignUpPage /></AuthRoute>} />
-      <Route path="/login"     element={<AuthRoute><LoginPage /></AuthRoute>} />
+      {/* ── Auth pages ── */}
+      <Route path="/signup" element={<AuthRoute><SignUpPage /></AuthRoute>} />
+      <Route path="/login"  element={<AuthRoute><LoginPage /></AuthRoute>} />
 
-      <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+      {/* ── Dashboard — root redirects to /dashboard/home ── */}
+      <Route path="/dashboard" element={<ProtectedRoute><Navigate to="/dashboard/home" replace /></ProtectedRoute>} />
+
+      {/* ── Dashboard sub-pages (sidebar items each get their own URL) ── */}
+      <Route path="/dashboard/:section"
+        element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+
+      {/* ── Catch-all question detail ── */}
+      <Route path="/dashboard/:section/:questionId"
+        element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
     </Routes>
   );
 }
