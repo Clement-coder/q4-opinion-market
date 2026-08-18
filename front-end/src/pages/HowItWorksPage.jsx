@@ -1,26 +1,33 @@
 import { Link } from "react-router-dom";
 import ProcessStep from "../components/ProcessStep";
 import {
-  ClipboardList, WalletCards, PieChart, ArrowLeftRight,
-  ShieldCheck, Gift, CheckCircle2, ArrowRight,
+  ClipboardList, Globe, Clock, Zap,
+  BarChart3, Gift, CheckCircle2, ArrowRight,
 } from "../components/icons";
 
 const STEPS = [
-  { number: "01", icon: ClipboardList, title: "Answer",            description: "Browse daily polls across politics, finance, sports, and more." },
-  { number: "02", icon: WalletCards,   title: "Stake",             description: "Commit a small amount of Q4 tokens to the side you believe in."      },
-  { number: "03", icon: PieChart,      title: "Conviction Builds", description: "Capital on each side determines the live YES / NO percentages."      },
-  { number: "04", icon: ArrowLeftRight,title: "Switch Once",       description: "Flip your position once if the other side grows stronger."            },
-  { number: "05", icon: ShieldCheck,   title: "Market Resolves",   description: "Smart contracts settle the outcome when the timer expires."           },
-  { number: "06", icon: Gift,          title: "Earn Rewards",      description: "Winners receive a proportional share of the opposing pool."           },
+  { number: "01", icon: ClipboardList, title: "Generate",  description: "Questions are automatically created from templates combined with live data."        },
+  { number: "02", icon: Globe,         title: "Predict",   description: "Browse available markets and choose YES or NO on each question."                    },
+  { number: "03", icon: Clock,         title: "Wait",      description: "Each market has a specific deadline. Most markets close within 24 hours."           },
+  { number: "04", icon: Zap,           title: "Verify",    description: "When the deadline arrives, the system fetches the result from the data source."     },
+  { number: "05", icon: BarChart3,     title: "Resolve",   description: "The market resolves YES or NO based on the verified real-world outcome."            },
+  { number: "06", icon: Gift,          title: "Claim",     description: "Correct predictions earn a proportional share of the opposing pool as rewards."     },
 ];
 
 const RULES = [
-  "Each market resolves once the countdown timer expires.",
-  "You may only hold a position on one side at a time.",
-  "Switching sides is permitted exactly once per market.",
-  "Switching is disabled when fewer than 5 minutes remain.",
-  "Protocol fee is deducted from the losing pool before distribution.",
-  "All smart contract rules are public and auditable on Quai Network.",
+  "Each market resolves once the deadline is reached.",
+  "Outcomes are determined by verified external data sources, not admin input.",
+  "Every question has a single, clearly measurable YES or NO answer.",
+  "Markets cover Crypto, Sports, Weather, and Stocks categories.",
+  "Resolution is automatic — no manual intervention required.",
+  "All market rules and data sources are visible before you predict.",
+];
+
+const EXAMPLES = [
+  { cat: "Crypto",  q: "Will Bitcoin be above $118,000 at 11:59 PM today?",   source: "BTC/USD price feed"        },
+  { cat: "Sports",  q: "Will Arsenal score in the first half?",                source: "Match statistics API"      },
+  { cat: "Weather", q: "Will it rain in Abuja before 8 PM today?",             source: "Weather data API"          },
+  { cat: "Stocks",  q: "Will Apple stock close higher today?",                  source: "Stock market close price"  },
 ];
 
 export default function HowItWorksPage() {
@@ -34,10 +41,11 @@ export default function HowItWorksPage() {
             How Q4 Works
           </p>
           <h1 className="font-bold text-white" style={{ fontSize: "clamp(36px, 5vw, 60px)", letterSpacing: "-0.04em", lineHeight: 1.05 }}>
-            Simple. Fair. Powerful.
+            Predict. Wait. Resolve.
           </h1>
           <p className="mt-5 text-base leading-7" style={{ color: "rgba(255,255,255,0.45)" }}>
-            Six steps from question to reward — every rule is transparent and enforced on-chain.
+            A market opens today, closes at the deadline, and resolves automatically
+            when the real-world outcome is verified.
           </p>
         </div>
       </section>
@@ -45,6 +53,12 @@ export default function HowItWorksPage() {
       {/* Steps — white */}
       <section style={{ background: "#ffffff" }}>
         <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8">
+          <div className="mb-12 text-center">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-widest" style={{ color: "rgba(0,0,0,0.35)", letterSpacing: "0.14em" }}>The Process</p>
+            <h2 className="font-bold text-[#080808]" style={{ fontSize: "clamp(26px, 3.5vw, 40px)", letterSpacing: "-0.03em" }}>
+              Six steps from question to reward.
+            </h2>
+          </div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-10 sm:grid-cols-3 lg:grid-cols-6 lg:gap-x-2">
             {STEPS.map((step, i) => (
               <ProcessStep key={step.number} {...step} isLast={i === STEPS.length - 1} />
@@ -53,8 +67,40 @@ export default function HowItWorksPage() {
         </div>
       </section>
 
-      {/* Rules — light gray */}
+      {/* Example questions — light gray */}
       <section style={{ background: "#f5f5f5" }}>
+        <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8">
+          <div className="mb-12 text-center">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-widest" style={{ color: "rgba(0,0,0,0.35)", letterSpacing: "0.14em" }}>Example Markets</p>
+            <h2 className="font-bold text-[#080808]" style={{ fontSize: "clamp(26px, 3.5vw, 40px)", letterSpacing: "-0.03em" }}>
+              Real questions. Real data.
+            </h2>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {EXAMPLES.map(({ cat, q, source }) => (
+              <div
+                key={q}
+                className="rounded-2xl p-6"
+                style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.07)" }}
+              >
+                <span
+                  className="mb-4 inline-block rounded-full px-3 py-1 text-xs font-semibold"
+                  style={{ background: "rgba(0,0,0,0.05)", color: "rgba(0,0,0,0.5)", border: "1px solid rgba(0,0,0,0.08)" }}
+                >
+                  {cat}
+                </span>
+                <p className="market-question mb-4 text-sm leading-snug text-[#080808]">"{q}"</p>
+                <p className="text-xs" style={{ color: "rgba(0,0,0,0.4)" }}>
+                  Resolved by: <span style={{ fontWeight: 600 }}>{source}</span>
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Rules — white */}
+      <section style={{ background: "#ffffff" }}>
         <div className="mx-auto max-w-2xl px-5 py-20 sm:px-8">
           <p className="mb-3 text-xs font-semibold uppercase tracking-widest" style={{ color: "rgba(0,0,0,0.35)", letterSpacing: "0.14em" }}>
             Platform Rules
@@ -75,8 +121,8 @@ export default function HowItWorksPage() {
               Get Started
               <ArrowRight size={14} strokeWidth={2.4} />
             </Link>
-            <Link to="/polls" className="btn-secondary-dark">
-              Browse Polls
+            <Link to="/markets" className="btn-secondary-dark">
+              Browse Markets
             </Link>
           </div>
         </div>

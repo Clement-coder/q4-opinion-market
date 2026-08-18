@@ -1,45 +1,74 @@
-# Q4 — Capital Weighted Consensus Markets on Quai Network
+# Q4 Opinion Market
 
-Q4 is a decentralized consensus market protocol built on Quai Network. Instead of measuring how many people support an outcome, Q4 measures how much capital participants have committed to it — producing an economic conviction signal rather than a popularity signal.
+Q4 Opinion Market is a short-term prediction market platform where users predict the outcome of real-world events that can be verified within 24 hours.
 
 ---
 
 ## The Core Idea
 
-Traditional voting and prediction interfaces expose participant counts. This can nudge users toward popular options regardless of the underlying conviction behind those positions.
+Instead of long-term speculative questions like "Will Bitcoin reach $150,000?", Q4 focuses on questions with clear, near-term outcomes:
 
-Q4 removes participant counts from the public interface entirely. What the market surfaces is the aggregate capital committed to each outcome:
+> "Will Bitcoin be above $118,000 at 11:59 PM today?"
 
-| Outcome | Capital Committed | Market Share |
-|---------|-----------------|--------------|
-| Team A  | $8,500          | 53.75%       |
-| Team B  | $5,200          | 32.91%       |
-| Draw    | $2,100          | 13.29%       |
-
-The market signal is simply:
-
-```
-Capital committed to outcome / Total market capital
-```
+Users choose **YES** or **NO**. When the deadline arrives, the system automatically checks a reliable data source, determines the actual outcome, and resolves the market.
 
 ---
 
 ## How It Works
 
-### Market Lifecycle
+```
+Generate → Predict → Wait → Verify → Resolve
+```
 
-1. **Created** — Market is deployed with a question, outcomes, opening time, closing time, and settlement configuration.
-2. **Active** — Participants connect their Quai-compatible wallet and commit capital to an outcome of their choice.
-3. **Closed** — The market reaches its configured closing time and rejects further commitments.
-4. **Settled** — The smart contract determines the consensus outcome (highest eligible capital at close) and makes rewards available for withdrawal.
+1. **Generate** — The system generates short-term prediction questions using predefined templates and live data.
+2. **Predict** — Users browse available markets and choose YES or NO.
+3. **Wait** — Each market has a specific deadline, usually within 24 hours.
+4. **Verify** — When the deadline arrives, the system obtains the actual result from the relevant data source.
+5. **Resolve** — The market is automatically resolved as YES or NO and user positions are settled.
 
-### Consensus Mechanism
+---
 
-For the initial implementation, the outcome with the highest capital commitment at market close is the consensus outcome. Settlement logic lives entirely in the smart contract — no centralized backend is involved in determining the result.
+## Question Categories
 
-### Non-Custodial Architecture
+| Category       | Example Question                                       |
+|----------------|--------------------------------------------------------|
+| Crypto         | Will Bitcoin be above $118,000 at 11:59 PM?            |
+| Sports         | Will Arsenal score in the first half?                  |
+| Weather        | Will it rain in Abuja before 8 PM?                     |
+| Stocks         | Will Apple stock close higher today?                   |
 
-Users approve transactions directly from their own wallets. The backend never holds or controls participant funds. Smart contracts enforce market opening, closing, capital accounting, settlement, and reward claims.
+Every question has a clearly measurable outcome and a defined resolution time.
+
+---
+
+## Automatic Question Generation
+
+Q4 uses question templates combined with live data to generate markets automatically.
+
+**Template:**
+```
+Will {ASSET} be above ${PRICE} at {TIME}?
+```
+
+**Generated question:**
+```
+Will Bitcoin be above $118,000 at 11:59 PM today?
+```
+
+This allows Q4 to continuously create new markets without manual admin input.
+
+---
+
+## How Q4 Knows the Correct Answer
+
+Q4 uses external data sources (oracles) to verify outcomes at the deadline.
+
+**Example:**
+- Question: *Will Bitcoin be above $118,000 at 11:59 PM?*
+- BTC price at deadline = $119,200 → Resolves **YES**
+- BTC price at deadline = $117,500 → Resolves **NO**
+
+Each question category uses an appropriate verified data source.
 
 ---
 
@@ -48,7 +77,7 @@ Users approve transactions directly from their own wallets. The backend never ho
 ```
 Q4/
 ├── smart_contract/   # Solidity contracts (Foundry)
-├── front_end/        # React / Next.js frontend (Vite)
+├── front_end/        # React / Vite frontend
 └── SQL/              # Supabase database schema
 ```
 
@@ -56,20 +85,19 @@ Q4/
 
 ## Technology Stack
 
-| Layer          | Technology              |
-|----------------|-------------------------|
-| Blockchain     | Quai Network            |
-| Smart Contracts| Solidity (Foundry)      |
-| Frontend       | React / Next.js + Vite  |
-| Styling        | Tailwind CSS            |
-| Backend        | Supabase                |
-| Database       | PostgreSQL              |
-| Wallet         | Quai-compatible wallet  |
-| Source Control | GitHub                  |
+| Layer          | Technology                   |
+|----------------|------------------------------|
+| Smart Contracts| Solidity (Foundry)           |
+| Frontend       | React + Vite                 |
+| Styling        | Tailwind CSS                 |
+| Backend        | Supabase                     |
+| Database       | PostgreSQL                   |
+| Data/Oracle    | External verified data APIs  |
+| Source Control | GitHub                       |
 
 ---
 
-## Architecture Overview
+## System Architecture
 
 ```
 User
@@ -77,38 +105,76 @@ User
   v
 Q4 Frontend
   |
-  +--------------------+
-  |                    |
-  v                    v
-Quai Network        Supabase
-  |                    |
-  v                    v
-Smart Contracts     Application Data
+  +---------------------+
+  |                     |
+  v                     v
+Smart Contracts      Supabase
+  |                     |
+  v                     v
+Market State         App Data & Events
   |
   v
-Market State (authoritative)
+Oracle / Data Sources
+(Crypto, Sports, Weather, Stocks)
 ```
 
-**Quai Network / Smart Contracts** — Authoritative source for all financial state: user positions, outcome balances, market lifecycle, settlement, and reward claims.
+**Smart Contracts** — Authoritative source for all financial state: user positions, market lifecycle, resolution, and reward claims.
 
-**Supabase** — Application and indexing layer. Stores market metadata (descriptions, categories, images), indexed blockchain events, user profiles, and search data. Does not custody funds or determine outcomes.
+**Supabase** — Application layer. Stores market metadata, indexed events, user profiles, and oracle results.
+
+**Oracle / Data Sources** — External APIs that provide verified real-world outcomes at market resolution time.
+
+---
+
+## Main Components
+
+### User Platform
+- Browse prediction markets
+- View market details and deadlines
+- Choose YES or NO
+- View odds and probabilities
+- Track personal positions and results
+- Claim rewards
+
+### Market Engine
+- Generates questions from templates + live data
+- Creates and manages markets
+- Sets deadlines
+- Closes expired markets
+
+### Data / Oracle System
+- Collects external data at deadline
+- Verifies actual outcomes
+- Determines YES or NO result
+- Sends result to resolution system
+
+### Resolution System
+- Resolves completed markets
+- Determines winning outcome
+- Settles user positions
+
+### Admin Dashboard
+- Monitor all markets
+- Manage categories
+- Monitor data sources
+- Review generated questions
+- Pause or remove problematic markets
+- Monitor users and transactions
 
 ---
 
 ## Smart Contract Overview
 
 ### Market Factory
-Responsible for deploying and registering Q4 markets.
+Deploys and registers Q4 prediction markets.
 
-- `createMarket()` — Deploy a new market with its configuration.
+- `createMarket()` — Deploy a new market with its question, outcome options, and deadline.
 - `getMarket()` — Retrieve a market reference by ID.
 
 ### Market Contract
-Each market maintains its own state independently.
+Each market manages its own state independently.
 
-Key fields: `marketId`, `question`, `outcomes`, `startTime`, `endTime`, `status`, `totalCapital`
-
-Capital per outcome is tracked as: `outcomeId => totalCapital`
+Key fields: `marketId`, `question`, `deadline`, `status`, `yesPool`, `noPool`, `resolvedOutcome`
 
 Participant positions are recorded on-chain for settlement and reward calculations.
 
@@ -116,11 +182,13 @@ Participant positions are recorded on-chain for settlement and reward calculatio
 
 ## Supabase Schema (Core Tables)
 
-**markets** — `id`, `contract_market_id`, `question`, `description`, `category`, `status`, `start_time`, `end_time`, `created_at`
+**markets** — `id`, `question`, `category`, `status`, `deadline`, `resolved_outcome`, `data_source`, `created_at`
 
-**market_outcomes** — `id`, `market_id`, `outcome_id`, `name`
+**market_outcomes** — `id`, `market_id`, `outcome` (YES/NO), `pool_amount`
 
 **users** — `id`, `wallet_address`, `created_at`
+
+**oracle_results** — `id`, `market_id`, `result_value`, `resolved_at`, `data_source`
 
 **market_events** — `id`, `market_id`, `event_type`, `transaction_hash`, `block_number`, `created_at`
 
@@ -132,7 +200,6 @@ Participant positions are recorded on-chain for settlement and reward calculatio
 
 - Node.js ≥ 18
 - [Foundry](https://book.getfoundry.sh/getting-started/installation)
-- A Quai-compatible wallet
 - A Supabase project
 
 ### Smart Contracts
@@ -148,39 +215,29 @@ See [`smart_contract/README.md`](./smart_contract/README.md) for deployment inst
 ### Frontend
 
 ```bash
-cd front_end
+cd front-end
 npm install
 npm run dev
 ```
 
-See [`front_end/README.md`](./front_end/README.md) for environment configuration.
+See [`front-end/README.md`](./front-end/README.md) for environment configuration.
 
 ---
 
 ## MVP Scope
 
-The hackathon MVP demonstrates the core Q4 mechanism:
+The MVP demonstrates the core Q4 mechanism:
 
-- Quai Network integration and wallet connection
-- Market creation with multiple outcomes
-- Capital commitment and aggregate capital tracking
-- Capital-based market display with participant counts hidden
-- Market closing and smart contract settlement
-- Reward claims
-- Supabase market metadata and blockchain event indexing
-
----
-
-## Future Development
-
-- Community consensus markets
-- DAO decision markets
-- Ecosystem sentiment markets
-- Protocol activity markets
-- On-chain consensus data consumable by external Quai ecosystem applications
+- Automatic question generation from templates
+- YES/NO market creation with deadlines
+- User predictions and position tracking
+- Oracle-based outcome verification
+- Automatic market resolution
+- Reward claims for correct predictions
+- Admin monitoring dashboard
 
 ---
 
 ## Vision
 
-Q4 aims to be a decentralized market primitive for measuring collective economic conviction. The initial implementation targets prediction and consensus markets. The underlying infrastructure is designed to support any application where communities need a transparent, capital-weighted mechanism for expressing and measuring conviction on-chain.
+Q4 aims to be the go-to platform for short-term, verifiable prediction markets. A market can open today, close tonight, and resolve shortly after the deadline — giving users fast, clear feedback on their predictions backed by real-world data.

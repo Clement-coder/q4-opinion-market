@@ -46,7 +46,7 @@ export default function LoginPage() {
             <span className="text-2xl font-bold text-white" style={{ letterSpacing: "-0.03em" }}>Q4</span>
           </Link>
           <p className="mt-2 text-sm" style={{ color: "rgba(255,255,255,0.4)" }}>
-            {isReturning ? "Welcome back. Time to stake your conviction." : "Sign in to your Q4 account."}
+            {isReturning ? "Welcome back. Your markets await." : "Sign in to your Q4 account."}
           </p>
         </div>
 

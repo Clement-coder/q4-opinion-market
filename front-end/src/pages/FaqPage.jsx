@@ -6,34 +6,69 @@ const FAQS = [
   {
     cat: "General",
     items: [
-      { q: "What is Q4?",                         a: "Q4 is a capital-weighted consensus market on Quai Network. Your economic conviction — the amount you commit — determines the market percentages, not headcount." },
-      { q: "Is Q4 free to use?",                  a: "Browsing polls is always free. You only need Q4 tokens when you want to stake a position." },
-      { q: "Which blockchain is Q4 built on?",    a: "Q4 runs on Quai Network, an EVM-compatible proof-of-work blockchain. Smart contracts handle all settlement on-chain." },
+      {
+        q: "What is Q4 Opinion Market?",
+        a: "Q4 is a short-term prediction market platform. Users predict the outcome of real-world events that can be verified within 24 hours, such as crypto prices, sports results, and weather events.",
+      },
+      {
+        q: "How is Q4 different from other prediction markets?",
+        a: "Most prediction markets focus on long-term questions that take weeks or months to resolve. Q4 focuses exclusively on near-term, verifiable outcomes — a market opens today, closes at the deadline, and resolves automatically the same day.",
+      },
+      {
+        q: "Is Q4 free to use?",
+        a: "Browsing markets is always free. You only need to commit a position when you want to predict YES or NO on a market.",
+      },
     ],
   },
   {
-    cat: "Staking & Positions",
+    cat: "Predicting",
     items: [
-      { q: "How much do I need to stake?",    a: "There is a minimum stake per question, currently 1 Q4. There is no maximum." },
-      { q: "Can I stake on both sides?",      a: "No. You may only hold a position on one side per market at a time." },
-      { q: "What does 'Switch Once' mean?",   a: "You may flip from YES to NO (or vice versa) exactly once per market, as long as at least 5 minutes remain before close." },
-      { q: "Can I withdraw before close?",    a: "No. Once staked, tokens are locked until market resolution to ensure economic integrity." },
+      {
+        q: "How do I make a prediction?",
+        a: "Browse the active markets, pick a question you have a view on, and choose YES or NO. Your position is recorded and locked until the market resolves.",
+      },
+      {
+        q: "Can I change my prediction?",
+        a: "Once you commit a position, it is locked until market resolution. This ensures the integrity of the market and the pool.",
+      },
+      {
+        q: "What types of questions does Q4 use?",
+        a: "Q4 covers four main categories: Crypto (e.g., Will Bitcoin be above $118,000 at 11:59 PM?), Sports (e.g., Will Arsenal score in the first half?), Weather (e.g., Will it rain in Abuja before 8 PM?), and Stocks (e.g., Will Apple stock close higher today?).",
+      },
+    ],
+  },
+  {
+    cat: "Resolution",
+    items: [
+      {
+        q: "How does Q4 determine the correct answer?",
+        a: "Q4 uses external data sources (oracles) to verify outcomes at the deadline. For example, a crypto price market checks the agreed BTC/USD price feed at the specified time. The result is determined automatically — no admin decides the outcome.",
+      },
+      {
+        q: "What happens when a market reaches its deadline?",
+        a: "The system fetches the real-world result from the relevant data source, compares it against the question condition, and resolves the market as YES or NO. User positions are then settled automatically.",
+      },
+      {
+        q: "What if the data source is unavailable at resolution time?",
+        a: "Q4 uses reliable, redundant data sources. In the rare event a source is unavailable, the market enters a short holding period until the result can be confirmed.",
+      },
     ],
   },
   {
     cat: "Rewards",
     items: [
-      { q: "How are rewards distributed?", a: "After resolution, the losing pool is distributed proportionally to winning stakers, minus a small protocol fee." },
-      { q: "What is the protocol fee?",    a: "The current fee is 2% of the losing pool, visible on every market." },
-      { q: "When do I receive rewards?",   a: "Rewards are claimable within minutes of market resolution via your dashboard." },
-    ],
-  },
-  {
-    cat: "Security",
-    items: [
-      { q: "Are smart contracts audited?",     a: "Yes. Our contracts are independently audited. Reports are publicly available." },
-      { q: "What happens if an oracle fails?", a: "We use redundant oracles. In rare disputes, the market enters a challenge period before finalising." },
-      { q: "Is my wallet ever at risk?",       a: "You interact only with audited smart contracts. We never request custody of private keys." },
+      {
+        q: "How are rewards distributed?",
+        a: "After resolution, the losing pool is distributed proportionally to the winning side, minus a small platform fee. The more you committed to the correct side, the larger your share of the rewards.",
+      },
+      {
+        q: "When do I receive my rewards?",
+        a: "Rewards are claimable from your dashboard within minutes of market resolution.",
+      },
+      {
+        q: "What is the platform fee?",
+        a: "A small percentage is deducted from the losing pool before distribution. The exact fee is shown on every market before you predict.",
+      },
     ],
   },
 ];
@@ -77,7 +112,7 @@ export default function FaqPage() {
             Common Questions
           </h1>
           <p className="mt-4 text-sm" style={{ color: "rgba(255,255,255,0.45)" }}>
-            Everything you need to know about Q4.
+            Everything you need to know about Q4 Opinion Market.
           </p>
         </div>
       </section>

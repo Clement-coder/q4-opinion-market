@@ -4,9 +4,8 @@ import FeatureCard   from "../components/FeatureCard";
 import ProcessStep   from "../components/ProcessStep";
 import {
   ShieldCheck, Globe, CheckCircle2,
-  Coins, ArrowLeftRight, Clock, Gift,
-  ClipboardList, WalletCards, PieChart,
-  ArrowRight,
+  Clock, Gift, Zap,
+  ClipboardList, BarChart3, ArrowRight,
 } from "../components/icons";
 import { useAuth } from "../context/AuthContext";
 
@@ -14,45 +13,52 @@ import { useAuth } from "../context/AuthContext";
 
 const FEATURES = [
   {
-    icon: Coins,
-    title: "Economic Conviction",
-    text: "We measure the strength of capital behind each side, not the number of people.",
-  },
-  {
-    icon: ArrowLeftRight,
-    title: "Switch Once",
-    text: "Change your position once if you believe the other side is stronger.",
-  },
-  {
     icon: Clock,
-    title: "Time Matters",
-    text: "Switch early or wait — at least 5 minutes must remain before market close.",
+    title: "24-Hour Markets",
+    text: "Every market closes within 24 hours. Predict, wait, and know the result the same day.",
+  },
+  {
+    icon: CheckCircle2,
+    title: "Real-World Outcomes",
+    text: "Questions are based on events that actually happen — crypto prices, sports scores, weather.",
+  },
+  {
+    icon: Zap,
+    title: "Live Data Oracles",
+    text: "Outcomes are verified automatically using trusted external data sources at the deadline.",
   },
   {
     icon: ShieldCheck,
-    title: "Fair & Transparent",
-    text: "Built on decentralised technology to ensure a level playing field.",
+    title: "Auto-Resolution",
+    text: "No manual intervention. The market resolves itself once the data source confirms the result.",
   },
   {
     icon: Gift,
     title: "Earn Rewards",
-    text: "Correct predictions earn rewards from the platform and community.",
+    text: "Correct predictions earn rewards. The winning side splits the pool from the losing side.",
   },
 ];
 
 const STEPS = [
-  { number: "01", icon: ClipboardList, title: "Answer",           description: "Answer daily polls across multiple categories."                 },
-  { number: "02", icon: WalletCards,   title: "Stake",            description: "Commit a small amount of Q4 to the side you believe in."            },
-  { number: "03", icon: PieChart,      title: "Conviction Builds",description: "Total capital on each side determines the YES / NO percentages."    },
-  { number: "04", icon: ArrowLeftRight,title: "Switch Once",      description: "Change your position once if the other side becomes stronger."      },
-  { number: "05", icon: ShieldCheck,   title: "Market Resolves",  description: "When time is up, outcome is verified by trusted sources."           },
-  { number: "06", icon: Gift,          title: "Earn Rewards",     description: "Win rewards when you're on the correct side."                       },
+  { number: "01", icon: ClipboardList, title: "Generate",  description: "Questions are automatically generated from templates and live data."   },
+  { number: "02", icon: Globe,         title: "Predict",   description: "Browse active markets and choose YES or NO on each question."           },
+  { number: "03", icon: Clock,         title: "Wait",      description: "Each market has a specific deadline, usually within 24 hours."          },
+  { number: "04", icon: Zap,           title: "Verify",    description: "When the deadline arrives, the system checks the agreed data source."   },
+  { number: "05", icon: BarChart3,     title: "Resolve",   description: "The market resolves YES or NO based on the verified real-world result."  },
+  { number: "06", icon: Gift,          title: "Claim",     description: "Correct predictions earn a share of the opposing pool as rewards."      },
 ];
 
 const TRUST = [
-  { icon: ShieldCheck,  title: "Fair & Transparent",  sub: "Built for everyone"   },
-  { icon: Globe,        title: "Decentralized",        sub: "On Quai Network"      },
-  { icon: CheckCircle2, title: "Secure & Reliable",    sub: "Your funds are safe"  },
+  { icon: ShieldCheck,  title: "Verified Outcomes",   sub: "Live data oracles"   },
+  { icon: Clock,        title: "24-Hour Deadline",     sub: "Fast, clear results" },
+  { icon: CheckCircle2, title: "Auto-Resolved",        sub: "No manual input"     },
+];
+
+const CATEGORIES = [
+  { emoji: "₿",  label: "Crypto",  example: "Will Bitcoin be above $118,000 at 11:59 PM?" },
+  { emoji: "⚽", label: "Sports",  example: "Will Arsenal score in the first half?"        },
+  { emoji: "🌤️", label: "Weather", example: "Will it rain in Abuja before 8 PM?"           },
+  { emoji: "📈", label: "Stocks",  example: "Will Apple stock close higher today?"          },
 ];
 
 /* ── Page ─────────────────────────────────────────── */
@@ -74,20 +80,14 @@ export default function HomePage() {
           xmlns="http://www.w3.org/2000/svg"
           preserveAspectRatio="xMidYMid slice"
         >
-          {/* Horizontal scan lines */}
           {[15, 30, 45, 60, 75].map((y) => (
             <line key={y} x1="0" y1={`${y}%`} x2="100%" y2={`${y}%`}
               stroke="rgba(255,255,255,0.018)" strokeWidth="1" />
           ))}
-          {/* Vertical scan lines */}
           {[20, 40, 60, 80].map((x) => (
             <line key={x} x1={`${x}%`} y1="0" x2={`${x}%`} y2="100%"
               stroke="rgba(255,255,255,0.012)" strokeWidth="1" />
           ))}
-          {/* Corner accent — top right */}
-          <path d="M 100% 0 L calc(100% - 120px) 0 M 100% 0 L 100% 80px"
-            stroke="rgba(255,255,255,0.12)" strokeWidth="1" fill="none" />
-          {/* Right-side glow circle behind card */}
           <ellipse cx="75%" cy="50%" rx="320" ry="280"
             fill="rgba(255,255,255,0.012)" />
           <ellipse cx="75%" cy="50%" rx="180" ry="150"
@@ -105,7 +105,7 @@ export default function HomePage() {
                 <span
                   style={{ width: 5, height: 5, borderRadius: "50%", background: "rgba(255,255,255,0.5)", flexShrink: 0 }}
                 />
-                Economic Conviction, Not Popularity
+                24-Hour Prediction Markets
               </div>
 
               {/* Headline */}
@@ -117,10 +117,10 @@ export default function HomePage() {
                   lineHeight: 1.04,
                 }}
               >
-                Answer Today.
+                Predict Today.
                 <br />
                 <span style={{ color: "rgba(255,255,255,0.35)" }}>
-                  Shape Tomorrow.
+                  Resolved Tonight.
                 </span>
               </h1>
 
@@ -129,10 +129,10 @@ export default function HomePage() {
                 className="hero-copy mt-6"
                 style={{ color: "rgba(255,255,255,0.55)", maxWidth: 460, wordBreak: "break-word" }}
               >
-                Q4 is a prediction platform where your belief is measured by
-                economic conviction, not the number of voters. Answer daily
-                polls, stake a small amount, and earn rewards when the
-                outcome is right.
+                Q4 is a short-term prediction market where you predict real-world outcomes
+                — crypto prices, sports results, weather events, and more.
+                Markets open today, close at the deadline, and resolve automatically
+                using live data.
               </p>
 
               {/* Buttons */}
@@ -144,6 +144,13 @@ export default function HomePage() {
                 >
                   {user ? "Go to Dashboard" : "Get Started"}
                   <ArrowRight size={14} strokeWidth={2.5} />
+                </Link>
+                <Link
+                  to="/markets"
+                  className="btn-secondary"
+                  style={{ flex: 1, justifyContent: "center" }}
+                >
+                  Browse Markets
                 </Link>
               </div>
 
@@ -179,12 +186,54 @@ export default function HomePage() {
       </section>
 
       {/* ═══════════════════════════════════════════════
-          2. WHY Q4  (white section)
+          2. CATEGORIES
       ═══════════════════════════════════════════════ */}
-      <section id="about" style={{ background: "#ffffff" }}>
+      <section style={{ background: "#ffffff" }}>
         <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8 sm:py-24">
 
-          {/* Heading */}
+          <div className="mb-12 text-center">
+            <p
+              className="mb-3 text-xs font-semibold uppercase tracking-widest"
+              style={{ color: "rgba(0,0,0,0.35)", letterSpacing: "0.14em" }}
+            >
+              Question Categories
+            </p>
+            <h2
+              className="font-bold text-[#080808]"
+              style={{ fontSize: "clamp(28px, 4vw, 44px)", letterSpacing: "-0.03em" }}
+            >
+              Real events. Clear outcomes.
+            </h2>
+            <p className="mt-4 text-sm" style={{ color: "rgba(0,0,0,0.5)", maxWidth: 480, margin: "16px auto 0" }}>
+              Every question has a measurable answer and a defined resolution time.
+              No ambiguity — just YES or NO.
+            </p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {CATEGORIES.map(({ emoji, label, example }) => (
+              <div
+                key={label}
+                className="feature-card p-6"
+                style={{ border: "1px solid rgba(0,0,0,0.07)", borderRadius: 16, background: "#f9f9f9" }}
+              >
+                <div className="mb-4 text-3xl">{emoji}</div>
+                <h3 className="mb-2 text-sm font-semibold text-[#080808]">{label}</h3>
+                <p className="text-sm leading-6" style={{ color: "rgba(0,0,0,0.5)", fontStyle: "italic" }}>
+                  "{example}"
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════════════════════════════════════════════
+          3. WHY Q4
+      ═══════════════════════════════════════════════ */}
+      <section id="about" style={{ background: "#f5f5f5" }}>
+        <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8 sm:py-24">
+
           <div className="mb-12 text-center">
             <p
               className="mb-3 text-xs font-semibold uppercase tracking-widest"
@@ -196,11 +245,10 @@ export default function HomePage() {
               className="font-bold text-[#080808]"
               style={{ fontSize: "clamp(28px, 4vw, 44px)", letterSpacing: "-0.03em" }}
             >
-              A better way to predict the future.
+              Short-term. Verifiable. Automatic.
             </h2>
           </div>
 
-          {/* 5 cards */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             {FEATURES.map((f) => (
               <FeatureCard key={f.title} {...f} />
@@ -210,12 +258,11 @@ export default function HomePage() {
       </section>
 
       {/* ═══════════════════════════════════════════════
-          3. HOW IT WORKS  (very light gray)
+          4. HOW IT WORKS
       ═══════════════════════════════════════════════ */}
-      <section id="how-it-works" style={{ background: "#f5f5f5" }}>
+      <section id="how-it-works" style={{ background: "#ffffff" }}>
         <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8 sm:py-24">
 
-          {/* Heading */}
           <div className="mb-14 text-center">
             <p
               className="mb-3 text-xs font-semibold uppercase tracking-widest"
@@ -227,11 +274,10 @@ export default function HomePage() {
               className="font-bold text-[#080808]"
               style={{ fontSize: "clamp(28px, 4vw, 44px)", letterSpacing: "-0.03em" }}
             >
-              Six simple steps.
+              Generate → Predict → Wait → Verify → Resolve
             </h2>
           </div>
 
-          {/* Steps — horizontal on desktop, 2-col on tablet, 1-col on mobile */}
           <div className="grid grid-cols-2 gap-x-4 gap-y-10 sm:grid-cols-3 lg:grid-cols-6 lg:gap-x-2">
             {STEPS.map((step, i) => (
               <ProcessStep
@@ -245,9 +291,9 @@ export default function HomePage() {
       </section>
 
       {/* ═══════════════════════════════════════════════
-          4. CTA  (black card on white background)
+          5. CTA
       ═══════════════════════════════════════════════ */}
-      <section style={{ background: "#ffffff" }}>
+      <section style={{ background: "#f5f5f5" }}>
         <div className="mx-auto max-w-7xl px-5 pb-24 pt-4 sm:px-8">
           <div className="cta-card px-8 py-12 sm:px-12 sm:py-14">
             <div className="flex flex-col gap-8 md:flex-row md:items-center md:justify-between">
@@ -258,12 +304,12 @@ export default function HomePage() {
                   className="font-bold text-white leading-tight"
                   style={{ fontSize: "clamp(28px, 3.5vw, 44px)", letterSpacing: "-0.03em" }}
                 >
-                  Your belief has power.
+                  Predict today.
                   <br />
-                  Make it count with Q4.
+                  Know tonight with Q4.
                 </h2>
                 <p className="mt-4 text-sm leading-6" style={{ color: "rgba(255,255,255,0.45)" }}>
-                  Join thousands of people building the future through economic conviction.
+                  Markets open, close, and resolve within 24 hours — backed by real-world data.
                 </p>
               </div>
 
@@ -276,7 +322,7 @@ export default function HomePage() {
                       <ArrowRight size={14} strokeWidth={2.4} />
                     </Link>
                     <p style={{ fontSize: 11, color: "rgba(255,255,255,0.28)", margin: 0 }}>
-                      Welcome back — your conviction awaits.
+                      Welcome back — your markets await.
                     </p>
                   </div>
                 ) : (

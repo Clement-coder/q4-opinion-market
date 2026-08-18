@@ -6,7 +6,7 @@ import Footer  from "./components/Footer";
 
 import HomePage       from "./pages/HomePage";
 import HowItWorksPage from "./pages/HowItWorksPage";
-import PollsPage      from "./pages/PollsPage";
+import MarketsPage    from "./pages/MarketsPage";
 import AboutPage      from "./pages/AboutPage";
 import FaqPage        from "./pages/FaqPage";
 import SignUpPage     from "./pages/SignUpPage";
@@ -44,10 +44,13 @@ export default function App() {
     <Routes>
       {/* ── Public pages ── */}
       <Route path="/"             element={<PublicLayout><HomePage /></PublicLayout>} />
+      <Route path="/markets"      element={<PublicLayout><MarketsPage /></PublicLayout>} />
       <Route path="/how-it-works" element={<PublicLayout><HowItWorksPage /></PublicLayout>} />
-      <Route path="/polls"        element={<PublicLayout><PollsPage /></PublicLayout>} />
       <Route path="/about"        element={<PublicLayout><AboutPage /></PublicLayout>} />
       <Route path="/faq"          element={<PublicLayout><FaqPage /></PublicLayout>} />
+
+      {/* ── Legacy redirect ── */}
+      <Route path="/polls"        element={<Navigate to="/markets" replace />} />
 
       {/* ── Auth pages ── */}
       <Route path="/signup" element={<AuthRoute><SignUpPage /></AuthRoute>} />

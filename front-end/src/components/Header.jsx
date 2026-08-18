@@ -5,8 +5,8 @@ import { useAuth } from "../context/AuthContext";
 
 const NAV_ITEMS = [
   { label: "Home",         to: "/" },
+  { label: "Markets",      to: "/markets" },
   { label: "How It Works", to: "/how-it-works" },
-  { label: "Polls",        to: "/polls" },
   { label: "About",        to: "/about" },
   { label: "FAQ",          to: "/faq" },
 ];

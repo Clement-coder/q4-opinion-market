@@ -12,10 +12,9 @@ const cols = [
   {
     heading: "Platform",
     links: [
-      { label: "Polls",         to: "/polls"         },
-      { label: "How It Works", to: "/how-it-works" },
-      { label: "Rewards",      to: "/dashboard"    },
-      { label: "Leaderboard",  to: "/dashboard"    },
+      { label: "Markets",       to: "/markets"      },
+      { label: "How It Works",  to: "/how-it-works" },
+      { label: "Rewards",       to: "/dashboard"    },
     ],
   },
   {
@@ -62,9 +61,9 @@ export default function Footer() {
               className="mt-3 text-sm leading-6"
               style={{ color: "rgba(255,255,255,0.4)", maxWidth: 240 }}
             >
-              Economic conviction,
+              Short-term prediction markets.
               <br />
-              not popularity.
+              Resolved by real-world data.
             </p>
 
             {/* Social icons */}
@@ -135,7 +134,7 @@ export default function Footer() {
             <div>
               <p className="text-sm font-semibold text-white">Stay Updated</p>
               <p className="mt-1 text-sm" style={{ color: "rgba(255,255,255,0.4)" }}>
-                Get the latest polls and updates delivered to your inbox.
+                Get the latest markets and updates delivered to your inbox.
               </p>
             </div>
             <form
@@ -174,8 +173,8 @@ export default function Footer() {
             color: "rgba(255,255,255,0.25)",
           }}
         >
-          <span>© 2026 Q4. All rights reserved.</span>
-          <span>Built on Quai Network.</span>
+          <span>© 2026 Q4 Opinion Market. All rights reserved.</span>
+          <span>Predict. Wait. Resolve.</span>
         </div>
       </div>
     </footer>

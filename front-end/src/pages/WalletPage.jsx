@@ -55,36 +55,167 @@ const ago   = (d) => {
 };
 
 /* ════════════════════════════════════════════════
-   SPARKLINE CHART
+   INTERACTIVE PRICE CHART — full hover, crosshair, tooltip
 ════════════════════════════════════════════════ */
-function Sparkline({ history, positive, height = 56 }) {
-  const ref = useRef(null);
-  const [w, setW] = useState(300);
+function PriceChart({ history, positive, height = 140 }) {
+  const containerRef = useRef(null);
+  const svgRef       = useRef(null);
+  const [w,       setW]       = useState(600);
+  const [hovered, setHovered] = useState(null); // { idx, x, y, price, ts }
+
   useEffect(() => {
-    if (!ref.current) return;
+    if (!containerRef.current) return;
     const ro = new ResizeObserver((e) => setW(e[0].contentRect.width));
-    ro.observe(ref.current);
+    ro.observe(containerRef.current);
     return () => ro.disconnect();
   }, []);
-  if (!history || history.length < 2) return <div ref={ref} style={{ height }} />;
+
+  if (!history || history.length < 2) {
+    return <div ref={containerRef} style={{ height, display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <span style={{ fontSize:11, color:"rgba(255,255,255,0.2)" }}>Loading chart…</span>
+    </div>;
+  }
+
   const prices = history.map((p) => p.price);
-  const min = Math.min(...prices), max = Math.max(...prices), range = max-min||1;
-  const pad = 4, H = height-pad*2, step = w/(prices.length-1);
-  const pts = prices.map((p,i) => `${i*step},${pad+H-((p-min)/range)*H}`);
-  const color = positive ? T.yes : T.no;
-  const area  = `${0},${height} ${pts.join(" ")} ${w},${height}`;
+  const times  = history.map((p) => p.timestamp);
+  const minP   = Math.min(...prices), maxP = Math.max(...prices), rangeP = maxP - minP || 1;
+  const pad    = { t: 8, b: 24, l: 4, r: 4 };
+  const innerW = w - pad.l - pad.r;
+  const innerH = height - pad.t - pad.b;
+  const color  = positive ? T.yes : T.no;
+
+  const px = (i) => pad.l + (i / (prices.length - 1)) * innerW;
+  const py = (v) => pad.t + innerH - ((v - minP) / rangeP) * innerH;
+  const pts  = prices.map((v, i) => `${px(i).toFixed(2)},${py(v).toFixed(2)}`).join(" ");
+  const area = `${pad.l},${height - pad.b} ${pts} ${pad.l + innerW},${height - pad.b}`;
+
+  const xLabels = [0, Math.floor((prices.length - 1) / 3), Math.floor((prices.length - 1) * 2 / 3), prices.length - 1].map(i => ({
+    x: px(i),
+    label: new Date(times[i]).toLocaleDateString("en-US", { month:"short", day:"numeric" }),
+  }));
+
+  const handleMouseMove = (e) => {
+    if (!svgRef.current) return;
+    const rect   = svgRef.current.getBoundingClientRect();
+    const xRel   = (e.clientX - rect.left) / rect.width;
+    const idx    = Math.max(0, Math.min(prices.length - 1, Math.round(xRel * (prices.length - 1))));
+    setHovered({ idx, x: px(idx), y: py(prices[idx]), price: prices[idx], ts: times[idx] });
+  };
+
+  const fmtTime = (ts) => new Date(ts).toLocaleDateString("en-US", { month:"short", day:"numeric" }) +
+    " " + new Date(ts).toLocaleTimeString("en-US", { hour:"2-digit", minute:"2-digit", hour12:false });
+
+  const tooltipX = hovered
+    ? Math.max(4, Math.min((hovered.x / w) * 100, 72))
+    : 0;
+
   return (
-    <div ref={ref} style={{ height, overflow:"hidden" }}>
-      <svg width={w} height={height} style={{ display:"block" }}>
+    <div ref={containerRef} style={{ position:"relative", userSelect:"none" }}>
+      <svg
+        ref={svgRef}
+        width={w}
+        height={height}
+        viewBox={`0 0 ${w} ${height}`}
+        style={{ display:"block", cursor:"crosshair", overflow:"visible" }}
+        preserveAspectRatio="none"
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setHovered(null)}
+      >
         <defs>
-          <linearGradient id={`wg${positive?1:0}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor={color} stopOpacity="0.28"/>
-            <stop offset="100%" stopColor={color} stopOpacity="0"/>
+          <linearGradient id="wpc-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor={color} stopOpacity="0.25" />
+            <stop offset="100%" stopColor={color} stopOpacity="0"    />
           </linearGradient>
+          <clipPath id="wpc-clip">
+            <rect x={pad.l} y={pad.t} width={innerW} height={innerH} />
+          </clipPath>
         </defs>
-        <polygon points={area} fill={`url(#wg${positive?1:0})`}/>
-        <polyline points={pts.join(" ")} fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+
+        {/* horizontal grid */}
+        {[0, 0.33, 0.66, 1].map((f, i) => (
+          <line key={i}
+            x1={pad.l} y1={pad.t + f * innerH}
+            x2={pad.l + innerW} y2={pad.t + f * innerH}
+            stroke="rgba(255,255,255,0.05)" strokeWidth="1"
+          />
+        ))}
+
+        {/* area fill */}
+        <polygon points={area} fill="url(#wpc-grad)" clipPath="url(#wpc-clip)" />
+
+        {/* price line */}
+        <polyline
+          points={pts}
+          fill="none"
+          stroke={color}
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          clipPath="url(#wpc-clip)"
+        />
+
+        {/* hover crosshair */}
+        {hovered && (
+          <>
+            <line
+              x1={hovered.x} y1={pad.t}
+              x2={hovered.x} y2={height - pad.b}
+              stroke="rgba(255,255,255,0.25)"
+              strokeWidth="1"
+              strokeDasharray="3,3"
+            />
+            <circle
+              cx={hovered.x} cy={hovered.y} r="4"
+              fill={color} stroke="#080808" strokeWidth="2"
+            />
+            <circle
+              cx={hovered.x} cy={hovered.y} r="8"
+              fill={color} fillOpacity="0.18"
+            />
+          </>
+        )}
+
+        {/* x-axis labels */}
+        {xLabels.map((xl, i) => (
+          <text
+            key={i}
+            x={xl.x}
+            y={height - 4}
+            fontSize="9"
+            fill="rgba(255,255,255,0.3)"
+            textAnchor={i === 0 ? "start" : i === xLabels.length - 1 ? "end" : "middle"}
+            fontFamily="sans-serif"
+          >
+            {xl.label}
+          </text>
+        ))}
       </svg>
+
+      {/* floating tooltip */}
+      {hovered && (
+        <div style={{
+          position:        "absolute",
+          top:             0,
+          left:            `${tooltipX}%`,
+          transform:       "translateX(-50%)",
+          pointerEvents:   "none",
+          background:      "rgba(14,14,14,0.97)",
+          border:          `1px solid ${color}40`,
+          borderRadius:    8,
+          padding:         "6px 10px",
+          backdropFilter:  "blur(12px)",
+          boxShadow:       `0 4px 20px rgba(0,0,0,0.6), 0 0 0 1px ${color}20`,
+          zIndex:          10,
+          minWidth:        110,
+        }}>
+          <p style={{ fontSize:13, fontWeight:800, color, margin:0, letterSpacing:"-0.01em" }}>
+            ${hovered.price.toFixed(6)}
+          </p>
+          <p style={{ fontSize:10, color:"rgba(255,255,255,0.35)", margin:"3px 0 0", whiteSpace:"nowrap" }}>
+            {fmtTime(hovered.ts)}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -540,31 +671,60 @@ export default function WalletPage() {
         </div>
 
         {/* ─── PRICE CARD ─── */}
-        <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:22,padding:20,display:"flex",flexDirection:"column",gap:12,overflow:"hidden"}}>
+        <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:22,padding:20,display:"flex",flexDirection:"column",gap:14,overflow:"hidden",position:"relative"}}>
+
+          {/* header row */}
           <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between"}}>
             <div>
-              <p style={{fontSize:11,fontWeight:700,color:T.dim,letterSpacing:"0.10em",textTransform:"uppercase",margin:"0 0 6px"}}>QUAI / USD</p>
-              <p style={{fontSize:28,fontWeight:900,color:"#fff",margin:0,letterSpacing:"-0.04em",lineHeight:1}}>{price?fmtP(price.price):"—"}</p>
-            </div>
-            {price&&(
-              <div style={{display:"flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:8,background:pos24h?T.yesBg:T.noBg,border:`1px solid ${pos24h?T.yesBd:T.noBd}`}}>
-                {pos24h?<TrendingUp size={12} strokeWidth={2.5} style={{color:T.yes}}/>:<TrendingDown size={12} strokeWidth={2.5} style={{color:T.no}}/>}
-                <span style={{fontSize:12,fontWeight:700,color:pos24h?T.yes:T.no}}>{pos24h?"+":""}{(price.changePercent24h??0).toFixed(2)}%</span>
+              <p style={{fontSize:10,fontWeight:700,color:T.dim,letterSpacing:"0.12em",textTransform:"uppercase",margin:"0 0 6px"}}>QUAI / USD · 7 Day</p>
+              <div style={{display:"flex",alignItems:"baseline",gap:10}}>
+                <p style={{fontSize:28,fontWeight:900,color:"#fff",margin:0,letterSpacing:"-0.04em",lineHeight:1}}>
+                  {price ? fmtP(price.price) : "—"}
+                </p>
+                {price && (
+                  <div style={{display:"flex",alignItems:"center",gap:4,padding:"4px 8px",borderRadius:7,background:pos24h?T.yesBg:T.noBg,border:`1px solid ${pos24h?T.yesBd:T.noBd}`}}>
+                    {pos24h
+                      ? <TrendingUp  size={11} strokeWidth={2.5} style={{color:T.yes}}/>
+                      : <TrendingDown size={11} strokeWidth={2.5} style={{color:T.no}} />}
+                    <span style={{fontSize:12,fontWeight:800,color:pos24h?T.yes:T.no}}>
+                      {pos24h ? "+" : ""}{(price.changePercent24h??0).toFixed(2)}%
+                    </span>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
+            {/* live dot */}
+            <div style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",borderRadius:7,background:"rgba(255,255,255,0.04)",border:`1px solid ${T.border}`}}>
+              <span style={{width:6,height:6,borderRadius:"50%",background:T.yes,boxShadow:`0 0 6px ${T.yes}`,flexShrink:0,animation:"pulse-dot 2s ease-in-out infinite"}}/>
+              <span style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.4)"}}>LIVE</span>
+            </div>
           </div>
-          <div style={{flex:1,minHeight:56}}><Sparkline history={history} positive={pos24h} height={60}/></div>
-          {price&&(
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-              {[["24h High",fmtP(price.high24h)],["24h Low",fmtP(price.low24h)],["Vol 24h",price.volume24h?`$${(price.volume24h/1000).toFixed(0)}K`:"—"]].map(([l,v])=>(
-                <div key={l} style={{textAlign:"center"}}>
-                  <p style={{fontSize:9,fontWeight:700,color:T.dim,margin:"0 0 2px",letterSpacing:"0.06em",textTransform:"uppercase"}}>{l}</p>
-                  <p style={{fontSize:11,fontWeight:700,color:T.muted,margin:0}}>{v}</p>
+
+          {/* interactive chart */}
+          <div style={{margin:"0 -4px"}}>
+            <PriceChart history={history} positive={pos24h} height={148} />
+          </div>
+
+          {/* stats row */}
+          {price && (
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,borderTop:`1px solid ${T.border}`,paddingTop:12}}>
+              {[
+                ["High 24h",  fmtP(price.high24h)],
+                ["Low 24h",   fmtP(price.low24h)],
+                ["Vol 24h",   price.volume24h ? `$${(price.volume24h/1000).toFixed(0)}K` : "—"],
+                ["Mkt Cap",   price.marketCap  ? `$${(price.marketCap/1e6).toFixed(1)}M`  : "—"],
+              ].map(([l,v]) => (
+                <div key={l} style={{textAlign:"center",padding:"8px 0",borderRadius:8,background:"rgba(255,255,255,0.02)"}}>
+                  <p style={{fontSize:9,fontWeight:700,color:T.dim,margin:"0 0 3px",letterSpacing:"0.07em",textTransform:"uppercase"}}>{l}</p>
+                  <p style={{fontSize:12,fontWeight:700,color:T.muted,margin:0}}>{v}</p>
                 </div>
               ))}
             </div>
           )}
-          <p style={{fontSize:9,color:T.dim,margin:0,textAlign:"right"}}>via BlipPay · {price?.lastUpdated?new Date(price.lastUpdated).toLocaleTimeString():"—"}</p>
+
+          <p style={{fontSize:9,color:T.dim,margin:0,textAlign:"right"}}>
+            via BlipPay · {price?.lastUpdated ? new Date(price.lastUpdated).toLocaleTimeString() : "—"}
+          </p>
         </div>
       </div>
 

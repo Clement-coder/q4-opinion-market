@@ -5,7 +5,7 @@
  * URL-driven: /dashboard/:section — each sidebar item is its own route
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import {
   LayoutGrid, HelpCircle, BookMarked, BarChart3, Trophy,
@@ -21,6 +21,13 @@ import { Q4Logo }   from "../components/icons";
 import { useAuth }  from "../context/AuthContext";
 import { useWallet } from "../context/WalletContext";
 import { useQuaiPrice, useNewsFeed, useBlipLeaderboard } from "../services/useBlipPay";
+import { useMarkets, useMarket } from "../hooks/useMarkets";
+import { usePositions }          from "../hooks/usePositions";
+import { useNotifications }      from "../hooks/useNotifications";
+import { useResults }            from "../hooks/useResults";
+import { useRewards }            from "../hooks/useRewards";
+import { useAdminUsers, useAdminMarkets, useAdminStats } from "../hooks/useAdminData";
+import { supabase }              from "../lib/supabase";
 import WalletPage   from "./WalletPage";
 
 /* ════════════════════════════════════════════════
@@ -50,102 +57,24 @@ const T = {
 };
 
 /* ════════════════════════════════════════════════
-   DATA — Static market demo data
-   (live user data is fetched via hooks / WalletContext)
+   DATA — Static UI config only
+   All market/user data comes from the smart contract
+   and Supabase via hooks (not yet wired in MVP).
 ════════════════════════════════════════════════ */
 
-// Demo market data — in production these come from the smart contract / Supabase indexer
-const QUESTIONS = [
-  { id: "us-election-2024",  category: "Politics",          question: "Will the United States hold presidential elections in 2024?", closes: "1h 24m", yes: 70, no: 30, yesPool: 7000,  noPool: 3000,  totalPool: 10000, resolves: 'Resolves "Yes" if US presidential election occurs in 2024.', resolution: "Based on official US election authority announcements." },
-  { id: "global-recession",  category: "Politics",          question: "Will a global recession begin in 2025?",                      closes: "1h 30m", yes: 65, no: 35, yesPool: 4030,  noPool: 2170,  totalPool: 6200  },
-  { id: "element-o",         category: "General Knowledge", question: "Which element has the chemical symbol 'O'?",                   closes: "6h 45m", yes: 84, no: 16, yesPool: 2352,  noPool: 448,   totalPool: 2800  },
-  { id: "is-97-prime",       category: "Math",              question: "Is 97 a prime number?",                                        closes: "6h 20m", yes: 92, no:  8, yesPool: 1702,  noPool: 148,   totalPool: 1850  },
-  { id: "first-impressions", category: "Psychology",        question: "Do first impressions shape our long-term perception?",         closes: "1d 2h",  yes: 58, no: 42, yesPool: 2088,  noPool: 1512,  totalPool: 3600  },
-  { id: "ethereum-10k",      category: "Crypto",            question: "Will Ethereum reach $10,000 before 2026?",                     closes: "1d 8h",  yes: 71, no: 29, yesPool: 6390,  noPool: 2610,  totalPool: 9000  },
-];
-
-// Demo settled results — in production sourced from on-chain settlement events
-const RESULTS = [
-  { id: "us-election-2024", question: "Will the United States hold presidential elections in 2024?", category: "Politics",          outcome: "YES", consensus: 70, totalPool: 10000, settledAt: "Aug 12, 2026", yourSide: "YES", yourStake: 1.5, yourReward: 84.20,  won: true  },
-  { id: "is-97-prime",      question: "Is 97 a prime number?",                                       category: "Math",              outcome: "YES", consensus: 92, totalPool: 1850,  settledAt: "Aug 10, 2026", yourSide: "YES", yourStake: 0.5, yourReward: 18.50,  won: true  },
-  { id: "triangle-angles",  question: "Do interior angles of a triangle always sum to 180°?",        category: "Math",              outcome: "YES", consensus: 97, totalPool: 1200,  settledAt: "Aug 08, 2026", yourSide: "YES", yourStake: 0.8, yourReward: 42.00,  won: true  },
-  { id: "global-recession", question: "Will a global recession begin in 2025?",                      category: "Politics",          outcome: "NO",  consensus: 65, totalPool: 6200,  settledAt: "Aug 05, 2026", yourSide: "YES", yourStake: 1.0, yourReward: 0,      won: false },
-  { id: "mars-mission",     question: "Will SpaceX land on Mars before 2027?",                       category: "Science",           outcome: "NO",  consensus: 78, totalPool: 4400,  settledAt: "Jul 30, 2026", yourSide: "NO",  yourStake: 1.2, yourReward: 52.80,  won: true  },
-  { id: "eth-flipped-btc",  question: "Will Ethereum flip Bitcoin by market cap in 2025?",           category: "Crypto",            outcome: "NO",  consensus: 71, totalPool: 12000, settledAt: "Jul 22, 2026", yourSide: "YES", yourStake: 2.0, yourReward: 0,      won: false },
-  { id: "largest-planet-q", question: "What is the largest planet in our solar system?",             category: "General Knowledge", outcome: "YES", consensus: 95, totalPool: 3200,  settledAt: "Jul 15, 2026", yourSide: "YES", yourStake: 0.4, yourReward: 14.20,  won: true  },
-];
-
-// Demo claimable rewards — in production sourced from smart contract read
-const CLAIMABLE_REWARDS = [
-  { id: "us-election-2024", question: "Will the United States hold presidential elections in 2024?", category: "Politics",          outcome: "YES", yourSide: "YES", stake: 1.5, reward: 84.20, claimed: false, settledAt: "Aug 12, 2026" },
-  { id: "is-97-prime",      question: "Is 97 a prime number?",                                       category: "Math",              outcome: "YES", yourSide: "YES", stake: 0.5, reward: 18.50, claimed: false, settledAt: "Aug 10, 2026" },
-  { id: "triangle-angles",  question: "Do interior angles of a triangle always sum to 180°?",        category: "Math",              outcome: "YES", yourSide: "YES", stake: 0.8, reward: 42.00, claimed: false, settledAt: "Aug 08, 2026" },
-  { id: "mars-mission",     question: "Will SpaceX land on Mars before 2027?",                       category: "Science",           outcome: "NO",  yourSide: "NO",  stake: 1.2, reward: 52.80, claimed: true,  settledAt: "Jul 30, 2026" },
-  { id: "largest-planet-q", question: "What is the largest planet in our solar system?",             category: "General Knowledge", outcome: "YES", yourSide: "YES", stake: 0.4, reward: 14.20, claimed: true,  settledAt: "Jul 15, 2026" },
-];
-
-// Demo user conviction positions — in production sourced from on-chain positions
-const CONVICTIONS = [
-  { question: "Will the United States hold presidential elections in 2024?", category: "Politics",          answer: "YES", staked: 1.5, side: 70, totalPool: 10000, switched: "No",       status: "Open" },
-  { question: "Will Bitcoin reach $150,000 before Dec 2026?",               category: "Crypto",            answer: "YES", staked: 2.0, side: 68, totalPool: 8250,  switched: "YES → NO", status: "Open" },
-  { question: "What is the largest planet in our solar system?",             category: "General Knowledge", answer: "YES", staked: 0.6, side: 62, totalPool: 2450,  switched: "No",       status: "Open" },
-  { question: "Do first impressions shape our long-term perception?",        category: "Psychology",        answer: "YES", staked: 1.2, side: 58, totalPool: 3600,  switched: "No",       status: "Open" },
-  { question: "Is 97 a prime number?",                                       category: "Math",              answer: "YES", staked: 0.5, side: 92, totalPool: 1850,  switched: "No",       status: "Open" },
-];
-
-// Demo activity feed — in production sourced from Supabase indexed blockchain events
-const ACTIVITY = [
-  { id: 1, type: "reward", label: "Reward claimed",            detail: "US Elections 2024",           amount: "+84.20 Q",  time: "2h ago",  pos: true  },
-  { id: 2, type: "stake",  label: "Position: YES on BTC",      detail: "Bitcoin $150K market",        amount: "-2.00 Q",   time: "5h ago",  pos: false },
-  { id: 3, type: "switch", label: "Switched to NO",            detail: "AI replace jobs by 2035",     amount: "—",         time: "8h ago",  pos: false },
-  { id: 4, type: "reward", label: "Reward claimed",            detail: "Interior angles of triangle", amount: "+42.00 Q",  time: "1d ago",  pos: true  },
-  { id: 5, type: "stake",  label: "Position: YES on Ethereum", detail: "ETH $10K market",             amount: "-1.50 Q",   time: "2d ago",  pos: false },
-  { id: 6, type: "reward", label: "Reward claimed",            detail: "US Elections market",         amount: "+120.00 Q", time: "4d ago",  pos: true  },
-];
-
-// Demo stats derived from RESULTS / CONVICTIONS — in production computed from chain data
-const DEMO_STATS = {
-  todayAnswered:   7,
-  todayTotal:      10,
-  accuracy:        68,
-  marketsWon:      32,
-  marketsTotal:    47,
-  weeklyPnl:       +18.6,
-  allTimeEarned:   246.2,
-};
-
-// Portfolio performance bars (last 7 markets pool-share %) — demo only
-const PORTFOLIO_BARS = [42, 68, 55, 80, 47, 91, 74];
-
-// Notification seed — in production these come from Supabase user_notifications
-const SEED_NOTIFICATIONS = [
-  { id: 1, type: "reward",  title: "Reward available",     body: "US Elections 2024 has resolved. Claim your 84.20 Q reward.",         time: "2h ago",  read: false },
-  { id: 2, type: "market",  title: "Market closing soon",  body: "\"Will Bitcoin exceed $100k?\" closes in 1 hour.",                   time: "55m ago", read: false },
-  { id: 3, type: "reward",  title: "Reward available",     body: "Interior angles of triangle resolved. Claim your 42.00 Q reward.",  time: "1d ago",  read: false },
-  { id: 4, type: "switch",  title: "Switch reminder",      body: "You have 1 switch remaining on the ETH $10K market.",               time: "2d ago",  read: true  },
-  { id: 5, type: "market",  title: "New poll added",       body: "\"Will GPT-5 launch before December 2026?\" is now live.",          time: "3d ago",  read: true  },
-  { id: 6, type: "system",  title: "Welcome to Q4",        body: "Stake your conviction on live markets and earn rewards.",           time: "7d ago",  read: true  },
-];
-
 const CATEGORIES = [
-  { key: "all",        label: "All Categories",   emoji: "🌐" },
-  { key: "politics",   label: "Politics",          emoji: "🏛️" },
-  { key: "general",    label: "General Knowledge", emoji: "💡" },
-  { key: "math",       label: "Math",              emoji: "🔢" },
-  { key: "psychology", label: "Psychology",        emoji: "🧠" },
-  { key: "crypto",     label: "Crypto",            emoji: "₿"  },
-  { key: "science",    label: "Science",           emoji: "🔬" },
-  { key: "sports",     label: "Sports",            emoji: "⚽" },
+  { key: "all",     label: "All Categories", emoji: "🌐" },
+  { key: "crypto",  label: "Crypto",         emoji: "₿"  },
+  { key: "sports",  label: "Sports",         emoji: "⚽" },
+  { key: "weather", label: "Weather",        emoji: "🌤️" },
+  { key: "stocks",  label: "Stocks",         emoji: "📈" },
 ];
 
 const CAT_STYLE = {
-  Politics:          { color: "#a78bfa", bg: "rgba(167,139,250,0.12)" },
-  Crypto:            { color: "#fbbf24", bg: "rgba(251,191,36,0.12)"  },
-  "General Knowledge":{ color: "#38bdf8", bg: "rgba(56,189,248,0.12)" },
-  Math:              { color: "#f472b6", bg: "rgba(244,114,182,0.12)" },
-  Psychology:        { color: "#fb7185", bg: "rgba(251,113,133,0.12)" },
-  Science:           { color: "#34d399", bg: "rgba(52,211,153,0.12)"  },
-  Sports:            { color: "#fb923c", bg: "rgba(251,146,60,0.12)"  },
+  Crypto:  { color: "#fbbf24", bg: "rgba(251,191,36,0.12)"  },
+  Sports:  { color: "#fb923c", bg: "rgba(251,146,60,0.12)"  },
+  Weather: { color: "#38bdf8", bg: "rgba(56,189,248,0.12)"  },
+  Stocks:  { color: "#34d399", bg: "rgba(52,211,153,0.12)"  },
 };
 
 /* ════════════════════════════════════════════════
@@ -241,6 +170,18 @@ function SectionHeading({ children, action }) {
       {action}
     </div>
   );
+}
+
+/** Time-left formatter for the market detail page */
+function formatDetailTime(ms) {
+  const s = Math.floor(ms / 1000);
+  if (s < 60)   return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60)   return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24)   return `${h}h ${m % 60}m`;
+  const d = Math.floor(h / 24);
+  return `${d}d ${h % 24}h`;
 }
 
 /* ════════════════════════════════════════════════
@@ -447,18 +388,20 @@ function NotificationSidebar({ open, onClose, notifications, onMarkAllRead, onMa
 ════════════════════════════════════════════════ */
 
 const NAV_ITEMS = [
-  { key: "dashboard",   label: "Dashboard",     icon: LayoutGrid,  desc: "Overview & stats"    },
-  { key: "questions",   label: "Polls",     icon: HelpCircle,  desc: "Daily markets"       },
-  { key: "convictions", label: "Convictions",   icon: BookMarked,  desc: "Your positions"      },
-  { key: "results",     label: "Results",       icon: BarChart3,   desc: "Market outcomes"     },
-  { key: "leaderboard", label: "Leaderboard",   icon: Trophy,      desc: "Top predictors"      },
-  { key: "rewards",     label: "Rewards",       icon: Gift,        desc: "Claim earnings"      },
-  { key: "how",         label: "How It Works",  icon: Info,        desc: "Platform guide"      },
-  { key: "wallet",      label: "Wallet",        icon: WalletCards, desc: "Manage your funds"   },
-  { key: "profile",     label: "Profile",       icon: User,        desc: "Account settings"    },
+  { key: "dashboard",  label: "Dashboard",    icon: LayoutGrid,  desc: "Overview & stats"   },
+  { key: "questions",  label: "Markets",      icon: HelpCircle,  desc: "Active markets"     },
+  { key: "convictions",label: "My Positions", icon: BookMarked,  desc: "Your predictions"   },
+  { key: "results",    label: "Results",      icon: BarChart3,   desc: "Market outcomes"    },
+  { key: "leaderboard",label: "Leaderboard",  icon: Trophy,      desc: "Top predictors"     },
+  { key: "rewards",    label: "Rewards",      icon: Gift,        desc: "Claim earnings"     },
+  { key: "how",        label: "How It Works", icon: Info,        desc: "Platform guide"     },
+  { key: "wallet",     label: "Wallet",       icon: WalletCards, desc: "Manage your funds"  },
+  { key: "profile",    label: "Profile",      icon: User,        desc: "Account settings"   },
 ];
 
-function Sidebar({ active, onNavigate, onLogout }) {
+const ADMIN_NAV_ITEM = { key: "admin", label: "Admin", icon: ShieldCheck, desc: "Admin dashboard" };
+
+function Sidebar({ active, onNavigate, onLogout, isAdmin }) {
   return (
     <aside style={{
       width: 240,
@@ -541,6 +484,38 @@ function Sidebar({ active, onNavigate, onLogout }) {
             </button>
           );
         })}
+
+        {/* Admin — only visible to admins */}
+        {isAdmin && (() => {
+          const { key, label, icon: Icon, desc } = ADMIN_NAV_ITEM;
+          const isActive = active === key;
+          return (
+            <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${T.border}` }}>
+              <p style={{ fontSize: 10, fontWeight: 700, color: "rgba(251,191,36,0.5)", letterSpacing: "0.1em", padding: "0 10px 6px", textTransform: "uppercase" }}>Admin</p>
+              <button
+                type="button"
+                onClick={() => onNavigate(key)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 11, width: "100%",
+                  padding: "9px 10px", borderRadius: 8,
+                  background: isActive ? "rgba(251,191,36,0.15)" : "transparent",
+                  color: isActive ? "#fbbf24" : "rgba(251,191,36,0.7)",
+                  border: isActive ? "1px solid rgba(251,191,36,0.3)" : "1px solid transparent",
+                  cursor: "pointer", transition: "background 0.15s, color 0.15s, border-color 0.15s",
+                  textAlign: "left",
+                }}
+                onMouseEnter={(e) => { if (!isActive) { e.currentTarget.style.background = "rgba(251,191,36,0.08)"; e.currentTarget.style.color = "#fbbf24"; }}}
+                onMouseLeave={(e) => { if (!isActive) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(251,191,36,0.7)"; }}}
+              >
+                <Icon size={16} strokeWidth={isActive ? 2.4 : 1.8} style={{ flexShrink: 0 }} />
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontSize: 13, fontWeight: isActive ? 700 : 500, margin: 0, letterSpacing: "-0.01em" }}>{label}</p>
+                  <p style={{ fontSize: 10, margin: 0, opacity: 0.6 }}>{desc}</p>
+                </div>
+              </button>
+            </div>
+          );
+        })()}
       </nav>
 
       {/* Bottom */}
@@ -666,287 +641,383 @@ function TopHeader({ pageLabel, onOpenMobileSidebar, onNavigate, user, onOpenNot
    PAGE: DASHBOARD (main overview tab)
 ════════════════════════════════════════════════ */
 
-function PageDashboard({ onOpenQuestion, onNavigate }) {
-  const featured    = QUESTIONS[0];
+/* ─── shared empty-state atom ─────────────────── */
+function EmptyState({ icon: Icon, title, body, action }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "52px 24px", gap: 12, textAlign: "center" }}>
+      <div style={{ width: 52, height: 52, borderRadius: 14, background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <Icon size={22} strokeWidth={1.4} style={{ color: T.textDim }} />
+      </div>
+      <p style={{ fontSize: 14, fontWeight: 700, color: T.textMuted, margin: 0 }}>{title}</p>
+      {body && <p style={{ fontSize: 12, color: T.textDim, margin: 0, maxWidth: 320, lineHeight: 1.6 }}>{body}</p>}
+      {action}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════
+   PAGE: DASHBOARD
+════════════════════════════════════════════════ */
+
+function PageDashboard({ onNavigate }) {
   const { balance, priceData } = useWallet();
+  const quaiPrice   = priceData?.current?.price ?? null;
+  const priceChange = priceData?.current?.changePercent24h ?? null;
+  const high24h     = priceData?.current?.high24h ?? null;
+  const low24h      = priceData?.current?.low24h ?? null;
+  const history     = priceData?.history ?? [];
 
-  const stats       = DEMO_STATS;
-  const progressPct = (stats.todayAnswered / stats.todayTotal) * 100;
-
-  // Derive staked from convictions
-  const totalStaked     = CONVICTIONS.reduce((s, c) => s + c.staked, 0);
-  const potentialRewards = CLAIMABLE_REWARDS.filter(r => !r.claimed).reduce((s, r) => s + r.reward, 0);
-
-  const quaiPrice    = priceData?.current?.price ?? null;
-  const priceChange  = priceData?.current?.changePercent24h ?? null;
+  // Live markets + positions for platform breakdown charts
+  const { markets }   = useMarkets({});
+  const { positions } = usePositions();
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
 
       {/* ── KPI ROW ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }} className="dash-kpi-grid">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }} className="dash-kpi-grid">
 
-        {/* Today's Progress */}
-        <GCard style={{ padding: "18px 20px" }}>
-          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-            <div>
-              <p style={{ fontSize: 11, color: T.textDim, margin: "0 0 8px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Today's Progress</p>
-              <p style={{ fontSize: 26, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.04em" }}>
-                {stats.todayAnswered}<span style={{ color: T.textMuted, fontSize: 18 }}>/{stats.todayTotal}</span>
-              </p>
-              <p style={{ fontSize: 11, color: T.textDim, margin: "4px 0 0" }}>Polls answered</p>
-            </div>
-            <div style={{ position: "relative", flexShrink: 0 }}>
-              <RingProgress value={stats.todayAnswered} max={stats.todayTotal} size={52} stroke={3.5} color="#ffffff" />
-              <span style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", fontSize: 11, fontWeight: 800, color: "#ffffff" }}>
-                {Math.round(progressPct)}%
-              </span>
-            </div>
-          </div>
-          <div style={{ marginTop: 12, height: 3, borderRadius: 2, background: T.border }}>
-            <div style={{ width: `${progressPct}%`, height: "100%", borderRadius: 2, background: "#ffffff", transition: "width 0.6s ease" }} />
-          </div>
+        {/* Wallet balance */}
+        <GCard style={{ padding: "20px 22px" }}>
+          <p style={{ fontSize: 11, color: T.textDim, margin: "0 0 8px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>Wallet Balance</p>
+          <p style={{ fontSize: 30, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.04em" }}>
+            {balance.quai.toFixed(4)}<span style={{ color: T.textMuted, fontSize: 15, fontWeight: 500, marginLeft: 5 }}>Q</span>
+          </p>
+          <p style={{ fontSize: 12, color: T.textDim, margin: "5px 0 0" }}>
+            {balance.usd > 0 ? `≈ $${balance.usd.toFixed(2)} USD` : quaiPrice ? "—" : "Loading…"}
+          </p>
         </GCard>
 
-        {/* Wallet balance (live from WalletContext + BlipPay price) */}
-        <GCard style={{ padding: "18px 20px" }}>
-          <p style={{ fontSize: 11, color: T.textDim, margin: "0 0 8px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Wallet Balance</p>
-          <p style={{ fontSize: 26, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.04em" }}>
-            {balance.quai.toFixed(2)}<span style={{ color: T.textMuted, fontSize: 14, fontWeight: 500, marginLeft: 4 }}>Q</span>
-          </p>
-          <p style={{ fontSize: 11, color: T.textDim, margin: "4px 0 6px" }}>
-            {balance.usd > 0 ? `≈ $${balance.usd.toFixed(2)} USD` : "—"}
-          </p>
-          {quaiPrice && (
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 11, color: T.textDim }}>QUAI</span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary }}>${quaiPrice.toFixed(5)}</span>
-              {priceChange != null && (
-                <span style={{ fontSize: 10, fontWeight: 600, color: priceChange >= 0 ? T.yes : T.no }}>
-                  {priceChange >= 0 ? "+" : ""}{priceChange.toFixed(2)}%
+        {/* Live QUAI price */}
+        <GCard style={{ padding: "20px 22px" }}>
+          <p style={{ fontSize: 11, color: T.textDim, margin: "0 0 8px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>QUAI Price</p>
+          {quaiPrice ? (
+            <>
+              <p style={{ fontSize: 30, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.04em" }}>
+                ${quaiPrice.toFixed(5)}
+              </p>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 5 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: priceChange >= 0 ? T.yes : T.no }}>
+                  {priceChange >= 0 ? "▲" : "▼"} {Math.abs(priceChange).toFixed(2)}% 24h
                 </span>
-              )}
-            </div>
+                {high24h && <span style={{ fontSize: 11, color: T.textDim }}>H: ${high24h.toFixed(5)}</span>}
+                {low24h  && <span style={{ fontSize: 11, color: T.textDim }}>L: ${low24h.toFixed(5)}</span>}
+              </div>
+            </>
+          ) : (
+            <p style={{ fontSize: 13, color: T.textDim, margin: 0 }}>Loading price…</p>
           )}
         </GCard>
 
-        {/* Claimable rewards */}
-        <GCard style={{ padding: "18px 20px" }}>
-          <p style={{ fontSize: 11, color: T.textDim, margin: "0 0 8px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Claimable Rewards</p>
-          <p style={{ fontSize: 26, fontWeight: 800, color: T.yes, margin: 0, letterSpacing: "-0.04em" }}>
-            {potentialRewards.toFixed(2)}<span style={{ color: T.textMuted, fontSize: 14, fontWeight: 500, marginLeft: 4 }}>Q</span>
-          </p>
-          <p style={{ fontSize: 11, color: T.textDim, margin: "4px 0 10px" }}>From settled markets</p>
-          <button type="button" onClick={() => onNavigate("rewards")}
-            style={{ fontSize: 11, fontWeight: 700, color: T.yes, background: T.yesBg, border: `1px solid ${T.yesBorder}`, borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>
-            Claim now →
-          </button>
-        </GCard>
-
-        {/* Accuracy */}
-        <GCard style={{ padding: "18px 20px" }}>
-          <p style={{ fontSize: 11, color: T.textDim, margin: "0 0 8px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Accuracy Rate</p>
-          <p style={{ fontSize: 26, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.04em" }}>{stats.accuracy}<span style={{ color: T.textMuted, fontSize: 18 }}>%</span></p>
-          <p style={{ fontSize: 11, color: T.textDim, margin: "4px 0 10px" }}>{stats.marketsWon} correct / {stats.marketsTotal} total</p>
-          <div style={{ height: 4, borderRadius: 2, background: T.border }}>
-            <div style={{ width: `${stats.accuracy}%`, height: "100%", borderRadius: 2, background: `linear-gradient(90deg, ${T.yes}, rgba(34,197,94,0.6))` }} />
+        {/* Quick actions */}
+        <GCard style={{ padding: "20px 22px" }}>
+          <p style={{ fontSize: 11, color: T.textDim, margin: "0 0 12px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>Quick Actions</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {[
+              { label: "Browse Markets",  icon: HelpCircle, key: "questions"   },
+              { label: "My Positions",    icon: BookMarked, key: "convictions" },
+              { label: "Claim Rewards",   icon: Gift,       key: "rewards"     },
+            ].map(({ label, icon: Icon, key }) => (
+              <button key={key} type="button" onClick={() => onNavigate(key)}
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 8, background: T.glass, border: `1px solid ${T.border}`, cursor: "pointer", textAlign: "left", transition: "border-color 0.15s, background 0.15s" }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.background = T.glassHover; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.background = T.glass; }}
+              >
+                <Icon size={14} strokeWidth={1.8} style={{ color: T.textMuted, flexShrink: 0 }} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary }}>{label}</span>
+                <ChevronRight size={12} style={{ color: T.textDim, marginLeft: "auto", flexShrink: 0 }} />
+              </button>
+            ))}
           </div>
         </GCard>
       </div>
 
-      {/* ── SECONDARY STATS ROW ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }} className="dash-sec-grid">
+      {/* ── INTERACTIVE PRICE CHART ── */}
+      {history.length > 1 && (
+        <InteractivePriceChart history={history} priceChange={priceChange} quaiPrice={quaiPrice} />
+      )}
 
-        {/* Weekly P&L */}
-        <GCard style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: stats.weeklyPnl >= 0 ? T.yesBg : T.noBg, border: `1px solid ${stats.weeklyPnl >= 0 ? T.yesBorder : T.noBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            {stats.weeklyPnl >= 0 ? <TrendingUp size={18} strokeWidth={2} style={{ color: T.yes }} /> : <TrendingDown size={18} strokeWidth={2} style={{ color: T.no }} />}
+      {/* ── MY STATS ROW ── */}
+      {positions.length > 0 && (() => {
+        const open     = positions.filter(p => p.status === "active" || p.status === "closed").length;
+        const resolved = positions.filter(p => p.status === "resolved");
+        const wins     = resolved.filter(p => p.won === true).length;
+        const staked   = positions.reduce((s, p) => s + p.amount, 0);
+        const winRate  = resolved.length > 0 ? Math.round((wins / resolved.length) * 100) : null;
+        return (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }} className="dash-kpi-grid">
+            {[
+              { label: "Open Positions", value: open,                      color: "#38bdf8", icon: BookMarked },
+              { label: "Total Staked",   value: `${staked.toFixed(2)} Q`,  color: "#fbbf24", icon: Coins     },
+              { label: "Wins",           value: wins,                      color: T.yes,     icon: Trophy    },
+              { label: "Win Rate",       value: winRate != null ? `${winRate}%` : "—", color: T.violet, icon: Target },
+            ].map(({ label, value, color, icon: Icon }) => (
+              <GCard key={label} style={{ padding: "16px 18px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <p style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>{label}</p>
+                  <div style={{ width: 28, height: 28, borderRadius: 7, background: `${color}18`, border: `1px solid ${color}30`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <Icon size={12} strokeWidth={2} style={{ color }} />
+                  </div>
+                </div>
+                <p style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>{value}</p>
+              </GCard>
+            ))}
           </div>
-          <div>
-            <p style={{ fontSize: 10, color: T.textDim, margin: "0 0 2px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Weekly P&amp;L</p>
-            <p style={{ fontSize: 18, fontWeight: 800, color: stats.weeklyPnl >= 0 ? T.yes : T.no, margin: 0, letterSpacing: "-0.03em" }}>{stats.weeklyPnl >= 0 ? "+" : ""}{stats.weeklyPnl} Q</p>
-          </div>
-        </GCard>
+        );
+      })()}
 
-        {/* All-time earned */}
-        <GCard style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <Gift size={18} strokeWidth={1.8} style={{ color: T.textPrimary }} />
-          </div>
-          <div>
-            <p style={{ fontSize: 10, color: T.textDim, margin: "0 0 2px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>All-Time Earned</p>
-            <p style={{ fontSize: 18, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>{stats.allTimeEarned.toFixed(1)} Q</p>
-          </div>
-        </GCard>
+      {/* ── PLATFORM BREAKDOWN CHARTS ── */}
+      <UserDashboardCharts markets={markets} positions={positions} />
 
-        {/* Switch once reminder */}
-        <GCard style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <ArrowLeftRight size={18} strokeWidth={1.8} style={{ color: T.textPrimary }} />
-          </div>
-          <div>
-            <p style={{ fontSize: 10, color: T.textDim, margin: "0 0 2px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Switch Remaining</p>
-            <p style={{ fontSize: 18, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>1 available</p>
-          </div>
-        </GCard>
+      {/* ── PLATFORM INFO ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }} className="dash-sec-grid">
+        {[
+          { icon: ShieldCheck, label: "Non-Custodial",      sub: "You control your funds" },
+          { icon: Globe,       label: "On-Chain Settlement",  sub: "Verified on-chain"      },
+          { icon: Zap,         label: "Oracle-Verified",      sub: "Real-world data"        },
+        ].map(({ icon: Icon, label, sub }) => (
+          <GCard key={label} style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Icon size={16} strokeWidth={1.8} style={{ color: T.textMuted }} />
+            </div>
+            <div>
+              <p style={{ fontSize: 13, fontWeight: 700, color: T.textPrimary, margin: 0 }}>{label}</p>
+              <p style={{ fontSize: 11, color: T.textDim, margin: 0 }}>{sub}</p>
+            </div>
+          </GCard>
+        ))}
       </div>
 
-      {/* ── MAIN 2-COL ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 16 }} className="dash-main-grid">
-
-        {/* LEFT: featured market + today's polls */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-
-          {/* Featured market */}
-          <div style={{
-            background: T.surface,
-            border: `1px solid ${T.border}`,
-            borderRadius: 18,
-            overflow: "hidden",
-            transition: "border-color 0.2s, box-shadow 0.2s",
-          }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.boxShadow = "0 12px 40px rgba(0,0,0,0.5)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.boxShadow = "none"; }}
-          >
-            {/* Featured label row */}
-            <div style={{ padding: "10px 18px 0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: T.yes, boxShadow: `0 0 6px ${T.yes}`, flexShrink: 0 }} />
-                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: T.textDim, textTransform: "uppercase" }}>Featured Market</span>
-              </div>
-              <span style={{ fontSize: 11, color: T.textDim, display: "flex", alignItems: "center", gap: 4 }}>
-                <Clock size={10} strokeWidth={2} /> {featured.closes}
-              </span>
-            </div>
-
-            {/* Card info */}
-            <div style={{ padding: "12px 18px 14px" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                <CategoryBadge category={featured.category} />
-              </div>
-              <p style={{ fontSize: 15, fontWeight: 700, color: "#ffffff", margin: "0 0 10px", letterSpacing: "-0.02em", lineHeight: 1.45 }}>{featured.question}</p>
-              <p style={{ fontSize: 11, color: T.textDim, margin: 0 }}>
-                Pool: <span style={{ color: T.textMuted, fontWeight: 600 }}>${featured.totalPool.toLocaleString()}</span>
-              </p>
-            </div>
-
-            {/* Galaxy YES / VS / NO */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", borderTop: `1px solid ${T.border}`, alignItems: "stretch" }}>
-              <GalaxyBtn side="YES" onClick={() => onOpenQuestion(featured.id)} />
-              {/* VS badge */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "0 2px", background: T.surface, borderLeft: `1px solid ${T.border}`, borderRight: `1px solid ${T.border}` }}>
-                <div style={{ width: 44, height: 44, borderRadius: "50%", background: "rgba(255,255,255,0.04)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.14)", boxShadow: "0 0 0 5px rgba(255,255,255,0.025), 0 6px 20px rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", flexShrink: 0 }}>
-                  <div style={{ position: "absolute", inset: 2, borderRadius: "50%", background: "radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%)" }} />
-                  <span style={{ fontFamily: "'YapariTrial','Yapari Trial','Yapari',sans-serif", fontSize: 14, fontWeight: 900, letterSpacing: "-0.02em", color: "rgba(255,255,255,0.7)", position: "relative", zIndex: 1, lineHeight: 1 }}>VS</span>
-                </div>
-              </div>
-              <GalaxyBtn side="NO" onClick={() => onOpenQuestion(featured.id)} />
-            </div>
-          </div>
-
-          {/* Performance chart */}
-          <GCard style={{ padding: "18px 20px" }}>
-            <SectionHeading>Performance — Last 7 Markets</SectionHeading>
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 80, marginBottom: 8 }}>
-              {PORTFOLIO_BARS.map((v, i) => (
-                <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                  <div style={{ width: "100%", borderRadius: 4, height: `${v}%`, background: v >= 70 ? `linear-gradient(180deg, ${T.yes}, rgba(34,197,94,0.4))` : `linear-gradient(180deg, rgba(255,255,255,0.5), rgba(255,255,255,0.15))` }} />
-                  <span style={{ fontSize: 9, color: T.textDim }}>{["M1","M2","M3","M4","M5","M6","M7"][i]}</span>
-                </div>
-              ))}
-            </div>
-            <div style={{ display: "flex", gap: 16 }}>
-              <span style={{ fontSize: 11, color: T.textDim, display: "flex", alignItems: "center", gap: 4 }}>
-                <span style={{ width: 8, height: 8, borderRadius: 2, background: T.yes, display: "inline-block" }} /> Win (≥70%)
-              </span>
-              <span style={{ fontSize: 11, color: T.textDim, display: "flex", alignItems: "center", gap: 4 }}>
-                <span style={{ width: 8, height: 8, borderRadius: 2, background: "rgba(255,255,255,0.4)", display: "inline-block" }} /> Loss (&lt;70%)
-              </span>
-            </div>
-          </GCard>
-        </div>
-
-        {/* RIGHT COLUMN */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-
-          {/* Quick actions */}
-          <GCard style={{ padding: "16px" }}>
-            <SectionHeading>Quick Actions</SectionHeading>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {[
-                { label: "Browse Polls",     icon: HelpCircle,  key: "questions",   desc: "Answer today's polls" },
-                { label: "My Convictions",    icon: BookMarked,  key: "convictions", desc: "Track open positions"     },
-                { label: "Claim Rewards",     icon: Gift,        key: "rewards",     desc: `${CLAIMABLE_REWARDS.filter(r=>!r.claimed).reduce((s,r)=>s+r.reward,0).toFixed(1)} Quai pending` },
-                { label: "Leaderboard",       icon: Trophy,      key: "leaderboard", desc: "See top predictors"       },
-              ].map(({ label, icon: Icon, key, desc }) => (
-                <button key={key} type="button" onClick={() => onNavigate(key)}
-                  style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 8, background: T.glass, border: `1px solid ${T.border}`, cursor: "pointer", textAlign: "left", transition: "border-color 0.15s, background 0.15s" }}
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.background = T.glassHover; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.background = T.glass; }}
-                >
-                  <div style={{ width: 32, height: 32, borderRadius: 8, background: T.accentDim, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <Icon size={14} strokeWidth={1.8} style={{ color: T.textPrimary }} />
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <p style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary, margin: 0, letterSpacing: "-0.01em" }}>{label}</p>
-                    <p style={{ fontSize: 10, color: T.textDim, margin: 0 }}>{desc}</p>
-                  </div>
-                  <ChevronRight size={13} style={{ color: T.textDim, marginLeft: "auto", flexShrink: 0 }} />
-                </button>
-              ))}
-            </div>
-          </GCard>
-
-          {/* Activity feed */}
-          <GCard style={{ padding: "16px" }}>
-            <SectionHeading>Activity Feed</SectionHeading>
-            <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-              {ACTIVITY.map((a, i) => {
-                const isReward = a.type === "reward";
-                const isSwitch = a.type === "switch";
-                return (
-                  <div key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 0", borderBottom: i < ACTIVITY.length - 1 ? `1px solid ${T.border}` : "none" }}>
-                    <div style={{ width: 30, height: 30, borderRadius: 8, background: isReward ? T.yesBg : isSwitch ? T.violetBg : T.glass, border: `1px solid ${isReward ? T.yesBorder : T.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
-                      {isReward ? <Gift size={13} strokeWidth={1.8} style={{ color: T.yes }} />
-                        : isSwitch ? <ArrowLeftRight size={13} strokeWidth={1.8} style={{ color: T.violet }} />
-                        : <WalletCards size={13} strokeWidth={1.8} style={{ color: T.textMuted }} />}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontSize: 12, fontWeight: 600, color: T.textPrimary, margin: 0, letterSpacing: "-0.01em" }}>{a.label}</p>
-                      <p style={{ fontSize: 10, color: T.textDim, margin: "1px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.detail}</p>
-                    </div>
-                    <div style={{ textAlign: "right", flexShrink: 0 }}>
-                      <p style={{ fontSize: 12, fontWeight: 700, color: isReward ? T.yes : T.textMuted, margin: 0 }}>{a.amount}</p>
-                      <p style={{ fontSize: 10, color: T.textDim, margin: "1px 0 0" }}>{a.time}</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </GCard>
-
-          {/* Trust / platform stats */}
-          <GCard style={{ padding: "16px" }}>
-            <SectionHeading>Platform</SectionHeading>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {[
-                { icon: ShieldCheck, label: "Fair & Transparent", sub: "Decentralised resolution" },
-                { icon: Globe,       label: "Quai Network",       sub: "On-chain settlement"      },
-                { icon: Award,       label: "Top 3 Predictor",    sub: "This week's leaderboard"  },
-              ].map(({ icon: Icon, label, sub }) => (
-                <div key={label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <Icon size={14} strokeWidth={1.8} style={{ color: T.textMuted, flexShrink: 0 }} />
-                  <div>
-                    <p style={{ fontSize: 12, fontWeight: 600, color: T.textPrimary, margin: 0 }}>{label}</p>
-                    <p style={{ fontSize: 10, color: T.textDim, margin: 0 }}>{sub}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </GCard>
-        </div>
-      </div>
+      {/* ── ACTIVITY FEED — live from Supabase positions ── */}
+      <ActivityFeed onNavigate={onNavigate} />
     </div>
+  );
+}
+
+/* ── Interactive price chart with hover tooltip ── */
+function InteractivePriceChart({ history, priceChange, quaiPrice }) {
+  const [hovered, setHovered] = useState(null); // { x, y, price, ts }
+  const svgRef = useRef(null);
+  const W = 900, H = 120, pad = { t: 10, b: 28, l: 8, r: 8 };
+  const positive = (priceChange ?? 0) >= 0;
+  const col = positive ? T.yes : T.no;
+
+  const prices = history.map(p => p.price);
+  const times  = history.map(p => p.timestamp);
+  const minP = Math.min(...prices), maxP = Math.max(...prices), rangeP = maxP - minP || 1;
+  const minT = Math.min(...times),  maxT = Math.max(...times),  rangeT = maxT - minT || 1;
+  const innerW = W - pad.l - pad.r, innerH = H - pad.t - pad.b;
+
+  const px = (i) => pad.l + (i / (prices.length - 1)) * innerW;
+  const py = (v) => pad.t + innerH - ((v - minP) / rangeP) * innerH;
+  const pts = prices.map((v, i) => `${px(i)},${py(v)}`).join(" ");
+  const area = `${pad.l},${H - pad.b} ${pts} ${pad.l + innerW},${H - pad.b}`;
+
+  const handleMouseMove = (e) => {
+    if (!svgRef.current) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const xRel = (e.clientX - rect.left) / rect.width;
+    const idx  = Math.round(xRel * (prices.length - 1));
+    const clamped = Math.max(0, Math.min(prices.length - 1, idx));
+    setHovered({ idx: clamped, x: px(clamped), y: py(prices[clamped]), price: prices[clamped], ts: times[clamped] });
+  };
+
+  const fmtTime = (ts) => {
+    const d = new Date(ts);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " " +
+           d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+  };
+
+  // Y-axis labels
+  const yLabels = [minP, (minP + maxP) / 2, maxP].map(v => ({
+    y: py(v),
+    label: "$" + v.toFixed(5),
+  }));
+  // X-axis labels (first, mid, last)
+  const xLabels = [0, Math.floor((prices.length - 1) / 2), prices.length - 1].map(i => ({
+    x: px(i),
+    label: new Date(times[i]).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+  }));
+
+  return (
+    <GCard style={{ padding: "20px 22px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>QUAI / USD — 7 Day</p>
+          {hovered && (
+            <span style={{ fontSize: 12, color: "#ffffff", fontWeight: 700 }}>${hovered.price.toFixed(6)}</span>
+          )}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {quaiPrice && <span style={{ fontSize: 13, fontWeight: 800, color: "#ffffff" }}>${quaiPrice.toFixed(6)}</span>}
+          {priceChange != null && <Pill positive={positive}>{positive ? "+" : ""}{priceChange.toFixed(2)}%</Pill>}
+        </div>
+      </div>
+
+      <div style={{ position: "relative", userSelect: "none" }}>
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${W} ${H}`}
+          style={{ width: "100%", height: 120, display: "block", cursor: "crosshair" }}
+          preserveAspectRatio="none"
+          onMouseMove={handleMouseMove}
+          onMouseLeave={() => setHovered(null)}
+        >
+          <defs>
+            <linearGradient id="ipg" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={col} stopOpacity="0.22" />
+              <stop offset="100%" stopColor={col} stopOpacity="0" />
+            </linearGradient>
+          </defs>
+
+          {/* Grid lines */}
+          {yLabels.map((yl, i) => (
+            <line key={i} x1={pad.l} y1={yl.y} x2={pad.l + innerW} y2={yl.y}
+              stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+          ))}
+
+          {/* Area fill */}
+          <polygon points={area} fill="url(#ipg)" />
+
+          {/* Price line */}
+          <polyline points={pts} fill="none" stroke={col} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+
+          {/* Hover vertical line */}
+          {hovered && (
+            <>
+              <line x1={hovered.x} y1={pad.t} x2={hovered.x} y2={H - pad.b}
+                stroke="rgba(255,255,255,0.3)" strokeWidth="1" strokeDasharray="3,3" />
+              <circle cx={hovered.x} cy={hovered.y} r="4" fill={col} stroke="#080808" strokeWidth="2" />
+            </>
+          )}
+
+          {/* Y-axis labels */}
+          {yLabels.map((yl, i) => (
+            <text key={i} x={pad.l} y={yl.y - 3} fontSize="8" fill="rgba(255,255,255,0.3)" fontFamily="monospace">
+              {yl.label}
+            </text>
+          ))}
+
+          {/* X-axis labels */}
+          {xLabels.map((xl, i) => (
+            <text key={i} x={xl.x} y={H - 2} fontSize="8" fill="rgba(255,255,255,0.3)"
+              textAnchor={i === 0 ? "start" : i === xLabels.length - 1 ? "end" : "middle"} fontFamily="sans-serif">
+              {xl.label}
+            </text>
+          ))}
+        </svg>
+
+        {/* Hover tooltip */}
+        {hovered && (
+          <div style={{
+            position: "absolute",
+            top: 4,
+            left: `clamp(8px, calc(${(hovered.x / W) * 100}% - 60px), calc(100% - 128px))`,
+            background: "rgba(20,20,20,0.95)",
+            border: `1px solid ${col}40`,
+            borderRadius: 8,
+            padding: "6px 10px",
+            pointerEvents: "none",
+            zIndex: 10,
+          }}>
+            <p style={{ fontSize: 13, fontWeight: 800, color: col, margin: 0 }}>${hovered.price.toFixed(6)}</p>
+            <p style={{ fontSize: 10, color: T.textDim, margin: "2px 0 0", whiteSpace: "nowrap" }}>{fmtTime(hovered.ts)}</p>
+          </div>
+        )}
+      </div>
+    </GCard>
+  );
+}
+
+/* ── Activity Feed — shows the user's recent positions live from Supabase ── */
+function ActivityFeed({ onNavigate }) {
+  const { positions, loading } = usePositions();
+  const recent = positions.slice(0, 5);
+
+  return (
+    <GCard style={{ padding: "16px 20px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>Activity Feed</p>
+        {positions.length > 0 && (
+          <button type="button" onClick={() => onNavigate("convictions")}
+            style={{ fontSize: 11, fontWeight: 600, color: T.textDim, background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = T.textPrimary; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = T.textDim; }}
+          >
+            View all <ChevronRight size={12} strokeWidth={2.5} />
+          </button>
+        )}
+      </div>
+
+      {loading && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {[1, 2, 3].map(i => (
+            <div key={i} style={{ height: 44, borderRadius: 8, background: T.glass, border: `1px solid ${T.border}`, animation: "pulse 1.5s ease-in-out infinite" }} />
+          ))}
+        </div>
+      )}
+
+      {!loading && recent.length === 0 && (
+        <EmptyState
+          icon={BarChart3}
+          title="No activity yet"
+          body="Your predictions will appear here once you start participating in markets."
+          action={
+            <button type="button" onClick={() => onNavigate("questions")}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 18px", borderRadius: 8, background: "#ffffff", color: "#080808", fontSize: 13, fontWeight: 700, border: "none", cursor: "pointer" }}>
+              Browse Markets <ArrowRight size={13} strokeWidth={2.5} />
+            </button>
+          }
+        />
+      )}
+
+      {!loading && recent.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+          {recent.map((p, i) => {
+            const isYes = p.side === "YES";
+            const col   = isYes ? T.yes : T.no;
+            return (
+              <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: i < recent.length - 1 ? `1px solid ${T.border}` : "none" }}>
+                <div style={{ width: 34, height: 34, borderRadius: 8, background: isYes ? T.yesBg : T.noBg, border: `1px solid ${isYes ? T.yesBorder : T.noBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, color: col }}>{p.side}</span>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: T.textPrimary, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.question}</p>
+                  <p style={{ fontSize: 11, color: T.textDim, margin: "1px 0 0" }}>
+                    {p.category} · <span style={{ color: col, fontWeight: 600 }}>{p.side}</span> · {p.amount.toFixed(2)} Q
+                  </p>
+                </div>
+                <span style={{ padding: "2px 7px", borderRadius: 999, fontSize: 10, fontWeight: 700, background: T.glass, border: `1px solid ${T.border}`, color: T.textDim, flexShrink: 0 }}>
+                  {p.status}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </GCard>
+  );
+}
+
+/* ── inline price sparkline (no dep) ── */
+function PriceSparkline({ history, positive, height = 80 }) {
+  const prices = history.map(p => p.price);
+  const min = Math.min(...prices), max = Math.max(...prices), range = max - min || 1;
+  const w = 800, pad = 4, H = height - pad * 2, step = w / (prices.length - 1);
+  const pts = prices.map((p, i) => `${i * step},${pad + H - ((p - min) / range) * H}`).join(" ");
+  const area = `0,${height} ${pts} ${w},${height}`;
+  const col = positive ? T.yes : T.no;
+  return (
+    <svg viewBox={`0 0 ${w} ${height}`} style={{ width: "100%", height, display: "block" }} preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={col} stopOpacity="0.25" />
+          <stop offset="100%" stopColor={col} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <polygon points={area} fill="url(#sg)" />
+      <polyline points={pts} fill="none" stroke={col} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
@@ -955,15 +1026,15 @@ function PageDashboard({ onOpenQuestion, onNavigate }) {
 ════════════════════════════════════════════════ */
 
 function PageQuestions({ onOpenQuestion }) {
-  const [active, setActive]       = useState("all");
-  const [dropOpen, setDropOpen]   = useState(false);
-
-  const filtered = active === "all"
-    ? QUESTIONS
-    : QUESTIONS.filter(q => q.category.toLowerCase().includes(active));
+  const [active,   setActive]   = useState("all");
+  const [dropOpen, setDropOpen] = useState(false);
 
   const activeLabel = CATEGORIES.find(c => c.key === active)?.label ?? "All Categories";
   const activeEmoji = CATEGORIES.find(c => c.key === active)?.emoji ?? "🌐";
+
+  // ── Live data from Supabase ──
+  const categoryFilter = active === "all" ? null : activeLabel;
+  const { markets, loading, error, refresh } = useMarkets({ category: categoryFilter, status: "active" });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -971,72 +1042,45 @@ function PageQuestions({ onOpenQuestion }) {
       {/* ── Header ── */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>Polls</h1>
-          <p style={{ fontSize: 13, color: T.textMuted, margin: "4px 0 0" }}>Pick a side. Stake your conviction. Earn rewards.</p>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>Markets</h1>
+          <p style={{ fontSize: 13, color: T.textMuted, margin: "4px 0 0" }}>
+            {loading ? "Loading markets…" : `${markets.length} open market${markets.length !== 1 ? "s" : ""} · Pick a side and earn rewards.`}
+          </p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
 
-          {/* Progress stat chip */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}` }}>
-            <div style={{ width: 34, height: 34, borderRadius: 8, background: "rgba(255,255,255,0.06)", border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <CheckCircle2 size={16} strokeWidth={2} style={{ color: T.yes }} />
-            </div>
-            <div>
-              <p style={{ fontSize: 16, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em", lineHeight: 1 }}>
-                {DEMO_STATS.todayAnswered}<span style={{ color: T.textDim, fontSize: 13, fontWeight: 500 }}>/{DEMO_STATS.todayTotal}</span>
-              </p>
-              <p style={{ fontSize: 10, color: T.textDim, margin: "2px 0 0", letterSpacing: "0.04em", textTransform: "uppercase" }}>Answered Today</p>
-            </div>
-          </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {/* Refresh */}
+          <button type="button" onClick={refresh}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, color: T.textMuted, fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "border-color 0.15s, color 0.15s" }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.color = T.textPrimary; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; }}
+          >
+            <RefreshCw size={12} strokeWidth={2} /> Refresh
+          </button>
 
           {/* ── Category dropdown ── */}
           <div style={{ position: "relative" }}>
             <button type="button" onClick={() => setDropOpen(v => !v)}
-              style={{
-                display: "flex", alignItems: "center", gap: 8,
-                padding: "10px 14px", borderRadius: 10,
-                background: dropOpen ? T.glassHover : T.glass,
-                border: `1px solid ${dropOpen ? T.borderHover : T.border}`,
-                color: "#ffffff", fontSize: 13, fontWeight: 600,
-                cursor: "pointer", transition: "all 0.15s", whiteSpace: "nowrap",
-                minWidth: 170,
-              }}
-            >
+              style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 10, background: dropOpen ? T.glassHover : T.glass, border: `1px solid ${dropOpen ? T.borderHover : T.border}`, color: "#ffffff", fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all 0.15s", whiteSpace: "nowrap", minWidth: 170 }}>
               <span style={{ fontSize: 15, lineHeight: 1, flexShrink: 0 }}>{activeEmoji}</span>
               <span style={{ flex: 1, textAlign: "left" }}>{activeLabel}</span>
               <ChevronDown size={14} strokeWidth={2.5} style={{ color: T.textDim, flexShrink: 0, transform: dropOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
             </button>
 
             {dropOpen && (
-              <div style={{
-                position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 99,
-                background: "#111111", border: `1px solid ${T.borderHover}`,
-                borderRadius: 12, overflow: "hidden",
-                boxShadow: "0 16px 48px rgba(0,0,0,0.7)",
-                minWidth: 200,
-              }}>
+              <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 99, background: "#111111", border: `1px solid ${T.borderHover}`, borderRadius: 12, overflow: "hidden", boxShadow: "0 16px 48px rgba(0,0,0,0.7)", minWidth: 200 }}>
                 {CATEGORIES.map((c, i) => {
-                  const isActive = active === c.key;
+                  const isAct = active === c.key;
                   return (
                     <button key={c.key} type="button"
                       onClick={() => { setActive(c.key); setDropOpen(false); }}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 10,
-                        width: "100%", padding: "10px 14px",
-                        background: isActive ? "rgba(255,255,255,0.07)" : "transparent",
-                        border: "none",
-                        borderBottom: i < CATEGORIES.length - 1 ? `1px solid ${T.border}` : "none",
-                        color: isActive ? "#ffffff" : T.textMuted,
-                        fontSize: 13, fontWeight: isActive ? 700 : 400,
-                        cursor: "pointer", textAlign: "left",
-                        transition: "background 0.12s",
-                      }}
-                      onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = T.glass; }}
-                      onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
+                      style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 14px", background: isAct ? "rgba(255,255,255,0.07)" : "transparent", border: "none", borderBottom: i < CATEGORIES.length - 1 ? `1px solid ${T.border}` : "none", color: isAct ? "#ffffff" : T.textMuted, fontSize: 13, fontWeight: isAct ? 700 : 400, cursor: "pointer", textAlign: "left", transition: "background 0.12s" }}
+                      onMouseEnter={(e) => { if (!isAct) e.currentTarget.style.background = T.glass; }}
+                      onMouseLeave={(e) => { if (!isAct) e.currentTarget.style.background = "transparent"; }}
                     >
                       <span style={{ fontSize: 15, lineHeight: 1, width: 20, textAlign: "center", flexShrink: 0 }}>{c.emoji}</span>
                       <span style={{ flex: 1 }}>{c.label}</span>
-                      {isActive && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#ffffff", flexShrink: 0 }} />}
+                      {isAct && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#ffffff", flexShrink: 0 }} />}
                     </button>
                   );
                 })}
@@ -1046,14 +1090,43 @@ function PageQuestions({ onOpenQuestion }) {
         </div>
       </div>
 
-      {/* ── Question grid: 3 col large / 2 medium / 1 small ── */}
-      <div>
-        <div className="q-grid">
-          {filtered.map(q => (
-            <QuestionCard key={q.id} q={q} onOpen={onOpenQuestion} />
+      {/* ── Error ── */}
+      {error && (
+        <div style={{ padding: "12px 16px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", fontSize: 12, color: "#ef4444" }}>
+          Could not load markets: {error}
+        </div>
+      )}
+
+      {/* ── Loading skeleton ── */}
+      {loading && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 14 }}>
+          {[1, 2, 3].map(i => (
+            <div key={i} style={{ height: 200, borderRadius: 18, background: T.surface, border: `1px solid ${T.border}`, animation: "pulse 1.5s ease-in-out infinite" }} />
           ))}
         </div>
-      </div>
+      )}
+
+      {/* ── Market grid ── */}
+      {!loading && markets.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 14 }}>
+          {markets.map(q => <QuestionCard key={q.id} q={q} onOpen={onOpenQuestion} />)}
+        </div>
+      )}
+
+      {/* ── Empty state ── */}
+      {!loading && markets.length === 0 && !error && (
+        <EmptyState
+          icon={HelpCircle}
+          title="No open markets yet"
+          body="Prediction markets will appear here once they go live. Check back soon."
+          action={
+            <button type="button" onClick={refresh}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 18px", borderRadius: 8, background: T.glass, border: `1px solid ${T.border}`, color: T.textPrimary, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+              <RefreshCw size={13} strokeWidth={2.5} /> Check again
+            </button>
+          }
+        />
+      )}
     </div>
   );
 }
@@ -1084,7 +1157,7 @@ function QuestionCard({ q, onOpen }) {
             <Clock size={10} strokeWidth={2} />{q.closes}
           </span>
         </div>
-        <p style={{ fontSize: 14, fontWeight: 700, color: "#ffffff", margin: "0 0 10px", letterSpacing: "-0.02em", lineHeight: 1.45 }}>{q.question}</p>
+        <p className="market-question" style={{ fontSize: 14, color: "#ffffff", margin: "0 0 10px", lineHeight: 1.3 }}>{q.question}</p>
         <p style={{ fontSize: 11, color: T.textDim, margin: 0 }}>
           Pool: <span style={{ color: T.textMuted, fontWeight: 600 }}>${q.totalPool.toLocaleString()}</span>
         </p>
@@ -1264,8 +1337,8 @@ function ShareModal({ open, onClose, question }) {
               <Share2 size={15} strokeWidth={1.8} style={{ color: T.textMuted }} />
             </div>
             <div>
-              <p style={{ fontSize: 15, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.02em" }}>Share Poll</p>
-              <p style={{ fontSize: 11, color: T.textDim, margin: 0 }}>Spread the conviction</p>
+              <p style={{ fontSize: 15, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.02em" }}>Share Market</p>
+              <p style={{ fontSize: 11, color: T.textDim, margin: 0 }}>Share this prediction market</p>
             </div>
           </div>
           <button
@@ -1285,7 +1358,7 @@ function ShareModal({ open, onClose, question }) {
 
           {/* Question preview */}
           <div style={{ padding: "12px 14px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}` }}>
-            <p style={{ fontSize: 13, color: T.textMuted, margin: 0, lineHeight: 1.55, letterSpacing: "-0.01em" }}>
+            <p className="market-question" style={{ fontSize: 13, color: T.textMuted, margin: 0, lineHeight: 1.3 }}>
               "{question?.question}"
             </p>
           </div>
@@ -1293,7 +1366,7 @@ function ShareModal({ open, onClose, question }) {
           {/* Copy link */}
           <div>
             <p style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 8px" }}>
-              Poll link
+              Market link
             </p>
             <div style={{ display: "flex", gap: 8 }}>
               <div style={{ flex: 1, padding: "10px 14px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, overflow: "hidden", display: "flex", alignItems: "center" }}>
@@ -1370,8 +1443,40 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
   const [usdcAmount, setUsdcAmount] = useState("");
   const [confirmed, setConfirmed]   = useState(false);
   const [shareOpen, setShareOpen]   = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
 
-  const q = QUESTIONS.find(item => item.id === questionId) ?? QUESTIONS[0];
+  const { profile } = useAuth();
+  const { market, loading: marketLoading } = useMarket(questionId);
+
+  // Build the display object from live Supabase data
+  const yesPool   = market?.yesPool   ?? 0;
+  const noPool    = market?.noPool    ?? 0;
+  const totalPool = market?.totalPool ?? 0;
+  const yesPct    = totalPool > 0 ? Math.round((yesPool / totalPool) * 100) : 50;
+  const noPct     = 100 - yesPct;
+  const deadline  = market?.deadline ? new Date(market.deadline) : null;
+  const msLeft    = deadline ? deadline - Date.now() : null;
+  const closesLabel = msLeft != null && msLeft > 0 ? formatDetailTime(msLeft) : "Closed";
+
+  const q = market
+    ? {
+        id:         market.id,
+        question:   market.question,
+        category:   market.category,
+        status:     market.status,
+        closes:     closesLabel,
+        totalPool,
+        yesPool,
+        noPool,
+        yes:        yesPct,
+        no:         noPct,
+        dataSource: market.data_source,
+        resolvedOutcome: market.resolved_outcome,
+      }
+    : questionId
+      ? { id: questionId, question: "Loading…", category: "—", closes: "—", totalPool: 0, yes: 50, no: 50, yesPool: 0, noPool: 0 }
+      : null;
 
   const RATE = 0.82;
   const quaiEquiv = usdcAmount ? (parseFloat(usdcAmount) * RATE).toFixed(4) : null;
@@ -1380,19 +1485,113 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
     setSelected(side);
     setUsdcAmount("");
     setConfirmed(false);
+    setSubmitError(null);
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!usdcAmount || parseFloat(usdcAmount) <= 0) return;
-    setConfirmed(true);
-    if (onConfetti) onConfetti();
+    if (!profile?.id) { setSubmitError("You must be signed in to place a position."); return; }
+    if (!q?.id) return;
+
+    setSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      const amount = parseFloat(usdcAmount);
+
+      // Check if the user already has a position in this market
+      const { data: existing } = await supabase
+        .from("user_positions")
+        .select("id, side, switched")
+        .eq("user_id", profile.id)
+        .eq("market_id", q.id)
+        .maybeSingle();
+
+      if (existing) {
+        // Already has a position — apply the switch rule
+        if (existing.switched) {
+          setSubmitError("You have already used your one allowed switch on this market.");
+          setSubmitting(false);
+          return;
+        }
+        if (existing.side === selected) {
+          setSubmitError(`You are already on the ${selected} side.`);
+          setSubmitting(false);
+          return;
+        }
+        if (msLeft != null && msLeft < 5 * 60 * 1000) {
+          setSubmitError("Cannot switch: less than 5 minutes remain before market close.");
+          setSubmitting(false);
+          return;
+        }
+        // Perform the switch
+        const { error: switchErr } = await supabase
+          .from("user_positions")
+          .update({ side: selected, amount, switched: true, updated_at: new Date().toISOString() })
+          .eq("id", existing.id);
+
+        if (switchErr) throw switchErr;
+      } else {
+        // New position
+        const { error: insertErr } = await supabase
+          .from("user_positions")
+          .insert({
+            user_id:   profile.id,
+            market_id: q.id,
+            side:      selected,
+            amount,
+            switched:  false,
+          });
+
+        if (insertErr) throw insertErr;
+
+        // Update the pool amount for the chosen side
+        const currentPool = selected === "YES" ? yesPool : noPool;
+        await supabase
+          .from("market_outcomes")
+          .update({ pool_amount: currentPool + amount, updated_at: new Date().toISOString() })
+          .eq("market_id", q.id)
+          .eq("outcome", selected);
+
+        // Log a market event
+        await supabase
+          .from("market_events")
+          .insert({
+            market_id:  q.id,
+            event_type: "position_placed",
+            user_id:    profile.id,
+            metadata:   { side: selected, amount },
+          });
+      }
+
+      setConfirmed(true);
+      if (onConfetti) onConfetti();
+    } catch (err) {
+      console.error("[PageQuestionDetail] submit error:", err);
+      setSubmitError(err.message ?? "Failed to save your position. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleReset = () => {
     setSelected(null);
     setUsdcAmount("");
     setConfirmed(false);
+    setSubmitError(null);
   };
+
+  if (marketLoading) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {[1, 2].map(i => (
+          <div key={i} style={{ height: 200, borderRadius: 16, background: T.surface, border: `1px solid ${T.border}`, animation: "pulse 1.5s ease-in-out infinite" }} />
+        ))}
+      </div>
+    );
+  }
+
+  if (!q) return null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -1402,14 +1601,14 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
           onMouseEnter={(e) => { e.currentTarget.style.color = T.textPrimary; }}
           onMouseLeave={(e) => { e.currentTarget.style.color = T.textMuted; }}
         >
-          <ArrowLeft size={15} strokeWidth={2} /> Back to Polls
+          <ArrowLeft size={15} strokeWidth={2} /> Back to Markets
         </button>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <CategoryBadge category={q.category} />
           <button
             type="button"
             onClick={() => setShareOpen(true)}
-            aria-label="Share this poll"
+            aria-label="Share this market"
             style={{ width: 32, height: 32, borderRadius: 6, background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", color: T.textMuted, cursor: "pointer", transition: "border-color 0.15s, color 0.15s" }}
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.color = T.textPrimary; }}
             onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; }}
@@ -1426,7 +1625,7 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
         {/* ── LEFT: question info + tabs ── */}
         <GCard style={{ padding: "28px" }}>
           {/* Question */}
-          <h1 style={{ fontSize: 20, fontWeight: 800, color: "#ffffff", margin: "0 0 10px", letterSpacing: "-0.03em", lineHeight: 1.35 }}>{q.question}</h1>
+          <h1 className="market-question" style={{ fontSize: 20, color: "#ffffff", margin: "0 0 10px", lineHeight: 1.25 }}>{q.question}</h1>
           <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 12, color: T.textDim, marginBottom: 24 }}>
             <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Clock size={12} strokeWidth={1.8} /> Closes in {q.closes}</span>
             <span style={{ width: 1, height: 12, background: T.border }} />
@@ -1438,7 +1637,7 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
             <p style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: T.textPrimary, margin: "0 0 8px" }}>
               <CheckCircle2 size={13} strokeWidth={2} style={{ color: T.textMuted }} /> Switch Policy
             </p>
-            {["You may switch your position once.", "Switch only if ≥ 5 minutes remain.", "Your stake moves to the new side.", "No further switches after that."].map(r => (
+            {["You may switch your position once.", "Switch only if ≥ 5 minutes remain.", "Your position moves to the new side.", "No further switches after that."].map(r => (
               <p key={r} style={{ fontSize: 12, color: T.textMuted, margin: "3px 0 0" }}>· {r}</p>
             ))}
           </div>
@@ -1464,7 +1663,7 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
 
           {!confirmed ? (
             <>
-              <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.1em", textTransform: "uppercase", margin: "0 0 16px" }}>Your Conviction</p>
+              <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.1em", textTransform: "uppercase", margin: "0 0 16px" }}>Your Prediction</p>
 
               {/* YES / VS / NO buttons */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 6, marginBottom: 20, alignItems: "center" }}>
@@ -1504,7 +1703,7 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
                     >
                       <span style={{ fontFamily: "'YapariTrial','Yapari Trial','Yapari',sans-serif", fontSize: 22, fontWeight: 900, lineHeight: 1, color: col, letterSpacing: "-0.02em" }}>{side}</span>
                       <span style={{ fontSize: 10, fontWeight: 600, opacity: 0.65, letterSpacing: "0.06em", textTransform: "uppercase", color: col }}>
-                        {isYes ? "Believe it" : "Doubt it"}
+                        {isYes ? "It will" : "It won't"}
                       </span>
                     </button>
                   );
@@ -1563,7 +1762,7 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
                   <button
                     type="button"
                     onClick={handleConfirm}
-                    disabled={!usdcAmount || parseFloat(usdcAmount) <= 0}
+                    disabled={!usdcAmount || parseFloat(usdcAmount) <= 0 || submitting}
                     style={{
                       width: "100%",
                       padding: "13px",
@@ -1575,13 +1774,21 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
                       color: "#ffffff",
                       fontSize: 14,
                       fontWeight: 800,
-                      cursor: usdcAmount && parseFloat(usdcAmount) > 0 ? "pointer" : "not-allowed",
+                      cursor: usdcAmount && parseFloat(usdcAmount) > 0 && !submitting ? "pointer" : "not-allowed",
                       letterSpacing: "-0.01em",
                       transition: "background 0.2s",
+                      opacity: submitting ? 0.7 : 1,
                     }}
                   >
-                    Confirm {selected} · ${usdcAmount || "0.00"} USDC
+                    {submitting ? "Saving…" : `Confirm ${selected} · $${usdcAmount || "0.00"} USDC`}
                   </button>
+
+                  {/* Inline error */}
+                  {submitError && (
+                    <p style={{ fontSize: 11, color: "#ef4444", textAlign: "center", margin: "8px 0 0", lineHeight: 1.5 }}>
+                      {submitError}
+                    </p>
+                  )}
 
                   <p style={{ fontSize: 10, color: T.textDim, textAlign: "center", margin: "10px 0 0", lineHeight: 1.5 }}>
                     Rate: 1 USDC = {RATE} QUAI · Stake is final on confirmation
@@ -1592,7 +1799,7 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
               {/* Prompt when nothing selected yet */}
               {!selected && (
                 <p style={{ fontSize: 13, color: T.textDim, textAlign: "center", margin: "4px 0 0", lineHeight: 1.6 }}>
-                  Choose YES or NO to stake your conviction.
+                  Choose YES or NO to make your prediction.
                 </p>
               )}
             </>
@@ -1681,7 +1888,7 @@ function ConvictionCard({ c }) {
       </div>
 
       {/* Question text */}
-      <p style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary, margin: 0, lineHeight: 1.45, letterSpacing: "-0.01em" }}>
+      <p className="market-question" style={{ fontSize: 13, color: T.textPrimary, margin: 0, lineHeight: 1.3 }}>
         {c.question}
       </p>
 
@@ -1727,68 +1934,83 @@ function ConvictionCard({ c }) {
 
 function PageMyConvictions() {
   const [tab, setTab] = useState("Open");
+  const { positions, loading, error, refresh } = usePositions();
 
-  const totalStaked    = CONVICTIONS.reduce((s, c) => s + c.staked, 0);
-  const claimablePending = CLAIMABLE_REWARDS.filter(r => !r.claimed).reduce((s, r) => s + r.reward, 0);
+  const filtered = positions.filter(p => {
+    if (tab === "Open")      return p.status === "active" || p.status === "closed";
+    if (tab === "Resolved")  return p.status === "resolved";
+    if (tab === "Cancelled") return p.status === "cancelled" || p.status === "paused";
+    return true;
+  });
+
+  // Map position shape → ConvictionCard shape
+  const toCardShape = (p) => ({
+    id:        p.id,
+    question:  p.question,
+    category:  p.category,
+    status:    p.status,
+    answer:    p.side,
+    side:      p.yesPct,
+    staked:    p.amount,
+    totalPool: p.totalPool,
+    switched:  p.switched ? "Yes" : "No",
+    closes:    p.closesLabel,
+  });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-
-      {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>My Convictions</h1>
-          <p style={{ fontSize: 13, color: T.textMuted, margin: "4px 0 0" }}>Track your open positions, switches, and performance.</p>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>My Positions</h1>
+          <p style={{ fontSize: 13, color: T.textMuted, margin: "4px 0 0" }}>Track your open predictions, switches, and performance.</p>
         </div>
-
-        {/* Tab switcher */}
-        <div style={{ display: "flex", gap: 4, padding: 4, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 8 }}>
-          {CONV_TABS.map(t => (
-            <button key={t} type="button" onClick={() => setTab(t)}
-              style={{ padding: "6px 16px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", border: "none", background: tab === t ? "#ffffff" : "transparent", color: tab === t ? "#080808" : T.textMuted, transition: "all 0.15s" }}>
-              {t}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* KPI summary strip */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 10 }} className="dash-conv-grid">
-        {[
-          { label: "Total Markets",     value: DEMO_STATS.marketsTotal,                         icon: BookMarked,  accent: null  },
-          { label: "Correct",           value: DEMO_STATS.marketsWon,                           icon: CheckCircle2,accent: T.yes },
-          { label: "Accuracy",          value: `${DEMO_STATS.accuracy}%`,                       icon: BarChart3,   accent: T.yes },
-          { label: "Total Staked",      value: `${totalStaked.toFixed(1)} Q`,                   icon: WalletCards, accent: null  },
-          { label: "Claimable",         value: `${claimablePending.toFixed(1)} Q`,              icon: Gift,        accent: T.yes },
-        ].map(({ label, value, icon: Icon, accent }) => (
-          <GCard key={label} style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 8, background: accent ? (accent === T.yes ? T.yesBg : T.noBg) : T.glass, border: `1px solid ${accent ? (accent === T.yes ? T.yesBorder : T.noBorder) : T.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <Icon size={14} strokeWidth={1.8} style={{ color: accent || T.textMuted }} />
-            </div>
-            <div>
-              <p style={{ fontSize: 16, fontWeight: 800, color: accent || T.textPrimary, margin: 0, letterSpacing: "-0.03em" }}>{value}</p>
-              <p style={{ fontSize: 10, color: T.textDim, margin: 0, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>{label}</p>
-            </div>
-          </GCard>
-        ))}
-      </div>
-
-      {/* Cards grid or empty state */}
-      {tab === "Open" ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
-          {CONVICTIONS.map((c, i) => <ConvictionCard key={i} c={c} />)}
-        </div>
-      ) : (
-        <GCard style={{ padding: "60px 24px", textAlign: "center" }}>
-          <div style={{ width: 48, height: 48, borderRadius: 14, background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
-            <BookMarked size={20} strokeWidth={1.5} style={{ color: T.textDim }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button type="button" onClick={refresh}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 8, background: T.glass, border: `1px solid ${T.border}`, color: T.textMuted, fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "border-color 0.15s, color 0.15s" }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.color = T.textPrimary; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; }}
+          >
+            <RefreshCw size={12} strokeWidth={2} /> Refresh
+          </button>
+          <div style={{ display: "flex", gap: 4, padding: 4, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 8 }}>
+            {CONV_TABS.map(t => (
+              <button key={t} type="button" onClick={() => setTab(t)}
+                style={{ padding: "6px 16px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", border: "none", background: tab === t ? "#ffffff" : "transparent", color: tab === t ? "#080808" : T.textMuted, transition: "all 0.15s" }}>
+                {t}
+              </button>
+            ))}
           </div>
-          <p style={{ fontSize: 14, fontWeight: 600, color: T.textMuted, margin: 0 }}>No {tab.toLowerCase()} convictions yet.</p>
-          <p style={{ fontSize: 12, color: T.textDim, margin: "6px 0 0" }}>Your {tab.toLowerCase()} markets will appear here.</p>
+        </div>
+      </div>
+
+      {error && (
+        <div style={{ padding: "12px 16px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", fontSize: 12, color: "#ef4444" }}>
+          Could not load positions: {error}
+        </div>
+      )}
+
+      {loading && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {[1,2].map(i => <div key={i} style={{ height: 180, borderRadius: 16, background: T.surface, border: `1px solid ${T.border}`, animation: "pulse 1.5s ease-in-out infinite" }} />)}
+        </div>
+      )}
+
+      {!loading && filtered.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {filtered.map(p => <ConvictionCard key={p.id} c={toCardShape(p)} />)}
+        </div>
+      )}
+
+      {!loading && filtered.length === 0 && !error && (
+        <GCard style={{ padding: 0 }}>
+          <EmptyState
+            icon={BookMarked}
+            title="No positions yet"
+            body="Your active predictions will appear here. Make your first prediction to get started."
+          />
         </GCard>
       )}
 
-      {/* Switch rule reminder */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 14px", borderRadius: 8, background: T.glass, border: `1px solid ${T.border}`, fontSize: 12, color: T.textMuted }}>
         <Info size={13} strokeWidth={1.8} style={{ flexShrink: 0, color: T.violet }} />
         Switch once per market only — at least 5 minutes must remain before market close.
@@ -1920,7 +2142,7 @@ function ResultCard({ r }) {
           { label: "Your Side",   value: r.yourSide,                  color: r.yourSide === "YES" ? T.yes : T.no },
           { label: "Staked",      value: `${r.yourStake.toFixed(2)} Q`, color: T.textPrimary },
           { label: "Pool",        value: `$${(r.totalPool/1000).toFixed(1)}K`, color: T.textPrimary },
-          { label: "Reward",      value: r.won ? `+${r.yourReward.toFixed(2)} Q` : "—", color: r.won ? T.yes : T.textDim },
+          { label: "Reward",      value: r.won ? `+${r.reward.toFixed(2)} Q` : "—", color: r.won ? T.yes : T.textDim },
         ].map(({ label, value, color }) => (
           <div key={label} style={{ padding: "8px 10px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, textAlign: "center" }}>
             <p style={{ fontSize: 9, color: T.textDim, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 3px" }}>{label}</p>
@@ -1934,79 +2156,67 @@ function ResultCard({ r }) {
 
 function PageResults() {
   const [tab, setTab] = useState("All");
+  const { results, loading, error, refresh } = useResults();
 
-  const filtered = tab === "All" ? RESULTS : tab === "Won" ? RESULTS.filter(r => r.won) : RESULTS.filter(r => !r.won);
-
-  const totalWon     = RESULTS.filter(r => r.won).length;
-  const totalLost    = RESULTS.filter(r => !r.won).length;
-  const totalEarned  = RESULTS.reduce((s, r) => s + r.yourReward, 0);
-  const totalStaked  = RESULTS.reduce((s, r) => s + r.yourStake, 0);
-  const accuracy     = Math.round((totalWon / RESULTS.length) * 100);
+  const filtered = results.filter(r => {
+    if (tab === "Won")  return r.won;
+    if (tab === "Lost") return !r.won;
+    return true;
+  });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-
-      {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>Results</h1>
           <p style={{ fontSize: 13, color: T.textMuted, margin: "4px 0 0" }}>Settled market outcomes and your performance history.</p>
         </div>
-        <div style={{ display: "flex", gap: 4, padding: 4, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 8 }}>
-          {RESULT_TABS.map(t => (
-            <button key={t} type="button" onClick={() => setTab(t)}
-              style={{ padding: "6px 16px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", border: "none", background: tab === t ? "#ffffff" : "transparent", color: tab === t ? "#080808" : T.textMuted, transition: "all 0.15s" }}>
-              {t}
-            </button>
-          ))}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button type="button" onClick={refresh}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 8, background: T.glass, border: `1px solid ${T.border}`, color: T.textMuted, fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "border-color 0.15s, color 0.15s" }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.color = T.textPrimary; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; }}
+          >
+            <RefreshCw size={12} strokeWidth={2} /> Refresh
+          </button>
+          <div style={{ display: "flex", gap: 4, padding: 4, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 8 }}>
+            {RESULT_TABS.map(t => (
+              <button key={t} type="button" onClick={() => setTab(t)}
+                style={{ padding: "6px 16px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", border: "none", background: tab === t ? "#ffffff" : "transparent", color: tab === t ? "#080808" : T.textMuted, transition: "all 0.15s" }}>
+                {t}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* KPI strip */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }} className="dash-kpi-grid">
-        {[
-          { label: "Markets Played", value: RESULTS.length,         icon: BarChart3,    accent: null    },
-          { label: "Won",            value: totalWon,               icon: CheckCircle2, accent: T.yes   },
-          { label: "Lost",           value: totalLost,              icon: X,            accent: T.no    },
-          { label: "Accuracy",       value: `${accuracy}%`,         icon: Target,       accent: T.yes   },
-          { label: "Total Earned",   value: `${totalEarned.toFixed(2)} Q`, icon: Coins, accent: T.yes   },
-        ].map(({ label, value, icon: Icon, accent }) => (
-          <GCard key={label} style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: accent ? (accent === T.yes ? T.yesBg : T.noBg) : T.glass, border: `1px solid ${accent ? (accent === T.yes ? T.yesBorder : T.noBorder) : T.border}` }}>
-              <Icon size={15} strokeWidth={1.8} style={{ color: accent || T.textMuted }} />
-            </div>
-            <div>
-              <p style={{ fontSize: 17, fontWeight: 800, color: accent || T.textPrimary, margin: 0, letterSpacing: "-0.03em" }}>{value}</p>
-              <p style={{ fontSize: 10, color: T.textDim, margin: 0, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>{label}</p>
-            </div>
-          </GCard>
-        ))}
-      </div>
+      {error && (
+        <div style={{ padding: "12px 16px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", fontSize: 12, color: "#ef4444" }}>
+          Could not load results: {error}
+        </div>
+      )}
 
-      {/* Results grid */}
-      {filtered.length === 0 ? (
-        <GCard style={{ padding: "60px 24px", textAlign: "center" }}>
-          <div style={{ width: 48, height: 48, borderRadius: 14, background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
-            <BarChart3 size={20} strokeWidth={1.5} style={{ color: T.textDim }} />
-          </div>
-          <p style={{ fontSize: 14, fontWeight: 600, color: T.textMuted, margin: 0 }}>No {tab.toLowerCase()} results yet.</p>
-        </GCard>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 14 }}>
+      {loading && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {[1,2].map(i => <div key={i} style={{ height: 200, borderRadius: 16, background: T.surface, border: `1px solid ${T.border}`, animation: "pulse 1.5s ease-in-out infinite" }} />)}
+        </div>
+      )}
+
+      {!loading && filtered.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {filtered.map(r => <ResultCard key={r.id} r={r} />)}
         </div>
       )}
 
-      {/* Insight banner */}
-      <GCard style={{ padding: "18px 22px", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-        <div style={{ width: 42, height: 42, borderRadius: 12, background: "rgba(124,111,247,0.12)", border: "1px solid rgba(124,111,247,0.25)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-          <Lightbulb size={18} strokeWidth={1.8} style={{ color: T.violet }} />
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ fontSize: 13, fontWeight: 700, color: T.textPrimary, margin: 0, letterSpacing: "-0.01em" }}>Your best category is Math — 100% accuracy across 2 markets.</p>
-          <p style={{ fontSize: 12, color: T.textDim, margin: "2px 0 0" }}>Focus on your strongest categories to maximise rewards.</p>
-        </div>
-      </GCard>
+      {!loading && filtered.length === 0 && !error && (
+        <GCard style={{ padding: 0 }}>
+          <EmptyState
+            icon={BarChart3}
+            title="No settled markets yet"
+            body="Once markets you participated in are settled on-chain, your results and earnings will appear here."
+          />
+        </GCard>
+      )}
     </div>
   );
 }
@@ -2017,7 +2227,7 @@ function PageResults() {
 
 const LB_TABS = ["All Time", "This Week", "This Month"];
 
-function LeaderboardRow({ entry, index }) {
+function LeaderboardRow({ entry }) {
   const isTop3 = entry.rank <= 3;
   const rankColors = { 1: "#fbbf24", 2: "#94a3b8", 3: "#fb923c" };
   const rankColor = rankColors[entry.rank] || T.textDim;
@@ -2026,15 +2236,14 @@ function LeaderboardRow({ entry, index }) {
     <div style={{
       display: "flex", alignItems: "center", gap: 14,
       padding: "14px 20px",
-      background: entry.isMe ? "rgba(255,255,255,0.04)" : "transparent",
+      background: "transparent",
       borderBottom: `1px solid ${T.border}`,
-      borderLeft: entry.isMe ? `3px solid ${T.yes}` : "3px solid transparent",
+      borderLeft: "3px solid transparent",
       transition: "background 0.15s",
     }}
       onMouseEnter={(e) => { e.currentTarget.style.background = T.glassHover; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = entry.isMe ? "rgba(255,255,255,0.04)" : "transparent"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
     >
-      {/* Rank */}
       <div style={{ width: 32, textAlign: "center", flexShrink: 0 }}>
         {entry.badge
           ? <span style={{ fontSize: 18 }}>{entry.badge}</span>
@@ -2042,37 +2251,38 @@ function LeaderboardRow({ entry, index }) {
         }
       </div>
 
-      {/* Avatar */}
-      <div style={{ width: 38, height: 38, borderRadius: "50%", flexShrink: 0, background: isTop3 ? `rgba(255,255,255,0.1)` : T.glass, border: `2px solid ${isTop3 ? rankColor : T.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ fontSize: 12, fontWeight: 800, color: isTop3 ? rankColor : T.textMuted }}>{entry.initials}</span>
+      <div style={{ width: 38, height: 38, borderRadius: "50%", flexShrink: 0, background: isTop3 ? "rgba(255,255,255,0.1)" : T.glass, border: `2px solid ${isTop3 ? rankColor : T.border}`, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+        {entry.avatarDataUrl
+          ? <img src={entry.avatarDataUrl} alt={entry.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} referrerPolicy="no-referrer" />
+          : <span style={{ fontSize: 12, fontWeight: 800, color: isTop3 ? rankColor : T.textMuted }}>{entry.initials}</span>
+        }
       </div>
 
-      {/* Name */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ fontSize: 13, fontWeight: entry.isMe ? 800 : 600, color: entry.isMe ? T.yes : T.textPrimary, margin: 0, letterSpacing: "-0.01em" }}>
-          {entry.name}{entry.isMe && " (You)"}
+        <p style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary, margin: 0, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {entry.name}
         </p>
-        {entry.streak > 0 && (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, color: "#fb923c", fontWeight: 600 }}>
-            <Flame size={10} strokeWidth={2} /> {entry.streak} day streak
-          </span>
-        )}
+        <p style={{ fontSize: 10, color: T.textDim, margin: "2px 0 0" }}>
+          {entry.country && `${entry.country} · `}{entry.activatedReferrals} referrals
+        </p>
       </div>
 
-      {/* Stats */}
-      <div style={{ display: "flex", gap: 24, flexShrink: 0 }} className="lb-stats">
+      <div style={{ display: "flex", gap: 20, flexShrink: 0, alignItems: "center" }}>
         <div style={{ textAlign: "right" }}>
-          <p style={{ fontSize: 13, fontWeight: 700, color: T.textPrimary, margin: 0 }}>{entry.accuracy}%</p>
-          <p style={{ fontSize: 10, color: T.textDim, margin: 0 }}>Accuracy</p>
+          <p style={{ fontSize: 13, fontWeight: 700, color: T.yes, margin: 0 }}>
+            {entry.rewardsQuai != null ? `${entry.rewardsQuai.toFixed(2)} Q` : "—"}
+          </p>
+          <p style={{ fontSize: 10, color: T.textDim, margin: 0 }}>Rewards</p>
         </div>
-        <div style={{ textAlign: "right" }}>
-          <p style={{ fontSize: 13, fontWeight: 700, color: T.textPrimary, margin: 0 }}>{entry.marketsWon}</p>
-          <p style={{ fontSize: 10, color: T.textDim, margin: 0 }}>Won</p>
-        </div>
-        <div style={{ textAlign: "right" }}>
-          <p style={{ fontSize: 13, fontWeight: 700, color: T.yes, margin: 0 }}>{entry.totalEarned.toFixed(2)} Q</p>
-          <p style={{ fontSize: 10, color: T.textDim, margin: 0 }}>Earned</p>
-        </div>
+        {entry.profileUrl && (
+          <a href={entry.profileUrl} target="_blank" rel="noopener noreferrer"
+            style={{ display: "flex", alignItems: "center", color: T.textDim, transition: "color 0.15s" }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = T.textPrimary; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = T.textDim; }}
+          >
+            <ExternalLink size={12} strokeWidth={2} />
+          </a>
+        )}
       </div>
     </div>
   );
@@ -2082,35 +2292,22 @@ function PageLeaderboard() {
   const [tab, setTab] = useState("All Time");
   const { entries: liveEntries, loading: lbLoading, error: lbError, refresh: lbRefresh } = useBlipLeaderboard(50);
 
-  // Map BlipPay referral entries to the display shape we need
-  const board = liveEntries.length > 0
-    ? liveEntries.slice(0, 10).map((e, i) => ({
-        rank:        i + 1,
-        name:        e.displayName || `0x${(e.shortCode ?? "????").slice(0, 6)}`,
-        initials:    (e.displayName || "??").split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase(),
-        accuracy:    null,   // not provided by BlipPay referral API
-        marketsWon:  null,
-        totalEarned: null,
-        streak:      0,
-        badge:       i === 0 ? "👑" : i === 1 ? "🥈" : i === 2 ? "🥉" : null,
-        avatarUrl:   e.avatarUrl ?? null,
-        profileUrl:  e.shortUrl ?? null,
-      }))
-    : /* fallback demo */ [
-        { rank: 1,  name: "0xNova",      initials: "NV", accuracy: 91, marketsWon: 88,  totalEarned: 1842.50, streak: 14, badge: "👑" },
-        { rank: 2,  name: "ConvictKing", initials: "CK", accuracy: 87, marketsWon: 74,  totalEarned: 1420.00, streak: 9,  badge: "🥈" },
-        { rank: 3,  name: "Quai_Alpha",  initials: "QA", accuracy: 85, marketsWon: 68,  totalEarned: 1180.75, streak: 7,  badge: "🥉" },
-        { rank: 4,  name: "PredictPro",  initials: "PP", accuracy: 82, marketsWon: 61,  totalEarned:  940.20, streak: 5,  badge: null },
-        { rank: 5,  name: "ZeroSlip",    initials: "ZS", accuracy: 80, marketsWon: 55,  totalEarned:  812.60, streak: 3,  badge: null },
-        { rank: 6,  name: "DataDriven",  initials: "DD", accuracy: 78, marketsWon: 49,  totalEarned:  694.10, streak: 2,  badge: null },
-        { rank: 7,  name: "QuaiMind",    initials: "QM", accuracy: 75, marketsWon: 44,  totalEarned:  580.40, streak: 4,  badge: null },
-        { rank: 8,  name: "EdgeCase",    initials: "EC", accuracy: 73, marketsWon: 40,  totalEarned:  490.00, streak: 1,  badge: null },
-        { rank: 9,  name: "SigmaStake",  initials: "SS", accuracy: 71, marketsWon: 36,  totalEarned:  402.30, streak: 0,  badge: null },
-        { rank: 10, name: "You",         initials: "ME", accuracy: 68, marketsWon: 32,  totalEarned:  246.20, streak: 3,  badge: null, isMe: true },
-      ];
+  // Map BlipPay leaderboard entries to display shape
+  const board = liveEntries.map((e, i) => ({
+    rank:              i + 1,
+    name:              e.displayName || `${(e.shortCode ?? "unknown")}`,
+    initials:          (e.displayName || e.shortCode || "??").split(/[\s-_]+/).map(w => w[0] || "").join("").slice(0, 2).toUpperCase(),
+    activatedReferrals: e.activatedReferrals ?? 0,
+    rewardsQuai:       e.totalRewardsWei
+                         ? parseFloat((BigInt(e.totalRewardsWei) * BigInt(1000000) / BigInt("1000000000000000000")).toString()) / 1000000
+                         : null,
+    badge:             i === 0 ? "👑" : i === 1 ? "🥈" : i === 2 ? "🥉" : null,
+    avatarDataUrl:     e.avatarDataUrl ?? null,
+    profileUrl:        e.shortUrl ?? null,
+    country:           e.countryName ?? null,
+  }));
 
-  const isLive = liveEntries.length > 0;
-  const me     = !isLive ? board.find(e => e.isMe) : null;
+  const top3 = board.slice(0, 3);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -2120,13 +2317,11 @@ function PageLeaderboard() {
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>Leaderboard</h1>
           <p style={{ fontSize: 13, color: T.textMuted, margin: "4px 0 0" }}>
-            {isLive ? "Live BlipPay referral standings." : "Top predictors ranked by accuracy and earnings."}
+            Top BlipPay referral network participants · live rankings.
           </p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button
-            type="button"
-            onClick={lbRefresh}
+          <button type="button" onClick={lbRefresh}
             style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 8, background: T.glass, border: `1px solid ${T.border}`, color: T.textMuted, fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "border-color 0.15s, color 0.15s" }}
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.color = T.textPrimary; }}
             onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; }}
@@ -2144,11 +2339,11 @@ function PageLeaderboard() {
         </div>
       </div>
 
-      {/* Live source badge */}
-      {isLive && (
+      {/* Live badge */}
+      {board.length > 0 && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 8, background: T.yesBg, border: `1px solid ${T.yesBorder}`, fontSize: 12, color: T.yes, fontWeight: 600 }}>
-          <span style={{ width: 6, height: 6, borderRadius: "50%", background: T.yes, boxShadow: `0 0 6px ${T.yes}` }} />
-          Live data from BlipPay referral network · {liveEntries.length} participants
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: T.yes, boxShadow: `0 0 6px ${T.yes}`, flexShrink: 0 }} />
+          Live · BlipPay referral network · {liveEntries.length} participants
           <a href="https://blippay.me/leaderboard" target="_blank" rel="noopener noreferrer"
             style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4, color: T.yes, textDecoration: "none", fontSize: 11 }}>
             View full leaderboard <ExternalLink size={11} strokeWidth={2} />
@@ -2157,41 +2352,47 @@ function PageLeaderboard() {
       )}
 
       {lbLoading && (
-        <div style={{ textAlign: "center", padding: "32px", color: T.textDim, fontSize: 13 }}>Loading leaderboard…</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {[1,2,3,4,5].map(i => (
+            <div key={i} style={{ height: 66, borderRadius: 12, background: T.surface, border: `1px solid ${T.border}`, animation: "pulse 1.5s ease-in-out infinite" }} />
+          ))}
+        </div>
       )}
 
       {lbError && !lbLoading && (
         <div style={{ padding: "12px 16px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", fontSize: 12, color: "#ef4444" }}>
-          Could not load live leaderboard — showing demo data. ({lbError})
+          Could not load leaderboard: {lbError}
         </div>
       )}
 
+      {!lbLoading && board.length === 0 && !lbError && (
+        <GCard style={{ padding: 0 }}>
+          <EmptyState icon={Trophy} title="No rankings yet" body="Leaderboard data will appear once the referral network has participants." />
+        </GCard>
+      )}
+
       {/* Top 3 podium */}
-      {board.length >= 3 && (
+      {!lbLoading && top3.length >= 3 && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-          {[board[1], board[0], board[2]].map((entry, i) => {
+          {[top3[1], top3[0], top3[2]].map((entry, i) => {
             const colors = ["#94a3b8", "#fbbf24", "#fb923c"];
+            const heights = ["80px", "96px", "72px"];
             return (
-              <GCard key={entry.rank} style={{ padding: "20px 16px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 10, borderColor: i === 1 ? "rgba(251,191,36,0.3)" : T.border }}>
+              <GCard key={entry.rank} style={{ padding: "20px 16px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 10, borderColor: i === 1 ? "rgba(251,191,36,0.3)" : T.border, paddingTop: heights[i] === "96px" ? "24px" : "20px" }}>
                 <div style={{ fontSize: 28 }}>{entry.badge}</div>
-                <div style={{ width: 52, height: 52, borderRadius: "50%", background: `rgba(255,255,255,0.06)`, border: `2px solid ${colors[i]}`, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-                  {entry.avatarUrl
-                    ? <img src={entry.avatarUrl} alt={entry.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} referrerPolicy="no-referrer" />
+                <div style={{ width: 52, height: 52, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: `2px solid ${colors[i]}`, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                  {entry.avatarDataUrl
+                    ? <img src={entry.avatarDataUrl} alt={entry.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} referrerPolicy="no-referrer" />
                     : <span style={{ fontSize: 14, fontWeight: 800, color: colors[i] }}>{entry.initials}</span>
                   }
                 </div>
                 <div>
-                  <p style={{ fontSize: 13, fontWeight: 700, color: "#ffffff", margin: 0 }}>{entry.name}</p>
-                  {entry.totalEarned != null && (
-                    <p style={{ fontSize: 11, color: colors[i], margin: "2px 0 0", fontWeight: 700 }}>{entry.totalEarned.toFixed(2)} Q</p>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: "#ffffff", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 120 }}>{entry.name}</p>
+                  {entry.rewardsQuai != null && (
+                    <p style={{ fontSize: 11, color: colors[i], margin: "2px 0 0", fontWeight: 700 }}>{entry.rewardsQuai.toFixed(4)} Q</p>
                   )}
+                  <p style={{ fontSize: 10, color: T.textDim, margin: "2px 0 0" }}>{entry.activatedReferrals} referrals</p>
                 </div>
-                {entry.accuracy != null && (
-                  <div style={{ display: "flex", gap: 12, fontSize: 11, color: T.textDim }}>
-                    <span><span style={{ color: T.textMuted, fontWeight: 600 }}>{entry.accuracy}%</span> acc</span>
-                    <span><span style={{ color: T.textMuted, fontWeight: 600 }}>{entry.marketsWon}</span> won</span>
-                  </div>
-                )}
               </GCard>
             );
           })}
@@ -2199,40 +2400,15 @@ function PageLeaderboard() {
       )}
 
       {/* Full table */}
-      <GCard style={{ padding: 0, overflow: "hidden" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 20px", borderBottom: `1px solid ${T.border}`, background: T.glass }}>
-          <div style={{ width: 32, flexShrink: 0 }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase" }}>#</span>
+      {!lbLoading && board.length > 0 && (
+        <GCard style={{ padding: 0, overflow: "hidden" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "10px 20px", borderBottom: `1px solid ${T.border}`, background: T.glass }}>
+            <div style={{ width: 32 }}><span style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase" }}>#</span></div>
+            <div style={{ width: 38 }} />
+            <div style={{ flex: 1 }}><span style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase" }}>Participant</span></div>
+            <div style={{ textAlign: "right" }}><span style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase" }}>Rewards</span></div>
           </div>
-          <div style={{ width: 38, flexShrink: 0 }} />
-          <div style={{ flex: 1 }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase" }}>Player</span>
-          </div>
-          {!isLive && (
-            <div style={{ display: "flex", gap: 24, flexShrink: 0 }} className="lb-stats">
-              {["Accuracy", "Won", "Earned"].map(h => (
-                <div key={h} style={{ width: 60, textAlign: "right" }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase" }}>{h}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        {board.map((entry, i) => <LeaderboardRow key={entry.rank} entry={entry} index={i} />)}
-      </GCard>
-
-      {/* Your position callout — demo only */}
-      {me && (
-        <GCard style={{ padding: "18px 22px", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", borderColor: "rgba(34,197,94,0.2)" }}>
-          <div style={{ width: 42, height: 42, borderRadius: 12, background: T.yesBg, border: `1px solid ${T.yesBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <Trophy size={18} strokeWidth={1.8} style={{ color: T.yes }} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <p style={{ fontSize: 13, fontWeight: 700, color: T.textPrimary, margin: 0 }}>
-              You're ranked <span style={{ color: T.yes }}>#{me.rank}</span> globally with <span style={{ color: T.yes }}>{me.accuracy}% accuracy</span>.
-            </p>
-            <p style={{ fontSize: 12, color: T.textDim, margin: "2px 0 0" }}>Improve your ranking by answering more polls correctly and staking higher amounts.</p>
-          </div>
+          {board.map((entry) => <LeaderboardRow key={entry.rank} entry={entry} />)}
         </GCard>
       )}
     </div>
@@ -2265,18 +2441,14 @@ function RewardCard({ r, onClaim, claiming }) {
           Outcome: {r.outcome}
         </span>
         <span style={{ fontSize: 11, color: T.textDim }}>·</span>
-        <span style={{ fontSize: 11, color: T.textMuted }}>Your side: <span style={{ fontWeight: 700, color: r.yourSide === "YES" ? T.yes : T.no }}>{r.yourSide}</span></span>
+        <span style={{ fontSize: 11, color: T.textMuted }}>Market outcome: <span style={{ fontWeight: 700, color: r.outcome === "YES" ? T.yes : T.no }}>{r.outcome}</span></span>
       </div>
 
       {/* Reward row */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-        <div style={{ padding: "10px 12px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}` }}>
-          <p style={{ fontSize: 9, color: T.textDim, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 3px" }}>Staked</p>
-          <p style={{ fontSize: 15, fontWeight: 800, color: T.textPrimary, margin: 0 }}>{r.stake.toFixed(2)} <span style={{ fontSize: 10, color: T.textDim }}>Q</span></p>
-        </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
         <div style={{ padding: "10px 12px", borderRadius: 10, background: !r.claimed ? T.yesBg : T.glass, border: `1px solid ${!r.claimed ? T.yesBorder : T.border}` }}>
           <p style={{ fontSize: 9, color: !r.claimed ? T.yes : T.textDim, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 3px" }}>Reward</p>
-          <p style={{ fontSize: 15, fontWeight: 800, color: !r.claimed ? T.yes : T.textMuted, margin: 0 }}>+{r.reward.toFixed(2)} <span style={{ fontSize: 10, opacity: 0.6 }}>Q</span></p>
+          <p style={{ fontSize: 18, fontWeight: 800, color: !r.claimed ? T.yes : T.textMuted, margin: 0 }}>+{r.reward.toFixed(2)} <span style={{ fontSize: 11, opacity: 0.6 }}>Q</span></p>
         </div>
       </div>
 
@@ -2301,121 +2473,100 @@ function RewardCard({ r, onClaim, claiming }) {
 }
 
 function PageRewards() {
-  const [tab,      setTab]      = useState("Unclaimed");
-  const [rewards,  setRewards]  = useState(CLAIMABLE_REWARDS);
-  const [claiming, setClaiming] = useState(null);
-  const [claimAll, setClaimAll] = useState(false);
+  const [tab, setTab] = useState("Unclaimed");
+  const { rewards, loading, error, claiming, claimReward, refresh } = useRewards();
 
-  const unclaimed    = rewards.filter(r => !r.claimed);
-  const claimed      = rewards.filter(r =>  r.claimed);
-  const totalPending = unclaimed.reduce((s, r) => s + r.reward, 0);
-  const totalClaimed = claimed.reduce((s,  r) => s + r.reward, 0);
-  const displayed    = tab === "Unclaimed" ? unclaimed : claimed;
+  const filtered = rewards.filter(r => tab === "Unclaimed" ? !r.claimed : r.claimed);
 
-  const handleClaim = (id) => {
-    setClaiming(id);
-    setTimeout(() => {
-      setRewards(prev => prev.map(r => r.id === id ? { ...r, claimed: true } : r));
-      setClaiming(null);
-    }, 1400);
-  };
-
-  const handleClaimAll = () => {
-    setClaimAll(true);
-    setTimeout(() => {
-      setRewards(prev => prev.map(r => ({ ...r, claimed: true })));
-      setClaimAll(false);
-    }, 1600);
-  };
+  const pendingTotal  = rewards.filter(r => !r.claimed).reduce((s, r) => s + r.reward, 0);
+  const claimedTotal  = rewards.filter(r =>  r.claimed).reduce((s, r) => s + r.reward, 0);
+  const allTimeTotal  = rewards.reduce((s, r) => s + r.reward, 0);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-
-      {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>Rewards</h1>
           <p style={{ fontSize: 13, color: T.textMuted, margin: "4px 0 0" }}>Claim your earnings from settled markets.</p>
         </div>
-        <div style={{ display: "flex", gap: 4, padding: 4, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 8 }}>
-          {REWARD_TABS.map(t => (
-            <button key={t} type="button" onClick={() => setTab(t)}
-              style={{ padding: "6px 16px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", border: "none", background: tab === t ? "#ffffff" : "transparent", color: tab === t ? "#080808" : T.textMuted, transition: "all 0.15s" }}>
-              {t} {t === "Unclaimed" && unclaimed.length > 0 && `(${unclaimed.length})`}
-            </button>
-          ))}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button type="button" onClick={refresh}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 8, background: T.glass, border: `1px solid ${T.border}`, color: T.textMuted, fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "border-color 0.15s, color 0.15s" }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.color = T.textPrimary; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; }}
+          >
+            <RefreshCw size={12} strokeWidth={2} /> Refresh
+          </button>
+          <div style={{ display: "flex", gap: 4, padding: 4, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 8 }}>
+            {REWARD_TABS.map(t => (
+              <button key={t} type="button" onClick={() => setTab(t)}
+                style={{ padding: "6px 16px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", border: "none", background: tab === t ? "#ffffff" : "transparent", color: tab === t ? "#080808" : T.textMuted, transition: "all 0.15s" }}>
+                {t}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Summary banner */}
+      {/* Summary cards — live totals */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-        <GCard style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 14, borderColor: unclaimed.length > 0 ? "rgba(34,197,94,0.25)" : T.border }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: T.yesBg, border: `1px solid ${T.yesBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <Gift size={18} strokeWidth={1.8} style={{ color: T.yes }} />
-          </div>
-          <div>
-            <p style={{ fontSize: 10, color: T.textDim, margin: "0 0 2px", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>Pending</p>
-            <p style={{ fontSize: 20, fontWeight: 800, color: T.yes, margin: 0, letterSpacing: "-0.03em" }}>{totalPending.toFixed(2)} <span style={{ fontSize: 13, fontWeight: 500, color: T.textDim }}>Q</span></p>
-          </div>
-        </GCard>
-        <GCard style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <CheckCircle2 size={18} strokeWidth={1.8} style={{ color: T.textMuted }} />
-          </div>
-          <div>
-            <p style={{ fontSize: 10, color: T.textDim, margin: "0 0 2px", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>Claimed</p>
-            <p style={{ fontSize: 20, fontWeight: 800, color: T.textPrimary, margin: 0, letterSpacing: "-0.03em" }}>{totalClaimed.toFixed(2)} <span style={{ fontSize: 13, fontWeight: 500, color: T.textDim }}>Q</span></p>
-          </div>
-        </GCard>
-        <GCard style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <Coins size={18} strokeWidth={1.8} style={{ color: T.textMuted }} />
-          </div>
-          <div>
-            <p style={{ fontSize: 10, color: T.textDim, margin: "0 0 2px", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>All Time</p>
-            <p style={{ fontSize: 20, fontWeight: 800, color: T.textPrimary, margin: 0, letterSpacing: "-0.03em" }}>{(totalPending + totalClaimed).toFixed(2)} <span style={{ fontSize: 13, fontWeight: 500, color: T.textDim }}>Q</span></p>
-          </div>
-        </GCard>
+        {[
+          { label: "Pending",  icon: Gift,         color: pendingTotal > 0 ? T.yes : T.textMuted, bg: pendingTotal > 0 ? T.yesBg : T.glass, border: pendingTotal > 0 ? T.yesBorder : T.border, value: pendingTotal },
+          { label: "Claimed",  icon: CheckCircle2, color: T.textMuted, bg: T.glass,  border: T.border, value: claimedTotal },
+          { label: "All Time", icon: Coins,        color: T.textMuted, bg: T.glass,  border: T.border, value: allTimeTotal },
+        ].map(({ label, icon: Icon, color, bg, border, value }) => (
+          <GCard key={label} style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: bg, border: `1px solid ${border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Icon size={18} strokeWidth={1.8} style={{ color }} />
+            </div>
+            <div>
+              <p style={{ fontSize: 10, color: T.textDim, margin: "0 0 2px", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</p>
+              <p style={{ fontSize: 20, fontWeight: 800, color: T.textPrimary, margin: 0, letterSpacing: "-0.03em" }}>
+                {loading ? "—" : value.toFixed(2)} <span style={{ fontSize: 13, fontWeight: 500, color: T.textDim }}>Q</span>
+              </p>
+            </div>
+          </GCard>
+        ))}
       </div>
 
-      {/* Claim all button */}
-      {tab === "Unclaimed" && unclaimed.length > 1 && (
-        <button
-          type="button"
-          onClick={handleClaimAll}
-          disabled={claimAll}
-          style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 8, padding: "11px 22px", borderRadius: 10, border: "none", background: claimAll ? "rgba(34,197,94,0.4)" : T.yes, color: "#000000", fontSize: 13, fontWeight: 800, cursor: claimAll ? "not-allowed" : "pointer", transition: "background 0.15s" }}
-        >
-          <Zap size={14} strokeWidth={2.5} />
-          {claimAll ? "Claiming all…" : `Claim all — ${totalPending.toFixed(2)} Q`}
-        </button>
-      )}
-
-      {/* Cards */}
-      {displayed.length === 0 ? (
-        <GCard style={{ padding: "60px 24px", textAlign: "center" }}>
-          <div style={{ width: 48, height: 48, borderRadius: 14, background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
-            <Gift size={20} strokeWidth={1.5} style={{ color: T.textDim }} />
-          </div>
-          <p style={{ fontSize: 14, fontWeight: 600, color: T.textMuted, margin: 0 }}>
-            {tab === "Unclaimed" ? "Nothing to claim right now." : "No claimed rewards yet."}
-          </p>
-          <p style={{ fontSize: 12, color: T.textDim, margin: "6px 0 0" }}>Win markets to earn Quai rewards.</p>
-        </GCard>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
-          {displayed.map(r => <RewardCard key={r.id} r={r} onClaim={handleClaim} claiming={claiming} />)}
+      {error && (
+        <div style={{ padding: "12px 16px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", fontSize: 12, color: "#ef4444" }}>
+          Could not load rewards: {error}
         </div>
       )}
 
-      {/* How rewards work */}
+      {loading && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {[1,2].map(i => <div key={i} style={{ height: 200, borderRadius: 16, background: T.surface, border: `1px solid ${T.border}`, animation: "pulse 1.5s ease-in-out infinite" }} />)}
+        </div>
+      )}
+
+      {!loading && filtered.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
+          {filtered.map(r => <RewardCard key={r.id} r={r} onClaim={claimReward} claiming={claiming} />)}
+        </div>
+      )}
+
+      {!loading && filtered.length === 0 && !error && (
+        <GCard style={{ padding: 0 }}>
+          <EmptyState
+            icon={Gift}
+            title={tab === "Unclaimed" ? "No rewards to claim" : "No claimed rewards yet"}
+            body={tab === "Unclaimed"
+              ? "Rewards become claimable after markets you predicted on are resolved. Predict correctly to earn rewards."
+              : "Once you claim rewards they will appear here."}
+          />
+        </GCard>
+      )}
+
+      {/* How rewards work — static explainer */}
       <GCard style={{ padding: "18px 22px" }}>
         <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px" }}>How rewards work</p>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
           {[
-            { icon: Target,      label: "Stake correctly",  desc: "Pick the winning side and stake Quai on it." },
-            { icon: Lock2,       label: "Market settles",   desc: "Once closed, the contract determines the consensus outcome." },
-            { icon: Gift,        label: "Claim your share", desc: "Winners split the losing pool proportional to their stake." },
+            { icon: Target, label: "Predict correctly",  desc: "Pick the winning side and commit your prediction." },
+            { icon: Lock2,  label: "Market resolves",    desc: "Once the deadline passes, the oracle verifies the real-world result." },
+            { icon: Gift,   label: "Claim your share",   desc: "Correct predictions split the opposing pool proportional to their position." },
           ].map(({ icon: Icon, label, desc }) => (
             <div key={label} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
               <div style={{ width: 34, height: 34, borderRadius: 8, background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
@@ -2438,22 +2589,22 @@ function PageRewards() {
 ════════════════════════════════════════════════ */
 
 const HOW_STEPS = [
-  { step: "01", icon: HelpCircle,    title: "Browse Polls",              desc: "Explore daily markets across politics, crypto, science, math, psychology and more. New polls open every day.", color: "#38bdf8"  },
-  { step: "02", icon: Target,        title: "Pick Your Side",            desc: "Study the question and choose YES or NO — the outcome you believe the evidence and logic supports.",           color: "#a78bfa"  },
-  { step: "03", icon: Coins,         title: "Stake Your Conviction",     desc: "Commit Quai to back your answer. The more you stake, the greater your potential reward.",                       color: "#fbbf24"  },
-  { step: "04", icon: PieChart,      title: "Market Reflects Capital",   desc: "The YES/NO split shown is total capital committed — economic conviction, not a popularity vote.",               color: "#22c55e"  },
-  { step: "05", icon: ArrowLeftRight,title: "Switch Once If Needed",     desc: "Changed your mind? You get one free position switch per market, as long as 5+ minutes remain.",               color: "#fb923c"  },
-  { step: "06", icon: ShieldCheck,   title: "Smart Contract Settles",    desc: "When the market closes, the Quai Network smart contract determines the consensus outcome — no human involved.", color: "#f472b6"  },
-  { step: "07", icon: Gift,          title: "Claim Your Rewards",        desc: "Winners share the losing pool proportional to their stake. Claim directly from the contract — non-custodial.",  color: "#22c55e"  },
+  { step: "01", icon: HelpCircle,    title: "Generate Questions",        desc: "Markets are automatically generated from templates and live data. New markets open every day.", color: "#38bdf8"  },
+  { step: "02", icon: Target,        title: "Browse Markets",            desc: "Explore active prediction markets across Crypto, Sports, Weather, and Stocks categories.",        color: "#a78bfa"  },
+  { step: "03", icon: Coins,         title: "Predict YES or NO",         desc: "Choose your side for each question. Commit a position on the outcome you believe will happen.",   color: "#fbbf24"  },
+  { step: "04", icon: PieChart,      title: "Market Shows the Split",    desc: "The YES/NO percentage reflects total capital on each side — a live signal of where predictions sit.", color: "#22c55e"  },
+  { step: "05", icon: ArrowLeftRight,title: "Switch Once If Needed",     desc: "Changed your mind? You get one position switch per market, as long as 5+ minutes remain.",       color: "#fb923c"  },
+  { step: "06", icon: ShieldCheck,   title: "Oracle Verifies",           desc: "When the deadline arrives, the system checks the agreed data source and determines the result.",  color: "#f472b6"  },
+  { step: "07", icon: Gift,          title: "Claim Your Rewards",        desc: "Correct predictions earn a share of the opposing pool as rewards. Claim from the contract.",      color: "#22c55e"  },
 ];
 
 const FAQ_ITEMS = [
-  { q: "How is the outcome determined?",        a: "The outcome with the highest total capital committed at market close becomes the consensus outcome. This is enforced entirely on-chain by the smart contract — no human or backend is involved." },
-  { q: "Can I withdraw my stake before close?", a: "No. Once you commit capital to a position, your stake is locked until the market settles. You can switch your side once, but you cannot withdraw early." },
-  { q: "What is the switch rule?",              a: "Each participant gets exactly one position switch per market. The switch is only valid if at least 5 minutes remain before market close. Your full stake moves to the new side." },
-  { q: "How are rewards calculated?",           a: "Winners split the entire losing pool proportional to their share of the winning pool. For example, if you hold 10% of the YES pool and YES wins, you receive 10% of the NO pool plus your original stake." },
-  { q: "Is Q4 custodial?",                      a: "No. Q4 is non-custodial. You approve transactions directly from your Quai wallet. The backend never holds or controls your funds. Smart contracts are the sole custodian." },
-  { q: "What network does Q4 run on?",          a: "Q4 is built on Quai Network — a proof-of-work, EVM-compatible blockchain. You need a Quai-compatible wallet and QUAI tokens to participate." },
+  { q: "How is the outcome determined?",        a: "The system fetches the verified real-world result from the agreed data source at the market deadline. The result is determined automatically by the oracle — no human or admin decides the outcome." },
+  { q: "Can I change my prediction?",           a: "You may switch your position once per market, as long as at least 5 minutes remain before the deadline. Once the market closes, no changes are accepted." },
+  { q: "What is the switch rule?",              a: "Each participant gets exactly one position switch per market. The switch is only valid if at least 5 minutes remain before market close. Your position moves to the new side." },
+  { q: "How are rewards calculated?",           a: "Winners split the entire opposing pool proportional to their share of the winning side. For example, if you hold 10% of the YES pool and YES wins, you receive 10% of the NO pool plus your original position." },
+  { q: "What data sources does Q4 use?",        a: "Q4 uses external oracle data sources appropriate to each category. Crypto markets use verified price feeds, sports markets use match statistics APIs, weather markets use weather data APIs, and stocks use closing price data." },
+  { q: "When do markets resolve?",              a: "Markets resolve automatically when the deadline is reached. The oracle verifies the outcome and the market settles without any manual input. Rewards are claimable from your dashboard shortly after." },
 ];
 
 function FAQItem({ item }) {
@@ -2482,7 +2633,7 @@ function PageHowItWorks({ onNavigate }) {
       {/* Header */}
       <div>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>How Q4 Works</h1>
-        <p style={{ fontSize: 13, color: T.textMuted, margin: "4px 0 0" }}>A capital-weighted conviction protocol — not a popularity poll.</p>
+        <p style={{ fontSize: 13, color: T.textMuted, margin: "4px 0 0" }}>Generate → Predict → Wait → Verify → Resolve.</p>
       </div>
 
       {/* Core concept banner */}
@@ -2491,9 +2642,9 @@ function PageHowItWorks({ onNavigate }) {
           <Sparkles size={22} strokeWidth={1.8} style={{ color: T.violet }} />
         </div>
         <div style={{ flex: 1, minWidth: 200 }}>
-          <p style={{ fontSize: 15, fontWeight: 800, color: "#ffffff", margin: "0 0 4px", letterSpacing: "-0.02em" }}>Capital-weighted consensus, not popularity.</p>
+          <p style={{ fontSize: 15, fontWeight: 800, color: "#ffffff", margin: "0 0 4px", letterSpacing: "-0.02em" }}>Short-term. Verifiable. Automatic.</p>
           <p style={{ fontSize: 13, color: T.textMuted, margin: 0, lineHeight: 1.6 }}>
-            Q4 hides participant counts entirely. What the market surfaces is the <strong style={{ color: T.textPrimary }}>aggregate capital</strong> committed to each outcome — a signal of economic conviction, not bandwagon effect.
+            Q4 markets open today, close at the deadline, and resolve automatically using <strong style={{ color: T.textPrimary }}>verified real-world data</strong>. No admin decides the outcome — the oracle does.
           </p>
         </div>
       </div>
@@ -2532,10 +2683,10 @@ function PageHowItWorks({ onNavigate }) {
         <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.1em", textTransform: "uppercase", margin: "0 0 14px" }}>Market lifecycle</p>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }} className="dash-how-grid">
           {[
-            { status: "Created",  color: "#38bdf8", desc: "Deployed with a question, outcomes, open/close times, and settlement config." },
-            { status: "Active",   color: T.yes,    desc: "Participants connect their wallet and commit capital to an outcome." },
-            { status: "Closed",   color: "#fbbf24", desc: "Market reaches closing time. No further commitments accepted." },
-            { status: "Settled",  color: T.violet, desc: "Smart contract determines consensus and makes rewards available to claim." },
+            { status: "Created",  color: "#38bdf8", desc: "Deployed with a question, YES/NO outcomes, deadline, and oracle data source." },
+            { status: "Active",   color: T.yes,    desc: "Users browse and commit YES or NO predictions before the deadline." },
+            { status: "Closed",   color: "#fbbf24", desc: "Deadline reached. No further predictions accepted." },
+            { status: "Resolved", color: T.violet, desc: "Oracle verifies result. Market resolves YES or NO. Rewards become claimable." },
           ].map(({ status, color, desc }) => (
             <GCard key={status} style={{ padding: "16px 18px" }}>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 10px", borderRadius: 999, fontSize: 10, fontWeight: 700, background: `${color}18`, border: `1px solid ${color}35`, color, marginBottom: 10 }}>
@@ -2562,15 +2713,775 @@ function PageHowItWorks({ onNavigate }) {
             <Trophy size={20} strokeWidth={1.8} style={{ color: "#fbbf24" }} />
           </div>
           <div>
-            <p style={{ fontSize: 14, fontWeight: 700, color: "#ffffff", margin: 0, letterSpacing: "-0.02em" }}>Your conviction has real economic weight.</p>
-            <p style={{ fontSize: 12, color: T.textMuted, margin: "2px 0 0" }}>Back it with capital and earn when you're right.</p>
+            <p style={{ fontSize: 14, fontWeight: 700, color: "#ffffff", margin: 0, letterSpacing: "-0.02em" }}>Predict today. Know the result tonight.</p>
+            <p style={{ fontSize: 12, color: T.textMuted, margin: "2px 0 0" }}>Markets open, close, and resolve within 24 hours.</p>
           </div>
         </div>
         <button type="button" onClick={() => onNavigate("questions")}
           style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 20px", borderRadius: 8, background: "#ffffff", color: "#080808", fontSize: 13, fontWeight: 700, border: "none", cursor: "pointer", flexShrink: 0 }}>
-          Browse Polls <ArrowRight size={14} strokeWidth={2.5} />
+          Browse Markets <ArrowRight size={14} strokeWidth={2.5} />
         </button>
       </GCard>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════
+   ADMIN CHART COMPONENTS
+   Pure SVG — no external charting lib required
+════════════════════════════════════════════════ */
+
+/**
+ * SVG Donut chart.
+ * slices: Array<{ label, value, color }>
+ * total: number shown in centre
+ */
+function AdminDonutChart({ slices, total, centerLabel = "Total" }) {
+  const [hovered, setHovered] = useState(null);
+  const cx = 80, cy = 80, R = 60, r = 38;
+  const sum = slices.reduce((a, s) => a + s.value, 0) || 1;
+
+  // Build arc paths
+  let cursor = -Math.PI / 2; // start at 12 o'clock
+  const paths = slices.map((s) => {
+    const sweep = (s.value / sum) * 2 * Math.PI;
+    const x1 = cx + R * Math.cos(cursor);
+    const y1 = cy + R * Math.sin(cursor);
+    cursor += sweep;
+    const x2 = cx + R * Math.cos(cursor);
+    const y2 = cy + R * Math.sin(cursor);
+    const largeArc = sweep > Math.PI ? 1 : 0;
+    // inner arc
+    const ix1 = cx + r * Math.cos(cursor);
+    const iy1 = cy + r * Math.sin(cursor);
+    const ix2 = cx + r * Math.cos(cursor - sweep);
+    const iy2 = cy + r * Math.sin(cursor - sweep);
+    const d = [
+      `M ${x1} ${y1}`,
+      `A ${R} ${R} 0 ${largeArc} 1 ${x2} ${y2}`,
+      `L ${ix1} ${iy1}`,
+      `A ${r} ${r} 0 ${largeArc} 0 ${ix2} ${iy2}`,
+      "Z",
+    ].join(" ");
+    return { ...s, d, pct: Math.round((s.value / sum) * 100) };
+  });
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap" }}>
+      <svg width={160} height={160} style={{ flexShrink: 0, overflow: "visible" }}>
+        {paths.map((p, i) => (
+          <path
+            key={p.label}
+            d={p.d}
+            fill={hovered === i ? p.color : p.color + "cc"}
+            stroke="#111111"
+            strokeWidth={hovered === i ? 2 : 1}
+            style={{ cursor: "pointer", transition: "all 0.15s" }}
+            onMouseEnter={() => setHovered(i)}
+            onMouseLeave={() => setHovered(null)}
+          />
+        ))}
+        {/* Centre hole */}
+        <circle cx={cx} cy={cy} r={r - 2} fill="#111111" />
+        {/* Centre label */}
+        <text x={cx} y={cy - 8} textAnchor="middle" fontSize="22" fontWeight="800" fill="#ffffff" fontFamily="sans-serif">
+          {hovered !== null ? paths[hovered]?.value : total}
+        </text>
+        <text x={cx} y={cy + 10} textAnchor="middle" fontSize="10" fill="rgba(255,255,255,0.4)" fontFamily="sans-serif">
+          {hovered !== null ? paths[hovered]?.label : centerLabel}
+        </text>
+        {hovered !== null && (
+          <text x={cx} y={cy + 24} textAnchor="middle" fontSize="11" fill={paths[hovered]?.color} fontFamily="sans-serif" fontWeight="700">
+            {paths[hovered]?.pct}%
+          </text>
+        )}
+      </svg>
+      {/* Legend */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, minWidth: 120 }}>
+        {paths.map((p, i) => (
+          <div
+            key={p.label}
+            style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", opacity: hovered !== null && hovered !== i ? 0.4 : 1, transition: "opacity 0.15s" }}
+            onMouseEnter={() => setHovered(i)}
+            onMouseLeave={() => setHovered(null)}
+          >
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: p.color, flexShrink: 0 }} />
+            <span style={{ fontSize: 12, color: T.textMuted, flex: 1 }}>{p.label}</span>
+            <span style={{ fontSize: 13, fontWeight: 800, color: "#ffffff" }}>{p.value}</span>
+            <span style={{ fontSize: 10, color: T.textDim, minWidth: 34, textAlign: "right" }}>{p.pct}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Bar chart — volume grouped by category.
+ * markets: array from useAdminMarkets
+ */
+function AdminBarChart({ markets }) {
+  const [hovered, setHovered] = useState(null);
+
+  const CAT_COLORS = {
+    Crypto:  "#fbbf24",
+    Sports:  "#fb923c",
+    Weather: "#38bdf8",
+    Stocks:  "#34d399",
+  };
+
+  // Aggregate total pool per category
+  const cats = ["Crypto", "Sports", "Weather", "Stocks"];
+  const data = cats.map((cat) => ({
+    label: cat,
+    value: markets
+      .filter((m) => m.category === cat)
+      .reduce((s, m) => s + m.totalPool, 0),
+    color: CAT_COLORS[cat] || "#a78bfa",
+    count: markets.filter((m) => m.category === cat).length,
+  }));
+
+  const maxVal = Math.max(...data.map((d) => d.value), 1);
+  const barH = 120;
+
+  if (markets.length === 0) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 140, color: T.textDim, fontSize: 13 }}>
+        No market data yet
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Bar chart */}
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 12, height: barH + 32, paddingBottom: 28, position: "relative" }}>
+        {/* Y-axis gridlines */}
+        {[0, 25, 50, 75, 100].map((pct) => (
+          <div key={pct} style={{
+            position: "absolute", left: 0, right: 0,
+            bottom: 28 + (pct / 100) * barH,
+            borderTop: `1px dashed rgba(255,255,255,0.06)`,
+            pointerEvents: "none",
+          }} />
+        ))}
+
+        {data.map((d, i) => {
+          const barHeightPx = maxVal > 0 ? Math.max(4, (d.value / maxVal) * barH) : 4;
+          const isHov = hovered === i;
+          return (
+            <div
+              key={d.label}
+              style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, position: "relative", cursor: "pointer" }}
+              onMouseEnter={() => setHovered(i)}
+              onMouseLeave={() => setHovered(null)}
+            >
+              {/* Tooltip */}
+              {isHov && (
+                <div style={{
+                  position: "absolute", bottom: barHeightPx + 36, left: "50%", transform: "translateX(-50%)",
+                  background: "rgba(16,16,16,0.97)", border: `1px solid ${d.color}40`,
+                  borderRadius: 8, padding: "6px 10px", whiteSpace: "nowrap", zIndex: 10, pointerEvents: "none",
+                }}>
+                  <p style={{ fontSize: 12, fontWeight: 800, color: d.color, margin: 0 }}>{d.value.toFixed(2)} Q</p>
+                  <p style={{ fontSize: 10, color: T.textDim, margin: "2px 0 0" }}>{d.count} market{d.count !== 1 ? "s" : ""}</p>
+                </div>
+              )}
+              {/* Bar */}
+              <div style={{
+                width: "100%", height: barHeightPx,
+                borderRadius: "4px 4px 0 0",
+                background: isHov ? d.color : d.color + "99",
+                transition: "height 0.4s ease, background 0.15s",
+                alignSelf: "flex-end",
+                boxShadow: isHov ? `0 0 16px ${d.color}55` : "none",
+              }} />
+              {/* X label */}
+              <span style={{
+                position: "absolute", bottom: 4,
+                fontSize: 10, fontWeight: 700, color: isHov ? d.color : T.textDim,
+                textAlign: "center", transition: "color 0.15s",
+              }}>
+                {d.label.slice(0, 6)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Value labels below bars */}
+      <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
+        {data.map((d) => (
+          <div key={d.label} style={{ flex: 1, textAlign: "center" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: d.color }}>
+              {d.value >= 1000 ? `${(d.value / 1000).toFixed(1)}K` : d.value.toFixed(0)} Q
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * User-facing dashboard platform breakdown charts.
+ * Shows: category distribution donut + market status bars + YES/NO pool split.
+ */
+function UserDashboardCharts({ markets, positions }) {
+  const [hovCat, setHovCat] = useState(null);
+  const [hovStatus, setHovStatus] = useState(null);
+
+  // — Category donut —
+  const CAT_COLORS = { Crypto: "#fbbf24", Sports: "#fb923c", Weather: "#38bdf8", Stocks: "#34d399" };
+  const catCounts = {};
+  markets.forEach((m) => { catCounts[m.category] = (catCounts[m.category] || 0) + 1; });
+  const catSlices = Object.entries(catCounts).map(([label, value]) => ({
+    label, value, color: CAT_COLORS[label] || "#a78bfa",
+  })).sort((a, b) => b.value - a.value);
+
+  // — Market status bars —
+  const statuses = ["active", "closed", "resolved", "paused"];
+  const statusColors = { active: "#22c55e", closed: "#fbbf24", resolved: "#7c6ff7", paused: "#94a3b8" };
+  const statusCounts = statuses.map((s) => ({
+    label: s.charAt(0).toUpperCase() + s.slice(1),
+    value: markets.filter((m) => m.status === s).length,
+    color: statusColors[s],
+  }));
+  const maxStatus = Math.max(...statusCounts.map((s) => s.value), 1);
+
+  // — Position side breakdown —
+  const yesPositions = positions.filter((p) => p.side === "YES").length;
+  const noPositions  = positions.filter((p) => p.side === "NO").length;
+  const totalPos = yesPositions + noPositions || 1;
+
+  if (markets.length === 0 && positions.length === 0) return null;
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }} className="dash-kpi-grid">
+
+      {/* Category distribution donut */}
+      <GCard style={{ padding: "18px 22px" }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 16px" }}>
+          Markets by Category
+        </p>
+        {catSlices.length === 0 ? (
+          <p style={{ fontSize: 13, color: T.textDim }}>No market data yet.</p>
+        ) : (
+          <AdminDonutChart slices={catSlices} total={markets.length} centerLabel="Markets" />
+        )}
+      </GCard>
+
+      {/* Market status bars + my positions split */}
+      <GCard style={{ padding: "18px 22px" }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px" }}>
+          Market Status Breakdown
+        </p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 18 }}>
+          {statusCounts.map((s, i) => (
+            <div key={s.label}
+              style={{ cursor: "pointer" }}
+              onMouseEnter={() => setHovStatus(i)}
+              onMouseLeave={() => setHovStatus(null)}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ fontSize: 11, color: hovStatus === i ? s.color : T.textMuted, fontWeight: 600, transition: "color 0.15s" }}>{s.label}</span>
+                <span style={{ fontSize: 12, fontWeight: 800, color: s.color }}>{s.value}</span>
+              </div>
+              <div style={{ height: 5, borderRadius: 3, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+                <div style={{
+                  width: `${(s.value / maxStatus) * 100}%`,
+                  height: "100%", borderRadius: 3,
+                  background: s.color,
+                  opacity: hovStatus === i ? 1 : 0.7,
+                  transition: "width 0.5s ease, opacity 0.15s",
+                  boxShadow: hovStatus === i ? `0 0 8px ${s.color}88` : "none",
+                }} />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* My positions YES/NO split */}
+        {positions.length > 0 && (
+          <>
+            <p style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 10px" }}>
+              My Positions Split
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <div style={{ flex: yesPositions || 1, padding: "10px", borderRadius: 8, background: T.yesBg, border: `1px solid ${T.yesBorder}`, textAlign: "center" }}>
+                <p style={{ fontSize: 18, fontWeight: 800, color: T.yes, margin: 0 }}>{yesPositions}</p>
+                <p style={{ fontSize: 10, color: T.yes, margin: "2px 0 0", opacity: 0.7 }}>YES</p>
+              </div>
+              <div style={{ flex: noPositions || 1, padding: "10px", borderRadius: 8, background: T.noBg, border: `1px solid ${T.noBorder}`, textAlign: "center" }}>
+                <p style={{ fontSize: 18, fontWeight: 800, color: T.no, margin: 0 }}>{noPositions}</p>
+                <p style={{ fontSize: 10, color: T.no, margin: "2px 0 0", opacity: 0.7 }}>NO</p>
+              </div>
+            </div>
+            <div style={{ marginTop: 8, height: 6, borderRadius: 3, background: T.noBg, overflow: "hidden", border: `1px solid ${T.noBorder}` }}>
+              <div style={{ width: `${(yesPositions / totalPos) * 100}%`, height: "100%", background: T.yes, borderRadius: 3, transition: "width 0.5s ease" }} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+              <span style={{ fontSize: 10, color: T.yes, fontWeight: 700 }}>{Math.round((yesPositions / totalPos) * 100)}% YES</span>
+              <span style={{ fontSize: 10, color: T.no, fontWeight: 700 }}>{Math.round((noPositions / totalPos) * 100)}% NO</span>
+            </div>
+          </>
+        )}
+      </GCard>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════
+   PAGE: ADMIN DASHBOARD
+════════════════════════════════════════════════ */
+
+const STATUS_COLORS = {
+  active:    { color: "#22c55e", bg: "rgba(34,197,94,0.1)",    border: "rgba(34,197,94,0.25)"    },
+  closed:    { color: "#fbbf24", bg: "rgba(251,191,36,0.1)",   border: "rgba(251,191,36,0.25)"   },
+  resolved:  { color: "#7c6ff7", bg: "rgba(124,111,247,0.1)",  border: "rgba(124,111,247,0.25)"  },
+  paused:    { color: "#94a3b8", bg: "rgba(148,163,184,0.1)",  border: "rgba(148,163,184,0.25)"  },
+  cancelled: { color: "#ef4444", bg: "rgba(239,68,68,0.1)",    border: "rgba(239,68,68,0.25)"    },
+};
+
+function StatusBadge({ status }) {
+  const s = STATUS_COLORS[status] || STATUS_COLORS.cancelled;
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 999, fontSize: 10, fontWeight: 700, color: s.color, background: s.bg, border: `1px solid ${s.border}` }}>
+      <span style={{ width: 5, height: 5, borderRadius: "50%", background: s.color }} />
+      {status.charAt(0).toUpperCase() + status.slice(1)}
+    </span>
+  );
+}
+
+const ADMIN_TABS = ["Overview", "Markets", "Users"];
+
+function PageAdmin() {
+  const [tab, setTab] = useState("Overview");
+  const { stats, loading: statsLoading, refresh: refreshStats } = useAdminStats();
+  const { markets, loading: marketsLoading, error: marketsError, refresh: refreshMarkets, pauseMarket, activateMarket } = useAdminMarkets();
+  const { users,   loading: usersLoading,   error: usersError,   refresh: refreshUsers,   setUserRole } = useAdminUsers();
+
+  const [roleUpdating, setRoleUpdating] = useState(null); // userId being updated
+  const [statusUpdating, setStatusUpdating] = useState(null); // marketId being updated
+  const [confirmRole, setConfirmRole] = useState(null); // { userId, newRole, displayName }
+  const [marketFilter, setMarketFilter] = useState("all");
+  const [userSearch, setUserSearch] = useState("");
+
+  const handleRoleChange = async () => {
+    if (!confirmRole) return;
+    setRoleUpdating(confirmRole.userId);
+    await setUserRole(confirmRole.userId, confirmRole.newRole);
+    setRoleUpdating(null);
+    setConfirmRole(null);
+  };
+
+  const handleToggleMarket = async (market) => {
+    setStatusUpdating(market.id);
+    if (market.status === "active") await pauseMarket(market.id);
+    else if (market.status === "paused") await activateMarket(market.id);
+    setStatusUpdating(null);
+  };
+
+  const visibleMarkets = markets.filter(m => marketFilter === "all" || m.status === marketFilter);
+  const visibleUsers   = users.filter(u =>
+    !userSearch ||
+    (u.display_name ?? "").toLowerCase().includes(userSearch.toLowerCase()) ||
+    (u.email ?? "").toLowerCase().includes(userSearch.toLowerCase())
+  );
+
+  const refresh = () => { refreshStats(); refreshMarkets(); refreshUsers(); };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+
+      {/* ── Header ── */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>Admin Dashboard</h1>
+            <span style={{ padding: "2px 10px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.3)", color: "#fbbf24" }}>ADMIN</span>
+          </div>
+          <p style={{ fontSize: 13, color: T.textMuted, margin: 0 }}>Monitor markets, manage users, and oversee platform health.</p>
+        </div>
+        <button type="button" onClick={refresh}
+          style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, color: T.textMuted, fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "border-color 0.15s, color 0.15s" }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.color = T.textPrimary; }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; }}
+        >
+          <RefreshCw size={13} strokeWidth={2} /> Refresh All
+        </button>
+      </div>
+
+      {/* ── Tab bar ── */}
+      <div style={{ display: "flex", gap: 4, padding: 4, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 10, width: "fit-content" }}>
+        {ADMIN_TABS.map(t => (
+          <button key={t} type="button" onClick={() => setTab(t)}
+            style={{ padding: "8px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", border: "none", background: tab === t ? "#ffffff" : "transparent", color: tab === t ? "#080808" : T.textMuted, transition: "all 0.15s" }}>
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {/* ════ OVERVIEW TAB ════ */}
+      {tab === "Overview" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+
+          {/* Stats KPI row */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 14 }}>
+            {[
+              { label: "Total Users",       value: stats?.totalUsers     ?? "—", icon: Users,      color: "#38bdf8" },
+              { label: "Total Markets",     value: stats?.totalMarkets   ?? "—", icon: BarChart3,   color: "#a78bfa" },
+              { label: "Active Markets",    value: stats?.activeMarkets  ?? "—", icon: Zap,         color: "#22c55e" },
+              { label: "Resolved Markets",  value: stats?.resolvedMarkets?? "—", icon: CheckCircle2,color: "#7c6ff7" },
+              { label: "Total Volume (Q)",  value: stats?.totalVolume != null ? stats.totalVolume.toFixed(2) : "—", icon: Coins, color: "#fbbf24" },
+            ].map(({ label, value, icon: Icon, color }) => (
+              <GCard key={label} style={{ padding: "18px 20px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                  <p style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>{label}</p>
+                  <div style={{ width: 32, height: 32, borderRadius: 8, background: `${color}18`, border: `1px solid ${color}30`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <Icon size={14} strokeWidth={1.8} style={{ color }} />
+                  </div>
+                </div>
+                <p style={{ fontSize: 28, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.04em" }}>
+                  {statsLoading ? <span style={{ fontSize: 14, color: T.textDim }}>Loading…</span> : value}
+                </p>
+              </GCard>
+            ))}
+          </div>
+
+          {/* ── CHARTS ROW ── */}
+          {!statsLoading && stats && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }} className="dash-kpi-grid">
+
+              {/* Market Status Donut */}
+              <GCard style={{ padding: "18px 22px" }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 16px" }}>Market Status Breakdown</p>
+                <AdminDonutChart
+                  slices={[
+                    { label: "Active",   value: stats.activeMarkets,                                               color: "#22c55e" },
+                    { label: "Resolved", value: stats.resolvedMarkets,                                             color: "#7c6ff7" },
+                    { label: "Other",    value: Math.max(0, stats.totalMarkets - stats.activeMarkets - stats.resolvedMarkets), color: "#fbbf24" },
+                  ].filter(s => s.value > 0)}
+                  total={stats.totalMarkets}
+                  centerLabel="Markets"
+                />
+              </GCard>
+
+              {/* Category Volume Bars */}
+              <GCard style={{ padding: "18px 22px" }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 16px" }}>Volume by Category</p>
+                <AdminBarChart markets={markets} />
+              </GCard>
+            </div>
+          )}
+
+          {/* Pool Distribution */}
+          {!marketsLoading && markets.length > 0 && (
+            <GCard style={{ padding: "18px 22px" }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px" }}>YES / NO Pool Split by Market</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {markets.slice(0, 6).map(m => {
+                  const total = m.yesPool + m.noPool;
+                  if (total === 0) return null;
+                  const yesPct = Math.round((m.yesPool / total) * 100);
+                  return (
+                    <div key={m.id}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                        <p style={{ fontSize: 11, color: T.textMuted, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "60%" }}>{m.question}</p>
+                        <div style={{ display: "flex", gap: 10, flexShrink: 0 }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: T.yes }}>{yesPct}% YES</span>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: T.no }}>{100 - yesPct}% NO</span>
+                        </div>
+                      </div>
+                      <div style={{ height: 6, borderRadius: 3, background: T.noBg, overflow: "hidden", border: `1px solid ${T.noBorder}` }}>
+                        <div style={{ width: `${yesPct}%`, height: "100%", background: T.yes, borderRadius: 3, transition: "width 0.4s ease" }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </GCard>
+          )}
+
+          {/* Recent markets summary */}
+          <GCard style={{ padding: "18px 22px" }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px" }}>Recent Markets</p>
+            {marketsLoading ? (
+              <p style={{ fontSize: 13, color: T.textDim, margin: 0 }}>Loading…</p>
+            ) : markets.length === 0 ? (
+              <p style={{ fontSize: 13, color: T.textDim, margin: 0 }}>No markets yet.</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                {markets.slice(0, 5).map((m, i) => (
+                  <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: i < Math.min(markets.length, 5) - 1 ? `1px solid ${T.border}` : "none" }}>
+                    <StatusBadge status={m.status} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.question}</p>
+                      <p style={{ fontSize: 11, color: T.textDim, margin: "2px 0 0" }}>{m.category} · Pool: {m.totalPool.toFixed(2)} Q</p>
+                    </div>
+                    <CategoryBadge category={m.category} />
+                  </div>
+                ))}
+              </div>
+            )}
+            {markets.length > 5 && (
+              <button type="button" onClick={() => setTab("Markets")} style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: T.textDim, background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
+                View all {markets.length} markets →
+              </button>
+            )}
+          </GCard>
+
+          {/* Recent users */}
+          <GCard style={{ padding: "18px 22px" }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px" }}>Recent Users</p>
+            {usersLoading ? (
+              <p style={{ fontSize: 13, color: T.textDim, margin: 0 }}>Loading…</p>
+            ) : users.length === 0 ? (
+              <p style={{ fontSize: 13, color: T.textDim, margin: 0 }}>No users yet.</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                {users.slice(0, 5).map((u, i) => {
+                  const initials = (u.display_name ?? u.email ?? "?").split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();
+                  return (
+                    <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: i < Math.min(users.length, 5) - 1 ? `1px solid ${T.border}` : "none" }}>
+                      <div style={{ width: 34, height: 34, borderRadius: "50%", background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden" }}>
+                        {u.avatar_url
+                          ? <img src={u.avatar_url} alt={u.display_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} referrerPolicy="no-referrer" />
+                          : <span style={{ fontSize: 11, fontWeight: 700, color: T.textMuted }}>{initials}</span>
+                        }
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary, margin: 0 }}>{u.display_name ?? "—"}</p>
+                        <p style={{ fontSize: 11, color: T.textDim, margin: "1px 0 0" }}>{u.email ?? "—"}</p>
+                      </div>
+                      <span style={{
+                        padding: "2px 8px", borderRadius: 999, fontSize: 10, fontWeight: 700,
+                        background: u.role === "admin" ? "rgba(251,191,36,0.15)" : T.glass,
+                        border: `1px solid ${u.role === "admin" ? "rgba(251,191,36,0.35)" : T.border}`,
+                        color: u.role === "admin" ? "#fbbf24" : T.textMuted,
+                      }}>
+                        {u.role}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {users.length > 5 && (
+              <button type="button" onClick={() => setTab("Users")} style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: T.textDim, background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
+                View all {users.length} users →
+              </button>
+            )}
+          </GCard>
+        </div>
+      )}
+
+      {/* ════ MARKETS TAB ════ */}
+      {tab === "Markets" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+          {/* Filter bar */}
+          <div style={{ display: "flex", gap: 4, padding: 4, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 8, width: "fit-content", flexWrap: "wrap" }}>
+            {["all", "active", "paused", "closed", "resolved", "cancelled"].map(s => (
+              <button key={s} type="button" onClick={() => setMarketFilter(s)}
+                style={{ padding: "5px 14px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer", border: "none", background: marketFilter === s ? "#ffffff" : "transparent", color: marketFilter === s ? "#080808" : T.textMuted, transition: "all 0.15s", textTransform: "capitalize" }}>
+                {s === "all" ? "All" : s}
+              </button>
+            ))}
+          </div>
+
+          {marketsError && (
+            <div style={{ padding: "12px 16px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", fontSize: 12, color: "#ef4444" }}>
+              {marketsError}
+            </div>
+          )}
+
+          {marketsLoading && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {[1,2,3].map(i => <div key={i} style={{ height: 80, borderRadius: 12, background: T.surface, border: `1px solid ${T.border}`, animation: "pulse 1.5s ease-in-out infinite" }} />)}
+            </div>
+          )}
+
+          {!marketsLoading && visibleMarkets.length === 0 && (
+            <GCard style={{ padding: 0 }}>
+              <EmptyState icon={BarChart3} title="No markets" body="No markets match the current filter." />
+            </GCard>
+          )}
+
+          {!marketsLoading && visibleMarkets.length > 0 && (
+            <GCard style={{ padding: 0, overflow: "hidden" }}>
+              {/* Table header */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 120px 100px 90px 90px", gap: 12, padding: "10px 20px", background: T.glass, borderBottom: `1px solid ${T.border}` }}>
+                {["Question", "Category", "Status", "Pool (Q)", "Deadline", "Action"].map(h => (
+                  <p key={h} style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>{h}</p>
+                ))}
+              </div>
+              {visibleMarkets.map((m, i) => {
+                const canToggle = m.status === "active" || m.status === "paused";
+                const isUpdating = statusUpdating === m.id;
+                const deadline = m.deadline ? new Date(m.deadline) : null;
+                const deadlineStr = deadline
+                  ? deadline.toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+                  : "—";
+
+                return (
+                  <div key={m.id} style={{ display: "grid", gridTemplateColumns: "1fr 100px 120px 100px 90px 90px", gap: 12, padding: "14px 20px", alignItems: "center", borderBottom: i < visibleMarkets.length - 1 ? `1px solid ${T.border}` : "none", transition: "background 0.15s" }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = T.glassHover; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                  >
+                    <p style={{ fontSize: 12, fontWeight: 600, color: T.textPrimary, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={m.question}>{m.question}</p>
+                    <CategoryBadge category={m.category} />
+                    <StatusBadge status={m.status} />
+                    <p style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary, margin: 0 }}>{m.totalPool.toFixed(2)}</p>
+                    <p style={{ fontSize: 11, color: T.textDim, margin: 0 }}>{deadlineStr}</p>
+                    <div>
+                      {canToggle && (
+                        <button type="button" onClick={() => handleToggleMarket(m)} disabled={isUpdating}
+                          style={{ padding: "5px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: isUpdating ? "not-allowed" : "pointer", border: "none", background: m.status === "active" ? "rgba(251,191,36,0.15)" : "rgba(34,197,94,0.15)", color: m.status === "active" ? "#fbbf24" : T.yes, transition: "opacity 0.15s", opacity: isUpdating ? 0.5 : 1 }}>
+                          {isUpdating ? "…" : m.status === "active" ? "Pause" : "Activate"}
+                        </button>
+                      )}
+                      {!canToggle && (
+                        <span style={{ fontSize: 11, color: T.textDim }}>—</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </GCard>
+          )}
+        </div>
+      )}
+
+      {/* ════ USERS TAB ════ */}
+      {tab === "Users" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+          {/* Search */}
+          <div style={{ position: "relative", maxWidth: 360 }}>
+            <Users size={13} strokeWidth={1.8} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: T.textDim, pointerEvents: "none" }} />
+            <input
+              type="text"
+              placeholder="Search by name or email…"
+              value={userSearch}
+              onChange={(e) => setUserSearch(e.target.value)}
+              style={{ width: "100%", padding: "10px 14px 10px 34px", background: T.glass, border: `1px solid ${T.border}`, borderRadius: 10, color: T.textPrimary, fontSize: 13, outline: "none", boxSizing: "border-box", transition: "border-color 0.15s" }}
+              onFocus={(e) => { e.target.style.borderColor = T.borderHover; }}
+              onBlur={(e) => { e.target.style.borderColor = T.border; }}
+            />
+          </div>
+
+          {usersError && (
+            <div style={{ padding: "12px 16px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", fontSize: 12, color: "#ef4444" }}>
+              {usersError}
+            </div>
+          )}
+
+          {usersLoading && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {[1,2,3,4].map(i => <div key={i} style={{ height: 72, borderRadius: 12, background: T.surface, border: `1px solid ${T.border}`, animation: "pulse 1.5s ease-in-out infinite" }} />)}
+            </div>
+          )}
+
+          {!usersLoading && visibleUsers.length === 0 && (
+            <GCard style={{ padding: 0 }}>
+              <EmptyState icon={Users} title="No users found" body="No users match your search." />
+            </GCard>
+          )}
+
+          {!usersLoading && visibleUsers.length > 0 && (
+            <GCard style={{ padding: 0, overflow: "hidden" }}>
+              {/* Header */}
+              <div style={{ display: "grid", gridTemplateColumns: "36px 1fr 180px 90px 120px", gap: 14, padding: "10px 20px", background: T.glass, borderBottom: `1px solid ${T.border}`, alignItems: "center" }}>
+                {["", "User", "Email", "Role", "Joined"].map((h, i) => (
+                  <p key={i} style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>{h}</p>
+                ))}
+              </div>
+              {visibleUsers.map((u, i) => {
+                const initials = (u.display_name ?? u.email ?? "?").split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();
+                const isUpdating = roleUpdating === u.id;
+                const joined = u.created_at
+                  ? new Date(u.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit" })
+                  : "—";
+
+                return (
+                  <div key={u.id} style={{ display: "grid", gridTemplateColumns: "36px 1fr 180px 90px 120px", gap: 14, padding: "12px 20px", alignItems: "center", borderBottom: i < visibleUsers.length - 1 ? `1px solid ${T.border}` : "none", transition: "background 0.15s" }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = T.glassHover; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                  >
+                    {/* Avatar */}
+                    <div style={{ width: 34, height: 34, borderRadius: "50%", background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+                      {u.avatar_url
+                        ? <img src={u.avatar_url} alt={initials} style={{ width: "100%", height: "100%", objectFit: "cover" }} referrerPolicy="no-referrer" />
+                        : <span style={{ fontSize: 11, fontWeight: 700, color: T.textMuted }}>{initials}</span>
+                      }
+                    </div>
+
+                    {/* Name */}
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.display_name ?? "—"}</p>
+                    </div>
+
+                    {/* Email */}
+                    <p style={{ fontSize: 12, color: T.textMuted, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email ?? "—"}</p>
+
+                    {/* Role badge + toggle */}
+                    <div>
+                      <button type="button"
+                        onClick={() => setConfirmRole({ userId: u.id, newRole: u.role === "admin" ? "user" : "admin", displayName: u.display_name ?? u.email ?? u.id })}
+                        disabled={isUpdating}
+                        title={`Click to change role to ${u.role === "admin" ? "user" : "admin"}`}
+                        style={{
+                          padding: "3px 10px", borderRadius: 999, fontSize: 10, fontWeight: 700, cursor: isUpdating ? "not-allowed" : "pointer", border: "none",
+                          background: u.role === "admin" ? "rgba(251,191,36,0.15)" : T.glass,
+                          color: u.role === "admin" ? "#fbbf24" : T.textMuted,
+                          transition: "opacity 0.15s, background 0.15s",
+                          opacity: isUpdating ? 0.5 : 1,
+                        }}
+                        onMouseEnter={(e) => { if (!isUpdating) e.currentTarget.style.background = u.role === "admin" ? "rgba(251,191,36,0.25)" : "rgba(255,255,255,0.12)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = u.role === "admin" ? "rgba(251,191,36,0.15)" : T.glass; }}
+                      >
+                        {isUpdating ? "…" : u.role}
+                      </button>
+                    </div>
+
+                    {/* Joined */}
+                    <p style={{ fontSize: 11, color: T.textDim, margin: 0 }}>{joined}</p>
+                  </div>
+                );
+              })}
+            </GCard>
+          )}
+        </div>
+      )}
+
+      {/* ── Role change confirm modal ── */}
+      {confirmRole && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setConfirmRole(null)}>
+          <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)" }} />
+          <div role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}
+            style={{ position: "relative", width: "100%", maxWidth: 380, background: "#141414", border: `1px solid ${T.borderHover}`, borderRadius: 18, overflow: "hidden", boxShadow: "0 24px 64px rgba(0,0,0,0.8)", animation: "modal-in 0.22s cubic-bezier(0.34,1.56,0.64,1) both" }}>
+            <div style={{ padding: "24px 24px 20px" }}>
+              <p style={{ fontSize: 16, fontWeight: 800, color: "#ffffff", margin: "0 0 8px", letterSpacing: "-0.02em" }}>Change role?</p>
+              <p style={{ fontSize: 13, color: T.textMuted, margin: "0 0 20px", lineHeight: 1.6 }}>
+                Set <strong style={{ color: "#ffffff" }}>{confirmRole.displayName}</strong> to{" "}
+                <strong style={{ color: confirmRole.newRole === "admin" ? "#fbbf24" : T.textPrimary }}>{confirmRole.newRole}</strong>?
+              </p>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button type="button" onClick={() => setConfirmRole(null)}
+                  style={{ flex: 1, padding: "11px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, color: T.textMuted, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                  Cancel
+                </button>
+                <button type="button" onClick={handleRoleChange}
+                  style={{ flex: 1, padding: "11px", borderRadius: 10, background: confirmRole.newRole === "admin" ? "rgba(251,191,36,0.2)" : "rgba(255,255,255,0.1)", border: `1px solid ${confirmRole.newRole === "admin" ? "rgba(251,191,36,0.4)" : T.borderHover}`, color: confirmRole.newRole === "admin" ? "#fbbf24" : "#ffffff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                  Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2583,15 +3494,15 @@ export default function DashboardPage() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showConfetti,      setShowConfetti]      = useState(false);
   const [notifOpen,         setNotifOpen]         = useState(false);
-  const [notifications,     setNotifications]     = useState(SEED_NOTIFICATIONS);
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, isAdmin, logout } = useAuth();
   const { section = "home", questionId: urlQuestionId } = useParams();
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  // ── Supabase-backed notifications ──
+  const { notifications, unreadCount, markAllRead, markRead } = useNotifications();
 
-  const handleMarkAllRead = () => setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-  const handleMarkRead    = (id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+  const handleMarkAllRead = markAllRead;
+  const handleMarkRead    = markRead;
 
   // Derive page from URL param; map "home" → "dashboard"
   const urlPage = section === "home" ? "dashboard" : section;
@@ -2619,9 +3530,10 @@ export default function DashboardPage() {
   const page      = urlPage;
   const activeNav = page === "question-detail" ? "questions" : page;
   const pageLabelMap = {
-    dashboard: "Dashboard", questions: "Polls", "question-detail": "Poll Detail",
-    convictions: "My Convictions", results: "Results", leaderboard: "Leaderboard",
+    dashboard: "Dashboard", questions: "Markets", "question-detail": "Market Detail",
+    convictions: "My Positions", results: "Results", leaderboard: "Leaderboard",
     rewards: "Rewards", how: "How It Works", wallet: "Wallet", profile: "Profile",
+    admin: "Admin Dashboard",
   };
 
   return (
@@ -2653,7 +3565,7 @@ export default function DashboardPage() {
         <main style={{ flex: 1, overflowY: "auto", padding: "28px 28px 48px", position: "relative" }}>
           <Confetti active={showConfetti} />
           <div style={{ maxWidth: 1160, margin: "0 auto" }}>
-            {page === "dashboard"       && <PageDashboard onOpenQuestion={handleOpenQ} onNavigate={handleNavigate} />}
+            {page === "dashboard"       && <PageDashboard onNavigate={handleNavigate} />}
             {page === "questions"       && <PageQuestions onOpenQuestion={handleOpenQ} />}
             {page === "question-detail" && <PageQuestionDetail questionId={selectedQ} onBack={() => handleNavigate("questions")} onConfetti={handleConfettiTrigger} />}
             {page === "convictions"     && <PageMyConvictions />}
@@ -2663,6 +3575,16 @@ export default function DashboardPage() {
             {page === "how"             && <PageHowItWorks onNavigate={handleNavigate} />}
             {page === "wallet"          && <WalletPage />}
             {page === "profile"         && <PageProfile user={user} onLogout={handleLogout} />}
+            {page === "admin"           && isAdmin && <PageAdmin />}
+            {page === "admin"           && !isAdmin && (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "80px 24px", gap: 16, textAlign: "center" }}>
+                <div style={{ width: 56, height: 56, borderRadius: 16, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <ShieldCheck size={24} strokeWidth={1.4} style={{ color: "#ef4444" }} />
+                </div>
+                <p style={{ fontSize: 16, fontWeight: 700, color: T.textMuted, margin: 0 }}>Access Denied</p>
+                <p style={{ fontSize: 13, color: T.textDim, margin: 0, maxWidth: 320 }}>You need admin privileges to access this page.</p>
+              </div>
+            )}
           </div>
         </main>
       </div>

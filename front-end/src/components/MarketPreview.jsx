@@ -1,15 +1,15 @@
 import { useState } from "react";
-import { Clock, Info, ArrowRight, ShieldCheck, Globe, CheckCircle2 } from "./icons";
+import { Clock, Info, ArrowRight, ShieldCheck, Zap, CheckCircle2 } from "./icons";
 
 const POOL  = "$10,000";
-const CLOSE = "1h 24m";
+const CLOSE = "6h 35m";
 
 export default function MarketPreview() {
   const [selected, setSelected] = useState(null);
-  const [staked,   setStaked]   = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
 
-  const handleStake = (side) => { setSelected(side); setStaked(false); };
-  const handleConfirm = () => { if (selected) setStaked(true); };
+  const handleSelect = (side) => { setSelected(side); setConfirmed(false); };
+  const handleConfirm = () => { if (selected) setConfirmed(true); };
 
   return (
     <div
@@ -32,7 +32,7 @@ export default function MarketPreview() {
         <div style={{ padding: "14px 20px", borderBottom: "1px solid rgba(255,255,255,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 8px rgba(34,197,94,0.9)", flexShrink: 0 }} />
-            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.45)" }}>Politics</span>
+            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.45)" }}>Crypto</span>
           </div>
           <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
             <Clock size={11} strokeWidth={2} /> {CLOSE} remaining
@@ -41,21 +41,32 @@ export default function MarketPreview() {
 
         {/* ── Body ── */}
         <div style={{ padding: "20px 20px 0" }}>
-          <p style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.92)", lineHeight: 1.5, letterSpacing: "-0.015em", margin: "0 0 6px" }}>
-            Will the United States hold presidential elections in 2024?
+          <p className="market-question" style={{ fontSize: 14, color: "rgba(255,255,255,0.92)", lineHeight: 1.35, letterSpacing: "-0.02em", margin: "0 0 6px" }}>
+            Will Bitcoin be above $118,000 at 11:59 PM today?
           </p>
           <p style={{ fontSize: 12, color: "rgba(255,255,255,0.28)", margin: "0 0 18px" }}>
             Total pool: <span style={{ color: "rgba(255,255,255,0.55)", fontWeight: 600 }}>{POOL}</span>
           </p>
 
+          {/* ── YES / NO bar ── */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5, fontSize: 11, fontWeight: 600 }}>
+              <span style={{ color: "#22c55e" }}>YES 62%</span>
+              <span style={{ color: "#ef4444" }}>NO 38%</span>
+            </div>
+            <div style={{ height: 4, borderRadius: 4, background: "rgba(239,68,68,0.25)", overflow: "hidden" }}>
+              <div style={{ height: "100%", width: "62%", borderRadius: 4, background: "#22c55e" }} />
+            </div>
+          </div>
+
           {/* ── YES / VS / NO ── */}
-          {!staked ? (
+          {!confirmed ? (
             <div style={{ position: "relative", display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 6, marginBottom: 16, alignItems: "center" }}>
 
               {/* YES */}
               <button
                 type="button"
-                onClick={() => handleStake("YES")}
+                onClick={() => handleSelect("YES")}
                 style={{
                   position: "relative",
                   padding: "20px 12px",
@@ -78,45 +89,32 @@ export default function MarketPreview() {
                 {selected === "YES" && <div style={{ position: "absolute", top: -20, left: "50%", transform: "translateX(-50%)", width: 80, height: 80, borderRadius: "50%", background: "rgba(34,197,94,0.2)", filter: "blur(20px)", pointerEvents: "none" }} />}
                 <div style={{ position: "relative" }}>
                   <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", color: "#22c55e", margin: "0 0 6px", textTransform: "uppercase", opacity: selected === "YES" ? 1 : 0.7 }}>YES</p>
-                  <p style={{ fontSize: 11, fontWeight: 500, color: "rgba(34,197,94,0.65)", margin: 0, lineHeight: 1.3 }}>Believe it</p>
+                  <p style={{ fontSize: 11, fontWeight: 500, color: "rgba(34,197,94,0.65)", margin: 0, lineHeight: 1.3 }}>It will</p>
                 </div>
               </button>
 
               {/* ── VS badge ── */}
               <div style={{
-                width: 44,
-                height: 44,
-                borderRadius: "50%",
+                width: 44, height: 44, borderRadius: "50%",
                 background: "rgba(255,255,255,0.04)",
-                backdropFilter: "blur(12px)",
-                WebkitBackdropFilter: "blur(12px)",
+                backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
                 border: "1px solid rgba(255,255,255,0.14)",
                 boxShadow: "0 0 0 5px rgba(255,255,255,0.025), 0 6px 20px rgba(0,0,0,0.6)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-                zIndex: 2,
-                position: "relative",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                flexShrink: 0, zIndex: 2, position: "relative",
               }}>
-                {/* inner radial glow */}
                 <div style={{ position: "absolute", inset: 2, borderRadius: "50%", background: "radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%)", pointerEvents: "none" }} />
                 <span style={{
                   fontFamily: "'YapariTrial','Yapari Trial','Yapari',sans-serif",
-                  fontSize: 14,
-                  fontWeight: 900,
-                  letterSpacing: "-0.02em",
-                  color: "rgba(255,255,255,0.7)",
-                  position: "relative",
-                  zIndex: 1,
-                  lineHeight: 1,
+                  fontSize: 14, fontWeight: 900, letterSpacing: "-0.02em",
+                  color: "rgba(255,255,255,0.7)", position: "relative", zIndex: 1, lineHeight: 1,
                 }}>VS</span>
               </div>
 
               {/* NO */}
               <button
                 type="button"
-                onClick={() => handleStake("NO")}
+                onClick={() => handleSelect("NO")}
                 style={{
                   position: "relative",
                   padding: "20px 12px",
@@ -139,22 +137,22 @@ export default function MarketPreview() {
                 {selected === "NO" && <div style={{ position: "absolute", top: -20, left: "50%", transform: "translateX(-50%)", width: 80, height: 80, borderRadius: "50%", background: "rgba(239,68,68,0.2)", filter: "blur(20px)", pointerEvents: "none" }} />}
                 <div style={{ position: "relative" }}>
                   <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", color: "#ef4444", margin: "0 0 6px", textTransform: "uppercase", opacity: selected === "NO" ? 1 : 0.7 }}>NO</p>
-                  <p style={{ fontSize: 11, fontWeight: 500, color: "rgba(239,68,68,0.65)", margin: 0, lineHeight: 1.3 }}>Doubt it</p>
+                  <p style={{ fontSize: 11, fontWeight: 500, color: "rgba(239,68,68,0.65)", margin: 0, lineHeight: 1.3 }}>It won't</p>
                 </div>
               </button>
             </div>
           ) : (
             <div style={{ marginBottom: 16, padding: "20px", borderRadius: 14, background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.25)", textAlign: "center" }}>
               <p style={{ fontSize: 22, margin: "0 0 4px" }}>✓</p>
-              <p style={{ fontSize: 14, fontWeight: 700, color: "#22c55e", margin: "0 0 4px" }}>Position Confirmed — {selected}</p>
-              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", margin: 0 }}>Your conviction is locked in.</p>
+              <p style={{ fontSize: 14, fontWeight: 700, color: "#22c55e", margin: "0 0 4px" }}>Prediction Confirmed — {selected}</p>
+              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", margin: 0 }}>Market resolves at 11:59 PM tonight.</p>
             </div>
           )}
         </div>
 
         {/* ── Footer ── */}
         <div style={{ padding: "0 20px 20px" }}>
-          {!staked ? (
+          {!confirmed ? (
             <button
               type="button"
               onClick={handleConfirm}
@@ -177,13 +175,13 @@ export default function MarketPreview() {
                   : "none",
               }}
             >
-              {selected ? `Stake on ${selected}` : "Select YES or NO to stake"}
+              {selected ? `Predict ${selected}` : "Select YES or NO to predict"}
               {selected && <ArrowRight size={14} strokeWidth={2.5} />}
             </button>
           ) : (
             <button
               type="button"
-              onClick={() => { setSelected(null); setStaked(false); }}
+              onClick={() => { setSelected(null); setConfirmed(false); }}
               style={{ width: "100%", padding: "13px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.45)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
             >
               View another market
@@ -192,7 +190,7 @@ export default function MarketPreview() {
 
           <p style={{ marginTop: 10, display: "flex", alignItems: "flex-start", gap: 6, fontSize: 11, lineHeight: 1.6, color: "rgba(255,255,255,0.2)" }}>
             <Info size={11} strokeWidth={1.8} style={{ marginTop: 1, flexShrink: 0 }} />
-            Conviction is measured by capital staked, not number of participants.
+            Outcome verified automatically by the BTC/USD price feed at 11:59 PM.
           </p>
         </div>
       </div>
@@ -201,22 +199,16 @@ export default function MarketPreview() {
       <div style={{ marginTop: 14, display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8 }}>
         {[
           { icon: ShieldCheck,   label: "Live Market"         },
-          { icon: CheckCircle2,  label: "Capital Weighted"    },
-          { icon: Globe,         label: "On-chain Settlement" },
+          { icon: CheckCircle2,  label: "Auto-Resolved"       },
+          { icon: Zap,           label: "Oracle Verified"     },
         ].map(({ icon: Icon, label }) => (
           <span
             key={label}
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-              fontSize: 11,
-              fontWeight: 500,
-              letterSpacing: "0.02em",
-              color: "rgba(255,255,255,0.38)",
-              padding: "5px 12px",
-              borderRadius: 6,
-              border: "1px solid rgba(255,255,255,0.09)",
+              display: "inline-flex", alignItems: "center", gap: 5,
+              fontSize: 11, fontWeight: 500, letterSpacing: "0.02em",
+              color: "rgba(255,255,255,0.38)", padding: "5px 12px",
+              borderRadius: 6, border: "1px solid rgba(255,255,255,0.09)",
               background: "rgba(255,255,255,0.03)",
             }}
           >

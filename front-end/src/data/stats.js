@@ -5,9 +5,9 @@
  */
 
 export const USER_STATS = {
-  todayAnswered:    7,
+  todayPredicted:   4,
   todayTotal:       10,
-  totalStaked:      85.4,
+  totalCommitted:   85.4,
   potentialRewards: 24.8,
   accuracy:         68,
   marketsWon:       32,
@@ -17,7 +17,7 @@ export const USER_STATS = {
   switchRemaining:  1,
 };
 
-/** Sparkline data — last 7 markets staked % of yes pool */
+/** Sparkline data — last 7 markets win rate % */
 export const PORTFOLIO_BARS = [42, 68, 55, 80, 47, 91, 74];
 
 /** Bar labels */

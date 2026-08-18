@@ -157,20 +157,31 @@ export async function getBlipLeaderboard(limit = 50, countryCode) {
 // ─── wallet helpers ───────────────────────────────────────────────────────────
 
 /**
- * Derive a deterministic embedded wallet address from a Firebase UID.
- * Uses SHA-256 via the Web Crypto API — no external dependencies.
- * In production replace with a proper MPC / custodial wallet system.
+ * Derive a deterministic embedded wallet address for a user.
+ * Forces the address into Cyprus-1 zone (first byte 0x00–0x1F) so that
+ * quai_getBalance works against the public RPC at rpc.quai.network/cyprus1.
+ * We iterate SHA-256 with a nonce suffix until the first byte is in range.
  *
  * @param {string} uid  Firebase user UID
- * @returns {Promise<string>}  Quai-compatible 0x address (42 chars)
+ * @returns {Promise<string>}  Quai Cyprus-1 compatible 0x address (42 chars)
  */
 export async function deriveWalletAddress(uid) {
   const encoder = new TextEncoder();
-  const data    = encoder.encode(`q4-wallet-v1:${uid}`);
-  const hash    = await crypto.subtle.digest("SHA-256", data);
-  const bytes   = Array.from(new Uint8Array(hash));
-  const hex     = bytes.map((b) => b.toString(16).padStart(2, "0")).join("");
-  return `0x${hex.slice(0, 40)}`;
+  for (let nonce = 0; nonce < 256; nonce++) {
+    const data  = encoder.encode(`q4-wallet-v1:${uid}:${nonce}`);
+    const hash  = await crypto.subtle.digest("SHA-256", data);
+    const bytes = Array.from(new Uint8Array(hash));
+    // Cyprus-1 zone: first byte must be 0x00–0x1F
+    if (bytes[0] <= 0x1f) {
+      return `0x${bytes.slice(0, 20).map(b => b.toString(16).padStart(2, "0")).join("")}`;
+    }
+  }
+  // Fallback: force first byte to 0x00
+  const data  = encoder.encode(`q4-wallet-v1:${uid}:0`);
+  const hash  = await crypto.subtle.digest("SHA-256", data);
+  const bytes = Array.from(new Uint8Array(hash));
+  bytes[0] = 0x00;
+  return `0x${bytes.slice(0, 20).map(b => b.toString(16).padStart(2, "0")).join("")}`;
 }
 
 /**
@@ -186,51 +197,95 @@ export async function getOrCreateWallet(uid) {
   return address;
 }
 
-/**
- * Fetch the on-chain QUAI balance for a wallet address.
- * In production this calls the Quai Network JSON-RPC:
- *   POST https://rpc.quai.network  { jsonrpc:"2.0", method:"eth_getBalance", params:[address,"latest"], id:1 }
- * For the MVP we return a deterministic demo value.
- *
- * @param {string} address
- * @returns {{ quai: number }}
- */
-export async function getWalletBalance(address) {
-  // TODO: replace with real Quai RPC call
-  const seed = parseInt(address.slice(2, 10), 16);
-  const quai = parseFloat(((seed % 10000) / 100).toFixed(4));
-  return { quai };
+// ─── Quai Network RPC ────────────────────────────────────────────────────────
+
+const QUAI_RPC = "https://rpc.quai.network/cyprus1";
+let _rpcId = 1;
+
+async function quaiRpc(method, params) {
+  try {
+    const res = await fetch(QUAI_RPC, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ jsonrpc: "2.0", method, params, id: _rpcId++ }),
+    });
+    if (!res.ok) throw new Error(`RPC HTTP ${res.status}`);
+    const json = await res.json();
+    if (json.error) throw new Error(json.error.message);
+    return json.result;
+  } catch (e) {
+    console.warn(`[quaiRpc] ${method} failed:`, e.message);
+    throw e;
+  }
 }
 
 /**
- * Fetch transaction history for an address from the Quai Network indexer.
- * In production replace with a real indexer query.
- * Returns an array of normalised transaction objects.
+ * Fetch the on-chain QUAI balance for a wallet address via quai_getBalance.
+ * Returns balance in QUAI (converted from Wei, 18 decimals).
+ *
+ * @param {string} address  Cyprus-1 zone Quai address (0x00–0x1F prefix)
+ * @returns {{ quai: number }}
+ */
+export async function getWalletBalance(address) {
+  try {
+    const hex  = await quaiRpc("quai_getBalance", [address, "latest"]);
+    const wei  = BigInt(hex);
+    const quai = Number(wei) / 1e18;
+    return { quai: parseFloat(quai.toFixed(6)) };
+  } catch {
+    return { quai: 0 };
+  }
+}
+
+/**
+ * Fetch recent transactions for a Quai address.
+ * Uses quai_getBlockByNumber to scan recent blocks for transactions involving
+ * the address. Returns up to 20 recent txs.
  *
  * @param {string} address
  * @returns {Promise<Array<Transaction>>}
  */
 export async function getTransactions(address) {
-  const seed = parseInt(address.slice(2, 10), 16);
-  const now  = Date.now();
+  try {
+    const latestHex   = await quaiRpc("eth_blockNumber", []);
+    const latestBlock = parseInt(latestHex, 16);
+    const addr        = address.toLowerCase();
+    const txs         = [];
+    const scanDepth   = 200; // scan last 200 blocks
 
-  const templates = [
-    { type: "received", label: "Received QUAI",  from: "0x" + address.slice(2, 10).split("").reverse().join("") + "abc123", to: address },
-    { type: "sent",     label: "Sent QUAI",       from: address, to: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" },
-    { type: "received", label: "Market Reward",   from: "0xQ4Contract000000000000000000000000000000", to: address },
-    { type: "sent",     label: "Market Stake",    from: address, to: "0xQ4MarketPool0000000000000000000000000001" },
-    { type: "failed",   label: "Failed Transfer", from: address, to: "0x000000000000000000000000000000000000dead" },
-  ];
+    for (let i = latestBlock; i > Math.max(0, latestBlock - scanDepth) && txs.length < 20; i--) {
+      const block = await quaiRpc("quai_getBlockByNumber", [`0x${i.toString(16)}`, true]);
+      if (!block || !block.transactions) continue;
 
-  return templates.map((t, i) => ({
-    id:        `${address.slice(2, 8)}-tx-${i}`,
-    type:      t.type,
-    label:     t.label,
-    amount:    parseFloat(((seed % 500) / 100 + i * 0.5 + 0.1).toFixed(4)),
-    from:      t.from,
-    to:        t.to,
-    hash:      `0x${(seed + i).toString(16).padStart(64, "0")}`,
-    timestamp: new Date(now - (i + 1) * 3_600_000 * (i + 1)),
-    status:    t.type === "failed" ? "failed" : "confirmed",
-  }));
+      for (const tx of block.transactions) {
+        const from = (tx.from || "").toLowerCase();
+        const to   = (tx.to   || "").toLowerCase();
+        if (from !== addr && to !== addr) continue;
+
+        const type   = from === addr ? "sent" : "received";
+        const weiVal = BigInt(tx.value || "0x0");
+        const amount = parseFloat((Number(weiVal) / 1e18).toFixed(6));
+
+        txs.push({
+          id:        tx.hash,
+          type,
+          label:     type === "sent" ? "Sent QUAI" : "Received QUAI",
+          amount,
+          from:      tx.from,
+          to:        tx.to,
+          hash:      tx.hash,
+          timestamp: new Date(parseInt(block.timestamp || "0", 16) * 1000),
+          status:    "confirmed",
+          blockNumber: i,
+        });
+
+        if (txs.length >= 20) break;
+      }
+    }
+
+    return txs;
+  } catch (e) {
+    console.warn("[getTransactions] failed:", e.message);
+    return [];
+  }
 }
