@@ -447,20 +447,20 @@ function TxRow({ tx, quaiPrice, last }) {
   const Icon   = isFail?XCircle:isPend?Clock:isIn?ArrowDownLeft:ArrowUpRight;
   const usd    = quaiPrice?(tx.amount*quaiPrice).toFixed(2):null;
   return (
-    <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 0",borderBottom:last?`1px solid transparent`:`1px solid ${T.border}`}}>
+    <div className="wallet-tx-row" style={{borderBottom:last?`1px solid transparent`:`1px solid ${T.border}`}}>
       <div style={{width:38,height:38,borderRadius:10,background:bg,border:`1px solid ${bd}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
         <Icon size={15} strokeWidth={1.8} style={{color}}/>
       </div>
-      <div style={{flex:1,minWidth:0}}>
-        <p style={{fontSize:13,fontWeight:600,color:T.text,margin:0}}>{tx.label}</p>
-        <p style={{fontSize:10,color:T.dim,margin:"2px 0 0",display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
-          <span>{isIn?short(tx.from):short(tx.to)}</span><span>·</span><span>{ago(tx.timestamp)}</span>
-          {isPend&&<span style={{color:"#fbbf24",fontWeight:700}}>PENDING</span>}
-          {isFail&&<span style={{color:T.no,fontWeight:700}}>FAILED</span>}
+      <div className="wallet-tx-info">
+        <p style={{fontSize:13,fontWeight:600,color:T.text,margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tx.label}</p>
+        <p className="wallet-tx-addr">
+          {isIn?short(tx.from):short(tx.to)} · {ago(tx.timestamp)}
+          {isPend&&<span style={{color:"#fbbf24",fontWeight:700,marginLeft:4}}>PENDING</span>}
+          {isFail&&<span style={{color:T.no,fontWeight:700,marginLeft:4}}>FAILED</span>}
         </p>
       </div>
-      <div style={{textAlign:"right",flexShrink:0}}>
-        <p style={{fontSize:13,fontWeight:700,color,margin:0}}>{isFail?"—":`${isIn?"+":"−"}${tx.amount.toFixed(4)} QUAI`}</p>
+      <div className="wallet-tx-amount">
+        <p style={{fontSize:13,fontWeight:700,color,margin:0,whiteSpace:"nowrap"}}>{isFail?"—":`${isIn?"+":"−"}${tx.amount.toFixed(4)} Q`}</p>
         {usd&&!isFail&&<p style={{fontSize:10,color:T.dim,margin:"2px 0 0"}}>${usd}</p>}
       </div>
     </div>
@@ -479,13 +479,13 @@ function DetailRow({ label, value, mono, copy: copyVal, divider }) {
     setCopied(true); setTimeout(()=>setCopied(false),2000);
   },[copyVal]);
   return (
-    <div style={{display:"flex",alignItems:"center",gap:14,padding:"13px 0",borderBottom:divider?`1px solid ${T.border}`:"none"}}>
+    <div style={{display:"flex",alignItems:"flex-start",gap:14,padding:"13px 0",borderBottom:divider?`1px solid ${T.border}`:"none"}}>
       <div style={{flex:1,minWidth:0}}>
-        <p style={{fontSize:10,color:T.dim,margin:"0 0 2px",fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase"}}>{label}</p>
-        <p style={{fontSize:12,color:T.text,margin:0,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:mono?"monospace":"inherit",letterSpacing:mono?"0.03em":"inherit"}}>{value}</p>
+        <p style={{fontSize:10,color:T.dim,margin:"0 0 4px",fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase"}}>{label}</p>
+        <p className={`wallet-detail-val${mono?" mono":""}`} style={{margin:0}}>{value}</p>
       </div>
       {copyVal&&(
-        <button type="button" onClick={copy} style={{width:30,height:30,borderRadius:7,background:copied?T.yesBg:T.glass,border:`1px solid ${copied?T.yesBd:T.border}`,display:"flex",alignItems:"center",justifyContent:"center",color:copied?T.yes:T.dim,cursor:"pointer",flexShrink:0,transition:"all 0.2s"}}>
+        <button type="button" onClick={copy} style={{width:30,height:30,borderRadius:7,background:copied?T.yesBg:T.glass,border:`1px solid ${copied?T.yesBd:T.border}`,display:"flex",alignItems:"center",justifyContent:"center",color:copied?T.yes:T.dim,cursor:"pointer",flexShrink:0,marginTop:18,transition:"all 0.2s"}}>
           {copied?<Check size={12} strokeWidth={2.5}/>:<Copy size={12} strokeWidth={1.8}/>}
         </button>
       )}
@@ -530,7 +530,7 @@ export default function WalletPage() {
         @keyframes float-logo  { 0%,100%{transform:translate(-50%,-50%) scale(1) rotate(-8deg)}50%{transform:translate(-50%,-50%) scale(1.04) rotate(-8deg) translateY(-4px)} }
 
         /* ── layout ── */
-        .wallet-root { display:flex; flex-direction:column; gap:24px; }
+        .wallet-root { display:flex; flex-direction:column; gap:24px; overflow-x:hidden; }
 
         /* top grid: 2 cols on ≥700, 1 col below */
         .wallet-top { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
@@ -544,8 +544,28 @@ export default function WalletPage() {
         @media(max-width:400px){ .wallet-bal-num{ font-size:26px; } }
 
         /* address pill — truncate cleanly */
-        .wallet-addr-text { font-size:12px; font-family:monospace; color:rgba(255,255,255,0.5); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .wallet-addr-text { font-size:12px; font-family:monospace; color:rgba(255,255,255,0.5); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
         @media(max-width:480px){ .wallet-addr-text{ font-size:10px; } }
+
+        /* price stats row — 4 cols desktop, 2 cols mobile */
+        .wallet-stats-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+        @media(max-width:480px){ .wallet-stats-grid{ grid-template-columns:repeat(2,1fr); } }
+
+        /* tx row — prevent overflow */
+        .wallet-tx-row { display:flex; align-items:center; gap:12px; padding:12px 0; min-width:0; overflow:hidden; }
+        .wallet-tx-info { flex:1; min-width:0; overflow:hidden; }
+        .wallet-tx-addr { font-size:12px; font-family:monospace; color:rgba(255,255,255,0.4); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .wallet-tx-amount { flex-shrink:0; text-align:right; }
+
+        /* detail row value — wrap long strings */
+        .wallet-detail-val { font-size:13px; color:#f0f0f0; font-weight:500; word-break:break-all; overflow-wrap:anywhere; }
+        .wallet-detail-val.mono { font-family:monospace; font-size:12px; }
+
+        /* modal — full width on tiny screens */
+        @media(max-width:480px){
+          .wallet-root { gap:16px; }
+          .wallet-actions { grid-template-columns:1fr 1fr; }
+        }
       `}</style>
 
       {/* ── PAGE HEADER ── */}
@@ -707,7 +727,7 @@ export default function WalletPage() {
 
           {/* stats row */}
           {price && (
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,borderTop:`1px solid ${T.border}`,paddingTop:12}}>
+            <div className="wallet-stats-grid" style={{borderTop:`1px solid ${T.border}`,paddingTop:12}}>
               {[
                 ["High 24h",  fmtP(price.high24h)],
                 ["Low 24h",   fmtP(price.low24h)],

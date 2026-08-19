@@ -26,7 +26,7 @@ import { usePositions }          from "../hooks/usePositions";
 import { useNotifications }      from "../hooks/useNotifications";
 import { useResults }            from "../hooks/useResults";
 import { useRewards }            from "../hooks/useRewards";
-import { useAdminUsers, useAdminMarkets, useAdminStats } from "../hooks/useAdminData";
+import { useAdminUsers, useAdminMarkets, useAdminStats, useAdminOracle, useAdminEvents, useAdminPositions } from "../hooks/useAdminData";
 import { supabase }              from "../lib/supabase";
 import WalletPage   from "./WalletPage";
 
@@ -401,15 +401,19 @@ const NAV_ITEMS = [
 
 const ADMIN_NAV_ITEM = { key: "admin", label: "Admin", icon: ShieldCheck, desc: "Admin dashboard" };
 
-function Sidebar({ active, onNavigate, onLogout, isAdmin }) {
+function Sidebar({ active, onNavigate, onLogout }) {
+  // Read isAdmin directly so it always reflects the current auth state
+  const { isAdmin } = useAuth();
   return (
     <aside style={{
       width: 240,
       minWidth: 240,
-      height: "100vh",
+      height: "100%",
+      minHeight: "100vh",
       position: "fixed",
       top: 0,
       left: 0,
+      bottom: 0,
       display: "flex",
       flexDirection: "column",
       background: "rgba(8,8,8,0.92)",
@@ -2373,7 +2377,7 @@ function PageLeaderboard() {
 
       {/* Top 3 podium */}
       {!lbLoading && top3.length >= 3 && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+        <div style={{ display: "grid", gap: 12 }} className="dash-kpi-grid">
           {[top3[1], top3[0], top3[2]].map((entry, i) => {
             const colors = ["#94a3b8", "#fbbf24", "#fb923c"];
             const heights = ["80px", "96px", "72px"];
@@ -2509,7 +2513,7 @@ function PageRewards() {
       </div>
 
       {/* Summary cards — live totals */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+      <div style={{ display: "grid", gap: 12 }} className="dash-kpi-grid">
         {[
           { label: "Pending",  icon: Gift,         color: pendingTotal > 0 ? T.yes : T.textMuted, bg: pendingTotal > 0 ? T.yesBg : T.glass, border: pendingTotal > 0 ? T.yesBorder : T.border, value: pendingTotal },
           { label: "Claimed",  icon: CheckCircle2, color: T.textMuted, bg: T.glass,  border: T.border, value: claimedTotal },
@@ -2542,7 +2546,7 @@ function PageRewards() {
       )}
 
       {!loading && filtered.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
+        <div style={{ display: "grid", gap: 12 }} className="q-grid">
           {filtered.map(r => <RewardCard key={r.id} r={r} onClaim={claimReward} claiming={claiming} />)}
         </div>
       )}
@@ -3054,19 +3058,126 @@ function StatusBadge({ status }) {
   );
 }
 
-const ADMIN_TABS = ["Overview", "Markets", "Users"];
+const ADMIN_TABS = [
+  { key: "overview",   label: "Overview"    },
+  { key: "markets",    label: "Markets"     },
+  { key: "users",      label: "Users"       },
+  { key: "positions",  label: "Positions"   },
+  { key: "oracle",     label: "Oracle"      },
+  { key: "events",     label: "Events"      },
+  { key: "create",     label: "+ New Market"},
+];
+
+/* ── shared tab bar ── */
+function AdminTabBar({ tab, setTab }) {
+  return (
+    <div style={{ display: "flex", gap: 2, padding: 4, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 10, flexWrap: "wrap", width: "fit-content" }}>
+      {ADMIN_TABS.map(t => (
+        <button key={t.key} type="button" onClick={() => setTab(t.key)}
+          style={{
+            padding: "7px 16px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+            cursor: "pointer", border: "none",
+            background: tab === t.key ? (t.key === "create" ? "#22c55e" : "#ffffff") : "transparent",
+            color: tab === t.key ? (t.key === "create" ? "#000" : "#080808") : T.textMuted,
+            transition: "all 0.15s",
+            whiteSpace: "nowrap",
+          }}>
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ── admin header row (shared) ── */
+function AdminHeader({ tab, setTab, onRefresh }) {
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>Admin Dashboard</h1>
+          <span style={{ padding: "2px 10px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.3)", color: "#fbbf24" }}>ADMIN</span>
+        </div>
+        <p style={{ fontSize: 13, color: T.textMuted, margin: 0 }}>Full platform control — markets, users, positions, oracle & events.</p>
+      </div>
+      <button type="button" onClick={onRefresh}
+        style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, color: T.textMuted, fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "border-color 0.15s, color 0.15s", flexShrink: 0 }}
+        onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.color = T.textPrimary; }}
+        onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; }}
+      >
+        <RefreshCw size={13} strokeWidth={2} /> Refresh
+      </button>
+    </div>
+  );
+}
 
 function PageAdmin() {
-  const [tab, setTab] = useState("Overview");
-  const { stats, loading: statsLoading, refresh: refreshStats } = useAdminStats();
-  const { markets, loading: marketsLoading, error: marketsError, refresh: refreshMarkets, pauseMarket, activateMarket } = useAdminMarkets();
-  const { users,   loading: usersLoading,   error: usersError,   refresh: refreshUsers,   setUserRole } = useAdminUsers();
+  const [tab, setTab] = useState("overview");
 
-  const [roleUpdating, setRoleUpdating] = useState(null); // userId being updated
-  const [statusUpdating, setStatusUpdating] = useState(null); // marketId being updated
-  const [confirmRole, setConfirmRole] = useState(null); // { userId, newRole, displayName }
-  const [marketFilter, setMarketFilter] = useState("all");
-  const [userSearch, setUserSearch] = useState("");
+  // All admin hooks — always called (hooks can't be conditional)
+  const { stats,     loading: statsLoading,    refresh: refreshStats    } = useAdminStats();
+  const { markets,   loading: marketsLoading,  error: marketsError,
+          refresh: refreshMarkets, pauseMarket, activateMarket,
+          closeMarket, resolveMarket, deleteMarket, createMarket         } = useAdminMarkets();
+  const { users,     loading: usersLoading,    error: usersError,
+          refresh: refreshUsers,   setUserRole, deleteUser               } = useAdminUsers();
+  const { positions, loading: positionsLoading, error: positionsError,
+          refresh: refreshPositions                                       } = useAdminPositions();
+  const { results: oracleResults, loading: oracleLoading,
+          refresh: refreshOracle                                          } = useAdminOracle();
+  const { events,    loading: eventsLoading,   refresh: refreshEvents    } = useAdminEvents();
+
+  // Per-tab UI state
+  const [roleUpdating,   setRoleUpdating]   = useState(null);
+  const [statusUpdating, setStatusUpdating] = useState(null);
+  const [resolveTarget,  setResolveTarget]  = useState(null); // { market }
+  const [resolveOutcome, setResolveOutcome] = useState("YES");
+  const [deleteTarget,   setDeleteTarget]   = useState(null); // { id, question, type: 'market'|'user' }
+  const [confirmRole,    setConfirmRole]    = useState(null);
+  const [marketFilter,   setMarketFilter]   = useState("all");
+  const [userSearch,     setUserSearch]     = useState("");
+  const [posSearch,      setPosSearch]      = useState("");
+
+  // Create market form
+  const [createForm, setCreateForm] = useState({ question: "", category: "Crypto", deadline: "", data_source: "" });
+  const [createLoading, setCreateLoading] = useState(false);
+  const [createError,   setCreateError]   = useState(null);
+  const [createSuccess, setCreateSuccess] = useState(null);
+
+  // Per-tab refresh
+  const tabRefreshMap = {
+    overview:  () => { refreshStats(); refreshMarkets(); refreshUsers(); },
+    markets:   refreshMarkets,
+    users:     refreshUsers,
+    positions: refreshPositions,
+    oracle:    refreshOracle,
+    events:    refreshEvents,
+    create:    () => {},
+  };
+  const handleRefresh = () => { const fn = tabRefreshMap[tab]; if (fn) fn(); };
+
+  const handleToggleMarket = async (market) => {
+    setStatusUpdating(market.id);
+    if (market.status === "active")  await pauseMarket(market.id);
+    else if (market.status === "paused") await activateMarket(market.id);
+    else if (market.status === "closed") await activateMarket(market.id);
+    setStatusUpdating(null);
+  };
+
+  const handleResolve = async () => {
+    if (!resolveTarget) return;
+    setStatusUpdating(resolveTarget.market.id);
+    await resolveMarket(resolveTarget.market.id, resolveOutcome);
+    setStatusUpdating(null);
+    setResolveTarget(null);
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    if (deleteTarget.type === "market") await deleteMarket(deleteTarget.id);
+    if (deleteTarget.type === "user")   await deleteUser(deleteTarget.id);
+    setDeleteTarget(null);
+  };
 
   const handleRoleChange = async () => {
     if (!confirmRole) return;
@@ -3076,65 +3187,47 @@ function PageAdmin() {
     setConfirmRole(null);
   };
 
-  const handleToggleMarket = async (market) => {
-    setStatusUpdating(market.id);
-    if (market.status === "active") await pauseMarket(market.id);
-    else if (market.status === "paused") await activateMarket(market.id);
-    setStatusUpdating(null);
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    setCreateLoading(true);
+    setCreateError(null);
+    setCreateSuccess(null);
+    const { ok, error: err } = await createMarket(createForm);
+    if (ok) {
+      setCreateSuccess("Market created successfully!");
+      setCreateForm({ question: "", category: "Crypto", deadline: "", data_source: "" });
+    } else {
+      setCreateError(err ?? "Failed to create market.");
+    }
+    setCreateLoading(false);
   };
 
-  const visibleMarkets = markets.filter(m => marketFilter === "all" || m.status === marketFilter);
-  const visibleUsers   = users.filter(u =>
-    !userSearch ||
-    (u.display_name ?? "").toLowerCase().includes(userSearch.toLowerCase()) ||
-    (u.email ?? "").toLowerCase().includes(userSearch.toLowerCase())
-  );
-
-  const refresh = () => { refreshStats(); refreshMarkets(); refreshUsers(); };
+  const visibleMarkets  = markets.filter(m  => marketFilter === "all" || m.status === marketFilter);
+  const visibleUsers    = users.filter(u    => !userSearch  || (u.display_name ?? "").toLowerCase().includes(userSearch.toLowerCase()) || (u.email ?? "").toLowerCase().includes(userSearch.toLowerCase()));
+  const visiblePositions = positions.filter(p => !posSearch || (p.users?.display_name ?? "").toLowerCase().includes(posSearch.toLowerCase()) || (p.markets?.question ?? "").toLowerCase().includes(posSearch.toLowerCase()));
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
 
-      {/* ── Header ── */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-            <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>Admin Dashboard</h1>
-            <span style={{ padding: "2px 10px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.3)", color: "#fbbf24" }}>ADMIN</span>
-          </div>
-          <p style={{ fontSize: 13, color: T.textMuted, margin: 0 }}>Monitor markets, manage users, and oversee platform health.</p>
-        </div>
-        <button type="button" onClick={refresh}
-          style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, color: T.textMuted, fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "border-color 0.15s, color 0.15s" }}
-          onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.color = T.textPrimary; }}
-          onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; }}
-        >
-          <RefreshCw size={13} strokeWidth={2} /> Refresh All
-        </button>
-      </div>
+      {/* ── Header + Refresh ── */}
+      <AdminHeader tab={tab} setTab={setTab} onRefresh={handleRefresh} />
 
       {/* ── Tab bar ── */}
-      <div style={{ display: "flex", gap: 4, padding: 4, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 10, width: "fit-content" }}>
-        {ADMIN_TABS.map(t => (
-          <button key={t} type="button" onClick={() => setTab(t)}
-            style={{ padding: "8px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", border: "none", background: tab === t ? "#ffffff" : "transparent", color: tab === t ? "#080808" : T.textMuted, transition: "all 0.15s" }}>
-            {t}
-          </button>
-        ))}
-      </div>
+      <AdminTabBar tab={tab} setTab={setTab} />
 
       {/* ════ OVERVIEW TAB ════ */}
-      {tab === "Overview" && (
+      {tab === "overview" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
 
           {/* Stats KPI row */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 14 }}>
             {[
-              { label: "Total Users",       value: stats?.totalUsers     ?? "—", icon: Users,      color: "#38bdf8" },
-              { label: "Total Markets",     value: stats?.totalMarkets   ?? "—", icon: BarChart3,   color: "#a78bfa" },
-              { label: "Active Markets",    value: stats?.activeMarkets  ?? "—", icon: Zap,         color: "#22c55e" },
-              { label: "Resolved Markets",  value: stats?.resolvedMarkets?? "—", icon: CheckCircle2,color: "#7c6ff7" },
-              { label: "Total Volume (Q)",  value: stats?.totalVolume != null ? stats.totalVolume.toFixed(2) : "—", icon: Coins, color: "#fbbf24" },
+              { label: "Total Users",       value: stats?.totalUsers      ?? "—", icon: Users,       color: "#38bdf8" },
+              { label: "Total Markets",     value: stats?.totalMarkets    ?? "—", icon: BarChart3,   color: "#a78bfa" },
+              { label: "Active Markets",    value: stats?.activeMarkets   ?? "—", icon: Zap,         color: "#22c55e" },
+              { label: "Resolved Markets",  value: stats?.resolvedMarkets ?? "—", icon: CheckCircle2,color: "#7c6ff7" },
+              { label: "Total Positions",   value: stats?.totalPositions  ?? "—", icon: BookMarked,  color: "#fb923c" },
+              { label: "Volume (Q)",        value: stats?.totalVolume != null ? stats.totalVolume.toFixed(2) : "—", icon: Coins, color: "#fbbf24" },
             ].map(({ label, value, icon: Icon, color }) => (
               <GCard key={label} style={{ padding: "18px 20px" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
@@ -3226,7 +3319,7 @@ function PageAdmin() {
               </div>
             )}
             {markets.length > 5 && (
-              <button type="button" onClick={() => setTab("Markets")} style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: T.textDim, background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
+              <button type="button" onClick={() => setTab("markets")} style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: T.textDim, background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
                 View all {markets.length} markets →
               </button>
             )}
@@ -3269,7 +3362,7 @@ function PageAdmin() {
               </div>
             )}
             {users.length > 5 && (
-              <button type="button" onClick={() => setTab("Users")} style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: T.textDim, background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
+              <button type="button" onClick={() => setTab("users")} style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: T.textDim, background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
                 View all {users.length} users →
               </button>
             )}
@@ -3278,7 +3371,7 @@ function PageAdmin() {
       )}
 
       {/* ════ MARKETS TAB ════ */}
-      {tab === "Markets" && (
+      {tab === "markets" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
           {/* Filter bar */}
@@ -3286,15 +3379,13 @@ function PageAdmin() {
             {["all", "active", "paused", "closed", "resolved", "cancelled"].map(s => (
               <button key={s} type="button" onClick={() => setMarketFilter(s)}
                 style={{ padding: "5px 14px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer", border: "none", background: marketFilter === s ? "#ffffff" : "transparent", color: marketFilter === s ? "#080808" : T.textMuted, transition: "all 0.15s", textTransform: "capitalize" }}>
-                {s === "all" ? "All" : s}
+                {s === "all" ? `All (${markets.length})` : `${s} (${markets.filter(m=>m.status===s).length})`}
               </button>
             ))}
           </div>
 
           {marketsError && (
-            <div style={{ padding: "12px 16px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", fontSize: 12, color: "#ef4444" }}>
-              {marketsError}
-            </div>
+            <div style={{ padding: "12px 16px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", fontSize: 12, color: "#ef4444" }}>{marketsError}</div>
           )}
 
           {marketsLoading && (
@@ -3311,22 +3402,23 @@ function PageAdmin() {
 
           {!marketsLoading && visibleMarkets.length > 0 && (
             <GCard style={{ padding: 0, overflow: "hidden" }}>
-              {/* Table header */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 120px 100px 90px 90px", gap: 12, padding: "10px 20px", background: T.glass, borderBottom: `1px solid ${T.border}` }}>
-                {["Question", "Category", "Status", "Pool (Q)", "Deadline", "Action"].map(h => (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 110px 90px 100px 160px", gap: 10, padding: "10px 20px", background: T.glass, borderBottom: `1px solid ${T.border}` }}>
+                {["Question", "Category", "Status", "Pool (Q)", "Deadline", "Actions"].map(h => (
                   <p key={h} style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>{h}</p>
                 ))}
               </div>
               {visibleMarkets.map((m, i) => {
-                const canToggle = m.status === "active" || m.status === "paused";
                 const isUpdating = statusUpdating === m.id;
                 const deadline = m.deadline ? new Date(m.deadline) : null;
-                const deadlineStr = deadline
-                  ? deadline.toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
-                  : "—";
+                const deadlineStr = deadline ? deadline.toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
+                const canToggle = m.status === "active" || m.status === "paused" || m.status === "closed";
+                const canResolve = m.status === "active" || m.status === "closed";
+                const toggleLabel = m.status === "active" ? "Pause" : m.status === "paused" ? "Activate" : m.status === "closed" ? "Activate" : null;
+                const toggleColor = m.status === "active" ? "#fbbf24" : "#22c55e";
 
                 return (
-                  <div key={m.id} style={{ display: "grid", gridTemplateColumns: "1fr 100px 120px 100px 90px 90px", gap: 12, padding: "14px 20px", alignItems: "center", borderBottom: i < visibleMarkets.length - 1 ? `1px solid ${T.border}` : "none", transition: "background 0.15s" }}
+                  <div key={m.id}
+                    style={{ display: "grid", gridTemplateColumns: "1fr 100px 110px 90px 100px 160px", gap: 10, padding: "12px 20px", alignItems: "center", borderBottom: i < visibleMarkets.length - 1 ? `1px solid ${T.border}` : "none", transition: "background 0.15s" }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = T.glassHover; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
                   >
@@ -3335,16 +3427,23 @@ function PageAdmin() {
                     <StatusBadge status={m.status} />
                     <p style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary, margin: 0 }}>{m.totalPool.toFixed(2)}</p>
                     <p style={{ fontSize: 11, color: T.textDim, margin: 0 }}>{deadlineStr}</p>
-                    <div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       {canToggle && (
                         <button type="button" onClick={() => handleToggleMarket(m)} disabled={isUpdating}
-                          style={{ padding: "5px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: isUpdating ? "not-allowed" : "pointer", border: "none", background: m.status === "active" ? "rgba(251,191,36,0.15)" : "rgba(34,197,94,0.15)", color: m.status === "active" ? "#fbbf24" : T.yes, transition: "opacity 0.15s", opacity: isUpdating ? 0.5 : 1 }}>
-                          {isUpdating ? "…" : m.status === "active" ? "Pause" : "Activate"}
+                          style={{ padding: "4px 9px", borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: isUpdating ? "not-allowed" : "pointer", border: "none", background: `${toggleColor}22`, color: toggleColor, opacity: isUpdating ? 0.5 : 1, transition: "opacity 0.15s" }}>
+                          {isUpdating ? "…" : toggleLabel}
                         </button>
                       )}
-                      {!canToggle && (
-                        <span style={{ fontSize: 11, color: T.textDim }}>—</span>
+                      {canResolve && (
+                        <button type="button" onClick={() => { setResolveTarget({ market: m }); setResolveOutcome("YES"); }} disabled={isUpdating}
+                          style={{ padding: "4px 9px", borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: "pointer", border: "none", background: "rgba(124,111,247,0.2)", color: "#a78bfa", transition: "opacity 0.15s" }}>
+                          Resolve
+                        </button>
                       )}
+                      <button type="button" onClick={() => setDeleteTarget({ id: m.id, question: m.question, type: "market" })}
+                        style={{ padding: "4px 9px", borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: "pointer", border: "none", background: "rgba(239,68,68,0.12)", color: "#ef4444" }}>
+                        Delete
+                      </button>
                     </div>
                   </div>
                 );
@@ -3355,7 +3454,7 @@ function PageAdmin() {
       )}
 
       {/* ════ USERS TAB ════ */}
-      {tab === "Users" && (
+      {tab === "users" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
           {/* Search */}
@@ -3393,8 +3492,8 @@ function PageAdmin() {
           {!usersLoading && visibleUsers.length > 0 && (
             <GCard style={{ padding: 0, overflow: "hidden" }}>
               {/* Header */}
-              <div style={{ display: "grid", gridTemplateColumns: "36px 1fr 180px 90px 120px", gap: 14, padding: "10px 20px", background: T.glass, borderBottom: `1px solid ${T.border}`, alignItems: "center" }}>
-                {["", "User", "Email", "Role", "Joined"].map((h, i) => (
+              <div style={{ display: "grid", gridTemplateColumns: "36px 1fr 180px 90px 100px 70px", gap: 14, padding: "10px 20px", background: T.glass, borderBottom: `1px solid ${T.border}`, alignItems: "center" }}>
+                {["", "User", "Email", "Role", "Joined", ""].map((h, i) => (
                   <p key={i} style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>{h}</p>
                 ))}
               </div>
@@ -3406,7 +3505,7 @@ function PageAdmin() {
                   : "—";
 
                 return (
-                  <div key={u.id} style={{ display: "grid", gridTemplateColumns: "36px 1fr 180px 90px 120px", gap: 14, padding: "12px 20px", alignItems: "center", borderBottom: i < visibleUsers.length - 1 ? `1px solid ${T.border}` : "none", transition: "background 0.15s" }}
+                  <div key={u.id} style={{ display: "grid", gridTemplateColumns: "36px 1fr 180px 90px 100px 70px", gap: 14, padding: "12px 20px", alignItems: "center", borderBottom: i < visibleUsers.length - 1 ? `1px solid ${T.border}` : "none", transition: "background 0.15s" }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = T.glassHover; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
                   >
@@ -3448,11 +3547,217 @@ function PageAdmin() {
 
                     {/* Joined */}
                     <p style={{ fontSize: 11, color: T.textDim, margin: 0 }}>{joined}</p>
+
+                    {/* Delete */}
+                    <button type="button"
+                      onClick={() => setDeleteTarget({ id: u.id, question: u.display_name ?? u.email ?? "this user", type: "user" })}
+                      style={{ padding: "4px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: "pointer", border: "none", background: "rgba(239,68,68,0.1)", color: "#ef4444" }}
+                    >Del</button>
                   </div>
                 );
               })}
             </GCard>
           )}
+        </div>
+      )}
+
+      {/* ════ POSITIONS TAB ════ */}
+      {tab === "positions" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ position: "relative", maxWidth: 380 }}>
+            <Users size={13} strokeWidth={1.8} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: T.textDim, pointerEvents: "none" }} />
+            <input type="text" placeholder="Search by user or market question…" value={posSearch} onChange={e => setPosSearch(e.target.value)}
+              style={{ width: "100%", padding: "10px 14px 10px 34px", background: T.glass, border: `1px solid ${T.border}`, borderRadius: 10, color: T.textPrimary, fontSize: 13, outline: "none", boxSizing: "border-box" }}
+              onFocus={e => { e.target.style.borderColor = T.borderHover; }} onBlur={e => { e.target.style.borderColor = T.border; }} />
+          </div>
+          {positionsLoading && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{[1,2,3].map(i=><div key={i} style={{ height: 60, borderRadius: 10, background: T.surface, border: `1px solid ${T.border}`, animation: "pulse 1.5s ease-in-out infinite" }}/>)}</div>}
+          {positionsError && <div style={{ padding: "12px 16px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", fontSize: 12, color: "#ef4444" }}>{positionsError}</div>}
+          {!positionsLoading && visiblePositions.length === 0 && <GCard style={{ padding: 0 }}><EmptyState icon={BookMarked} title="No positions" body="No user positions found." /></GCard>}
+          {!positionsLoading && visiblePositions.length > 0 && (
+            <GCard style={{ padding: 0, overflow: "hidden" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 80px 80px 80px 100px", gap: 10, padding: "10px 20px", background: T.glass, borderBottom: `1px solid ${T.border}` }}>
+                {["User", "Market", "Side", "Amount (Q)", "Status", "Placed"].map(h => (
+                  <p key={h} style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>{h}</p>
+                ))}
+              </div>
+              {visiblePositions.map((p, i) => {
+                const isYes = p.side === "YES";
+                const placed = p.created_at ? new Date(p.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "—";
+                return (
+                  <div key={p.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 80px 80px 80px 100px", gap: 10, padding: "11px 20px", alignItems: "center", borderBottom: i < visiblePositions.length - 1 ? `1px solid ${T.border}` : "none", transition: "background 0.15s" }}
+                    onMouseEnter={e => { e.currentTarget.style.background = T.glassHover; }} onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
+                    <p style={{ fontSize: 12, color: T.textPrimary, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.users?.display_name ?? "—"}</p>
+                    <p style={{ fontSize: 11, color: T.textMuted, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={p.markets?.question}>{p.markets?.question ?? "—"}</p>
+                    <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "2px 10px", borderRadius: 999, fontSize: 11, fontWeight: 800, background: isYes ? T.yesBg : T.noBg, color: isYes ? T.yes : T.no, border: `1px solid ${isYes ? T.yesBorder : T.noBorder}` }}>{p.side}</span>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary, margin: 0 }}>{Number(p.amount ?? 0).toFixed(2)}</p>
+                    <StatusBadge status={p.markets?.status ?? "—"} />
+                    <p style={{ fontSize: 11, color: T.textDim, margin: 0 }}>{placed}</p>
+                  </div>
+                );
+              })}
+            </GCard>
+          )}
+        </div>
+      )}
+
+      {/* ════ ORACLE TAB ════ */}
+      {tab === "oracle" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {oracleLoading && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{[1,2,3].map(i=><div key={i} style={{ height: 64, borderRadius: 10, background: T.surface, border: `1px solid ${T.border}`, animation: "pulse 1.5s ease-in-out infinite" }}/>)}</div>}
+          {!oracleLoading && oracleResults.length === 0 && <GCard style={{ padding: 0 }}><EmptyState icon={ShieldCheck} title="No oracle results" body="Oracle resolution records will appear here after markets resolve." /></GCard>}
+          {!oracleLoading && oracleResults.length > 0 && (
+            <GCard style={{ padding: 0, overflow: "hidden" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 100px 130px 140px", gap: 10, padding: "10px 20px", background: T.glass, borderBottom: `1px solid ${T.border}` }}>
+                {["Market", "Category", "Result", "Data Source", "Resolved At"].map(h => (
+                  <p key={h} style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>{h}</p>
+                ))}
+              </div>
+              {oracleResults.map((r, i) => {
+                const isYes = r.result_value === "YES";
+                const resolvedAt = r.resolved_at ? new Date(r.resolved_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
+                return (
+                  <div key={r.id} style={{ display: "grid", gridTemplateColumns: "1fr 100px 100px 130px 140px", gap: 10, padding: "12px 20px", alignItems: "center", borderBottom: i < oracleResults.length - 1 ? `1px solid ${T.border}` : "none", transition: "background 0.15s" }}
+                    onMouseEnter={e => { e.currentTarget.style.background = T.glassHover; }} onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
+                    <p style={{ fontSize: 12, color: T.textPrimary, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.markets?.question}>{r.markets?.question ?? r.market_id}</p>
+                    <CategoryBadge category={r.markets?.category ?? "—"} />
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 10px", borderRadius: 999, fontSize: 11, fontWeight: 800, background: isYes ? T.yesBg : T.noBg, color: isYes ? T.yes : T.no, border: `1px solid ${isYes ? T.yesBorder : T.noBorder}` }}>{r.result_value}</span>
+                    <p style={{ fontSize: 11, color: T.textMuted, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.data_source ?? "—"}</p>
+                    <p style={{ fontSize: 11, color: T.textDim, margin: 0 }}>{resolvedAt}</p>
+                  </div>
+                );
+              })}
+            </GCard>
+          )}
+        </div>
+      )}
+
+      {/* ════ EVENTS TAB ════ */}
+      {tab === "events" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {eventsLoading && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{[1,2,3].map(i=><div key={i} style={{ height: 56, borderRadius: 10, background: T.surface, border: `1px solid ${T.border}`, animation: "pulse 1.5s ease-in-out infinite" }}/>)}</div>}
+          {!eventsLoading && events.length === 0 && <GCard style={{ padding: 0 }}><EmptyState icon={Zap} title="No events" body="Market events will appear here as activity happens." /></GCard>}
+          {!eventsLoading && events.length > 0 && (
+            <GCard style={{ padding: 0, overflow: "hidden" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 140px 120px 130px", gap: 10, padding: "10px 20px", background: T.glass, borderBottom: `1px solid ${T.border}` }}>
+                {["Market", "Event", "User", "Timestamp"].map(h => (
+                  <p key={h} style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>{h}</p>
+                ))}
+              </div>
+              {events.map((ev, i) => {
+                const ts = ev.created_at ? new Date(ev.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
+                const evColors = { created: "#38bdf8", position_placed: "#22c55e", resolved: "#7c6ff7", reward_claimed: "#fbbf24" };
+                const evColor = evColors[ev.event_type] || T.textMuted;
+                return (
+                  <div key={ev.id} style={{ display: "grid", gridTemplateColumns: "1fr 140px 120px 130px", gap: 10, padding: "11px 20px", alignItems: "center", borderBottom: i < events.length - 1 ? `1px solid ${T.border}` : "none", transition: "background 0.15s" }}
+                    onMouseEnter={e => { e.currentTarget.style.background = T.glassHover; }} onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
+                    <p style={{ fontSize: 12, color: T.textPrimary, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={ev.markets?.question}>{ev.markets?.question ?? ev.market_id}</p>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 9px", borderRadius: 999, fontSize: 10, fontWeight: 700, background: `${evColor}18`, color: evColor, border: `1px solid ${evColor}30` }}>{ev.event_type.replace("_", " ")}</span>
+                    <p style={{ fontSize: 11, color: T.textMuted, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.users?.display_name ?? "system"}</p>
+                    <p style={{ fontSize: 11, color: T.textDim, margin: 0 }}>{ts}</p>
+                  </div>
+                );
+              })}
+            </GCard>
+          )}
+        </div>
+      )}
+
+      {/* ════ CREATE MARKET TAB ════ */}
+      {tab === "create" && (
+        <div style={{ maxWidth: 600 }}>
+          <GCard style={{ padding: "28px 28px" }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.1em", textTransform: "uppercase", margin: "0 0 20px" }}>Create New Market</p>
+            <form onSubmit={handleCreate} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Question *</label>
+                <input type="text" required placeholder="Will Bitcoin be above $120,000 at 11:59 PM today?" value={createForm.question}
+                  onChange={e => setCreateForm(f => ({ ...f, question: e.target.value }))}
+                  style={{ width: "100%", padding: "12px 14px", background: T.glass, border: `1px solid ${T.border}`, borderRadius: 10, color: T.textPrimary, fontSize: 13, outline: "none", boxSizing: "border-box" }}
+                  onFocus={e => { e.target.style.borderColor = T.borderHover; }} onBlur={e => { e.target.style.borderColor = T.border; }} />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Category *</label>
+                  <select required value={createForm.category} onChange={e => setCreateForm(f => ({ ...f, category: e.target.value }))}
+                    style={{ width: "100%", padding: "12px 14px", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, color: T.textPrimary, fontSize: 13, outline: "none", cursor: "pointer" }}>
+                    {["Crypto", "Sports", "Weather", "Stocks"].map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Deadline *</label>
+                  <input type="datetime-local" required value={createForm.deadline}
+                    onChange={e => setCreateForm(f => ({ ...f, deadline: e.target.value }))}
+                    style={{ width: "100%", padding: "12px 14px", background: T.glass, border: `1px solid ${T.border}`, borderRadius: 10, color: T.textPrimary, fontSize: 13, outline: "none", boxSizing: "border-box" }}
+                    onFocus={e => { e.target.style.borderColor = T.borderHover; }} onBlur={e => { e.target.style.borderColor = T.border; }} />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Data Source</label>
+                <input type="text" placeholder="e.g. CoinGecko BTC/USD price feed" value={createForm.data_source}
+                  onChange={e => setCreateForm(f => ({ ...f, data_source: e.target.value }))}
+                  style={{ width: "100%", padding: "12px 14px", background: T.glass, border: `1px solid ${T.border}`, borderRadius: 10, color: T.textPrimary, fontSize: 13, outline: "none", boxSizing: "border-box" }}
+                  onFocus={e => { e.target.style.borderColor = T.borderHover; }} onBlur={e => { e.target.style.borderColor = T.border; }} />
+              </div>
+
+              {createError && <p style={{ fontSize: 12, color: "#ef4444", margin: 0, padding: "10px 14px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>{createError}</p>}
+              {createSuccess && <p style={{ fontSize: 12, color: T.yes, margin: 0, padding: "10px 14px", borderRadius: 8, background: T.yesBg, border: `1px solid ${T.yesBorder}` }}>{createSuccess}</p>}
+
+              <button type="submit" disabled={createLoading}
+                style={{ padding: "13px", borderRadius: 10, border: "none", background: createLoading ? "rgba(34,197,94,0.4)" : "#22c55e", color: "#000", fontSize: 14, fontWeight: 800, cursor: createLoading ? "not-allowed" : "pointer", letterSpacing: "-0.01em", transition: "background 0.15s" }}>
+                {createLoading ? "Creating…" : "Create Market"}
+              </button>
+            </form>
+          </GCard>
+        </div>
+      )}
+
+      {/* ── Resolve market modal ── */}
+      {resolveTarget && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setResolveTarget(null)}>
+          <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)" }} />
+          <div role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}
+            style={{ position: "relative", width: "100%", maxWidth: 400, background: "#141414", border: `1px solid ${T.borderHover}`, borderRadius: 18, overflow: "hidden", boxShadow: "0 24px 64px rgba(0,0,0,0.8)", animation: "modal-in 0.22s cubic-bezier(0.34,1.56,0.64,1) both" }}>
+            <div style={{ padding: "24px" }}>
+              <p style={{ fontSize: 16, fontWeight: 800, color: "#ffffff", margin: "0 0 6px" }}>Resolve Market</p>
+              <p style={{ fontSize: 12, color: T.textMuted, margin: "0 0 18px", lineHeight: 1.5, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" }}>{resolveTarget.market.question}</p>
+              <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 10px" }}>Outcome</p>
+              <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+                {["YES", "NO"].map(o => (
+                  <button key={o} type="button" onClick={() => setResolveOutcome(o)}
+                    style={{ flex: 1, padding: "12px", borderRadius: 10, border: resolveOutcome === o ? `2px solid ${o === "YES" ? T.yes : T.no}` : `1px solid ${T.border}`, background: resolveOutcome === o ? (o === "YES" ? T.yesBg : T.noBg) : "transparent", color: o === "YES" ? T.yes : T.no, fontSize: 16, fontWeight: 900, cursor: "pointer" }}>
+                    {o}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button type="button" onClick={() => setResolveTarget(null)} style={{ flex: 1, padding: "11px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, color: T.textMuted, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                <button type="button" onClick={handleResolve} style={{ flex: 1, padding: "11px", borderRadius: 10, background: resolveOutcome === "YES" ? T.yes : T.no, border: "none", color: "#000", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>Resolve {resolveOutcome}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete confirm modal ── */}
+      {deleteTarget && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setDeleteTarget(null)}>
+          <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)" }} />
+          <div role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}
+            style={{ position: "relative", width: "100%", maxWidth: 380, background: "#141414", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 18, overflow: "hidden", boxShadow: "0 24px 64px rgba(0,0,0,0.8)", animation: "modal-in 0.22s cubic-bezier(0.34,1.56,0.64,1) both" }}>
+            <div style={{ padding: "24px" }}>
+              <p style={{ fontSize: 16, fontWeight: 800, color: "#ef4444", margin: "0 0 8px" }}>Delete {deleteTarget.type}?</p>
+              <p style={{ fontSize: 13, color: T.textMuted, margin: "0 0 20px", lineHeight: 1.5 }}>
+                This will permanently delete <strong style={{ color: "#ffffff" }}>{deleteTarget.question}</strong>. This cannot be undone.
+              </p>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button type="button" onClick={() => setDeleteTarget(null)} style={{ flex: 1, padding: "11px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, color: T.textMuted, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                <button type="button" onClick={handleDelete} style={{ flex: 1, padding: "11px", borderRadius: 10, background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)", color: "#ef4444", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>Delete</button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

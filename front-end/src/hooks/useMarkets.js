@@ -6,7 +6,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "../lib/supabase";
 
-export function useMarkets({ category = null, status = "active", limit = 50 } = {}) {
+export function useMarkets({ category = null, status = "active", limit = 100 } = {}) {
   const [markets,  setMarkets]  = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState(null);

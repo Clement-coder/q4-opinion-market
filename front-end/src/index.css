@@ -335,13 +335,18 @@ h1, h2, h3, h4 {
   .dash-mobile-left     { display: flex !important; }
 }
 
+/* Default column counts (desktop) */
+.dash-kpi-grid  { grid-template-columns: repeat(3, 1fr); }
+.dash-sec-grid  { grid-template-columns: repeat(3, 1fr); }
+.q-grid         { grid-template-columns: repeat(3, 1fr); }
+
 /* Responsive grids inside dashboard */
 @media (max-width: 900px) {
   .dash-kpi-grid    { grid-template-columns: repeat(2,1fr) !important; }
   .dash-sec-grid    { grid-template-columns: repeat(2,1fr) !important; }
   .dash-main-grid   { grid-template-columns: 1fr !important; }
   .dash-conv-grid   { grid-template-columns: repeat(3,1fr) !important; }
-  .dash-how-grid    { grid-template-columns: repeat(3,1fr) !important; }
+  .dash-how-grid    { grid-template-columns: repeat(2,1fr) !important; }
   .dash-detail-grid { grid-template-columns: 1fr !important; }
   .q-grid           { grid-template-columns: repeat(2,1fr) !important; }
 }
@@ -351,13 +356,6 @@ h1, h2, h3, h4 {
   .dash-conv-grid { grid-template-columns: repeat(2,1fr) !important; }
   .dash-how-grid  { grid-template-columns: repeat(2,1fr) !important; }
   .q-grid         { grid-template-columns: 1fr !important; }
-}
-
-/* Questions grid */
-.q-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 14px;
 }
 
 /* ─── Galaxy button animations ─── */

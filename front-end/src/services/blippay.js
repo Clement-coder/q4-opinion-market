@@ -228,7 +228,10 @@ async function quaiRpc(method, params) {
  */
 export async function getWalletBalance(address) {
   try {
-    const hex  = await quaiRpc("quai_getBalance", [address, "latest"]);
+    // Normalize to lowercase — the Quai RPC rejects EIP-55 mixed-case checksums
+    const addr = address?.toLowerCase();
+    if (!addr || !addr.startsWith("0x")) return { quai: 0 };
+    const hex  = await quaiRpc("quai_getBalance", [addr, "latest"]);
     const wei  = BigInt(hex);
     const quai = Number(wei) / 1e18;
     return { quai: parseFloat(quai.toFixed(6)) };

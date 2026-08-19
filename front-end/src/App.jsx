@@ -1,4 +1,4 @@
-import { Navigate, useParams } from "react-router-dom";
+import { Navigate } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import { Routes, Route } from "react-router-dom";
 import Navbar  from "./components/Header";
@@ -23,18 +23,42 @@ function PublicLayout({ children }) {
   );
 }
 
-/** Redirect to /dashboard if already signed in */
+/* Full-screen loading spinner shown while Firebase resolves auth state */
+function AuthLoader() {
+  return (
+    <div style={{
+      minHeight: "100vh",
+      background: "#080808",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+    }}>
+      <div style={{
+        width: 36, height: 36,
+        border: "3px solid rgba(255,255,255,0.08)",
+        borderTopColor: "#ffffff",
+        borderRadius: "50%",
+        animation: "spin 0.7s linear infinite",
+      }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
+/** Redirect to /dashboard if already signed in. Show loader while resolving. */
 function AuthRoute({ children }) {
   const { user, loading } = useAuth();
-  if (loading) return null;
+  if (loading) return <AuthLoader />;
   if (user) return <Navigate to="/dashboard" replace />;
   return children;
 }
 
-/** Redirect to /login if not signed in */
+/** Redirect to /login if not signed in. Show loader while resolving. */
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
-  if (loading) return null;
+  // While Firebase is resolving, show a full-screen loader instead of
+  // a blank page or a premature redirect to /login.
+  if (loading) return <AuthLoader />;
   if (!user) return <Navigate to="/login" replace />;
   return children;
 }
@@ -59,11 +83,11 @@ export default function App() {
       {/* ── Dashboard — root redirects to /dashboard/home ── */}
       <Route path="/dashboard" element={<ProtectedRoute><Navigate to="/dashboard/home" replace /></ProtectedRoute>} />
 
-      {/* ── Dashboard sub-pages (sidebar items each get their own URL) ── */}
+      {/* ── Dashboard sub-pages ── */}
       <Route path="/dashboard/:section"
         element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
 
-      {/* ── Catch-all question detail ── */}
+      {/* ── Market detail ── */}
       <Route path="/dashboard/:section/:questionId"
         element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
     </Routes>
