@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Clock, TrendingUp, ArrowRight, Share2, Check } from "../components/icons";
 import { useMarkets } from "../hooks/useMarkets";
 
@@ -13,7 +13,7 @@ const CAT_COLORS = {
 };
 
 function MarketCard({ market }) {
-  const [side, setSide]     = useState(null);
+  const navigate  = useNavigate();
   const [copied, setCopied] = useState(false);
   const style = CAT_COLORS[market.category] || { color: "rgba(255,255,255,0.6)", bg: "rgba(255,255,255,0.07)" };
 
@@ -100,20 +100,20 @@ function MarketCard({ market }) {
         </p>
       </div>
 
-      {/* YES / NO buttons */}
+      {/* YES / NO buttons — unauthenticated users are sent to login */}
       <div className="grid grid-cols-2" style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}>
         <button
           type="button"
-          onClick={() => setSide(side === "YES" ? null : "YES")}
-          className={`outcome-yes py-3 text-sm font-bold transition ${side === "YES" ? "active" : ""}`}
+          onClick={() => navigate("/login")}
+          className="outcome-yes py-3 text-sm font-bold transition"
           style={{ color: "#22c55e", borderRadius: 0, borderRight: "1px solid rgba(255,255,255,0.07)" }}
         >
           YES
         </button>
         <button
           type="button"
-          onClick={() => setSide(side === "NO" ? null : "NO")}
-          className={`outcome-no py-3 text-sm font-bold transition ${side === "NO" ? "active" : ""}`}
+          onClick={() => navigate("/login")}
+          className="outcome-no py-3 text-sm font-bold transition"
           style={{ color: "#ef4444", borderRadius: 0 }}
         >
           NO

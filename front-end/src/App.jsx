@@ -7,6 +7,7 @@ import Footer  from "./components/Footer";
 import HomePage       from "./pages/HomePage";
 import HowItWorksPage from "./pages/HowItWorksPage";
 import MarketsPage    from "./pages/MarketsPage";
+import PollsPage      from "./pages/PollsPage";
 import AboutPage      from "./pages/AboutPage";
 import FaqPage        from "./pages/FaqPage";
 import SignUpPage     from "./pages/SignUpPage";
@@ -73,8 +74,8 @@ export default function App() {
       <Route path="/about"        element={<PublicLayout><AboutPage /></PublicLayout>} />
       <Route path="/faq"          element={<PublicLayout><FaqPage /></PublicLayout>} />
 
-      {/* ── Legacy redirect ── */}
-      <Route path="/polls"        element={<Navigate to="/markets" replace />} />
+      {/* ── Legacy /polls — now a live page with real Supabase data ── */}
+      <Route path="/polls" element={<PublicLayout><PollsPage /></PublicLayout>} />
 
       {/* ── Auth pages ── */}
       <Route path="/signup" element={<AuthRoute><SignUpPage /></AuthRoute>} />

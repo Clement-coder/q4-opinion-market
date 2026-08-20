@@ -110,16 +110,20 @@ export function useMarket(id) {
       setLoading(true);
       const { data, error: err } = await supabase
         .from("markets")
-        .select(`*, market_outcomes ( outcome, pool_amount )`)
+        .select(`*, market_outcomes ( outcome, pool_amount, participant_count )`)
         .eq("id", id)
         .single();
 
       if (err) { setError(err.message); setLoading(false); return; }
 
-      const yesPool   = Number(data.market_outcomes?.find((o) => o.outcome === "YES")?.pool_amount ?? 0);
-      const noPool    = Number(data.market_outcomes?.find((o) => o.outcome === "NO")?.pool_amount  ?? 0);
+      const yesRow  = data.market_outcomes?.find((o) => o.outcome === "YES");
+      const noRow   = data.market_outcomes?.find((o) => o.outcome === "NO");
+      const yesPool = Number(yesRow?.pool_amount      ?? 0);
+      const noPool  = Number(noRow?.pool_amount       ?? 0);
+      const yesCount = Number(yesRow?.participant_count ?? 0);
+      const noCount  = Number(noRow?.participant_count  ?? 0);
       const totalPool = yesPool + noPool;
-      setMarket({ ...data, yesPool, noPool, totalPool });
+      setMarket({ ...data, yesPool, noPool, totalPool, yesCount, noCount, market_outcomes: data.market_outcomes });
       setLoading(false);
     };
 

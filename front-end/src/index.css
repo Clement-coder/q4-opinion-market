@@ -78,12 +78,14 @@ h1, h2, h3, h4 {
 .font-body    { font-family: var(--font-body)    !important; }
 .font-mono    { font-family: var(--font-mono)    !important; }
 
-/* ─── Market question text — Yapari Trial bold ─── */
+/* ─── Market question text — Barlow Condensed: sharp, bold, condensed ─── */
 .market-question {
-  font-family: var(--font-display) !important;
-  font-weight: 700;
-  letter-spacing: -0.025em;
-  line-height: 1.3;
+  font-family: 'Barlow Condensed', 'Arial Narrow', sans-serif !important;
+  font-weight: 800;
+  font-size: 1.08em;
+  letter-spacing: 0.01em;
+  line-height: 1.25;
+  text-transform: uppercase;
 }
 
 /* ─── Nav glass ─── */

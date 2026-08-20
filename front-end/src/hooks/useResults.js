@@ -31,7 +31,7 @@ export function useResults() {
           const won = m?.resolved_outcome === r.side;
           const winPool = r.side === "YES" ? yes : no;
           const reward = won && winPool > 0
-            ? parseFloat(((Number(r.amount) / winPool) * (total - winPool) * 0.98).toFixed(4)) : 0;
+            ? parseFloat(((Number(r.amount) / winPool) * (total - winPool) * 0.95).toFixed(4)) : 0;
           return {
             id: r.id, question: m?.question ?? "—", category: m?.category ?? "—",
             outcome: m?.resolved_outcome ?? "—", yourSide: r.side,

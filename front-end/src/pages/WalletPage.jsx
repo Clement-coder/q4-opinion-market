@@ -13,6 +13,7 @@ import {
 } from "../components/icons";
 import { useWallet } from "../context/WalletContext";
 import { useAuth }   from "../context/AuthContext";
+import { QuaiLogo }  from "../components/icons";
 import q4LogoSrc     from "../assets/Q4_logo.jpeg";
 
 /* ════════════════════════════════════════════════
@@ -318,7 +319,7 @@ function SendModal({ open, onClose, balance, quaiPrice }) {
       {step==="form" && (
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
           <div style={{display:"flex",alignItems:"center",gap:6,padding:"7px 12px",borderRadius:8,background:T.yesBg,border:`1px solid ${T.yesBd}`}}>
-            <Wifi size={12} strokeWidth={2} style={{color:T.yes}}/> <span style={{fontSize:11,fontWeight:600,color:T.yes}}>Quai Network · Zone 0-0</span>
+            <QuaiLogo size={14}/> <span style={{fontSize:11,fontWeight:600,color:T.yes}}>Quai Network · Zone 0-0</span>
           </div>
           <div>
             <label style={{fontSize:11,fontWeight:700,color:T.dim,letterSpacing:"0.06em",textTransform:"uppercase",display:"block",marginBottom:6}}>Recipient Address</label>
@@ -416,7 +417,7 @@ function ReceiveModal({ open, onClose, walletAddress }) {
     <Modal open={open} onClose={onClose} title="Receive QUAI">
       <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:18}}>
         <div style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:8,background:T.yesBg,border:`1px solid ${T.yesBd}`}}>
-          <Wifi size={12} strokeWidth={2} style={{color:T.yes}}/> <span style={{fontSize:11,fontWeight:600,color:T.yes}}>Quai Network · Zone 0-0</span>
+          <QuaiLogo size={14}/> <span style={{fontSize:11,fontWeight:600,color:T.yes}}>Quai Network · Zone 0-0</span>
         </div>
         <div style={{padding:12,background:"#fff",borderRadius:14,boxShadow:"0 8px 32px rgba(0,0,0,0.5)"}}>
           <SimpleQR data={walletAddress??"q4-wallet"} size={180}/>
@@ -470,7 +471,7 @@ function TxRow({ tx, quaiPrice, last }) {
 /* ════════════════════════════════════════════════
    WALLET DETAIL ROW
 ════════════════════════════════════════════════ */
-function DetailRow({ label, value, mono, copy: copyVal, divider }) {
+function DetailRow({ label, value, mono, copy: copyVal, divider, icon }) {
   const [copied, setCopied] = useState(false);
   const copy = useCallback(async()=>{
     if(!copyVal) return;
@@ -482,7 +483,9 @@ function DetailRow({ label, value, mono, copy: copyVal, divider }) {
     <div style={{display:"flex",alignItems:"flex-start",gap:14,padding:"13px 0",borderBottom:divider?`1px solid ${T.border}`:"none"}}>
       <div style={{flex:1,minWidth:0}}>
         <p style={{fontSize:10,color:T.dim,margin:"0 0 4px",fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase"}}>{label}</p>
-        <p className={`wallet-detail-val${mono?" mono":""}`} style={{margin:0}}>{value}</p>
+        <p className={`wallet-detail-val${mono?" mono":""}`} style={{margin:0,display:"flex",alignItems:"center",gap:6}}>
+          {icon && <QuaiLogo size={14}/>}{value}
+        </p>
       </div>
       {copyVal&&(
         <button type="button" onClick={copy} style={{width:30,height:30,borderRadius:7,background:copied?T.yesBg:T.glass,border:`1px solid ${copied?T.yesBd:T.border}`,display:"flex",alignItems:"center",justifyContent:"center",color:copied?T.yes:T.dim,cursor:"pointer",flexShrink:0,marginTop:18,transition:"all 0.2s"}}>
@@ -509,12 +512,37 @@ export default function WalletPage() {
   const history = priceData?.history ?? [];
   const pos24h  = (price?.changePercent24h??0) >= 0;
 
+  // Debug logging
+  console.log("WalletPage debug:", { 
+    user: user?.uid, 
+    walletAddress, 
+    balance, 
+    priceData, 
+    loading, 
+    error 
+  });
+
   /* ─── loading ─── */
   if (loading) return (
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"60vh",gap:16}}>
       <Loader size={28} strokeWidth={1.5} style={{color:T.dim,animation:"spin 0.9s linear infinite"}}/>
       <p style={{fontSize:13,color:T.muted,margin:0}}>Setting up your wallet…</p>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+
+  /* ─── error state ─── */
+  if (error && !walletAddress) return (
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"60vh",gap:16}}>
+      <div style={{width:56,height:56,borderRadius:16,background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <AlertCircle size={24} strokeWidth={1.4} style={{color:"#ef4444"}} />
+      </div>
+      <p style={{fontSize:16,fontWeight:700,color:T.no,margin:0}}>Wallet Error</p>
+      <p style={{fontSize:13,color:T.muted,margin:0,textAlign:"center",maxWidth:320}}>{error}</p>
+      <button type="button" onClick={refresh}
+        style={{padding:"8px 16px",borderRadius:8,background:T.glass,border:`1px solid ${T.border}`,color:T.muted,fontSize:12,fontWeight:600,cursor:"pointer"}}>
+        Try Again
+      </button>
     </div>
   );
 
@@ -641,15 +669,15 @@ export default function WalletPage() {
                 <p style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.4)",letterSpacing:"0.12em",textTransform:"uppercase",margin:"0 0 10px"}}>Total Balance</p>
                 {balanceVisible ? (
                   <>
-                    <p className="wallet-bal-num" style={{fontWeight:900,color:"#fff",margin:0,letterSpacing:"-0.04em",lineHeight:1}}>
-                      {fmtQ(balance.quai)}&nbsp;<span style={{fontSize:16,fontWeight:500,color:"rgba(255,255,255,0.4)"}}>QUAI</span>
+                    <p className="wallet-bal-num" style={{fontWeight:900,color:"#fff",margin:0,letterSpacing:"-0.04em",lineHeight:1,display:"flex",alignItems:"center",gap:8}}>
+                      {fmtQ(balance.quai)}&nbsp;<QuaiLogo size={22} />
                     </p>
                     <p style={{fontSize:15,fontWeight:600,color:"rgba(255,255,255,0.5)",margin:"6px 0 0"}}>{fmtU(balance.usd)}</p>
                   </>
                 ) : (
                   <>
-                    <p className="wallet-bal-num" style={{fontWeight:900,color:"#fff",margin:0,letterSpacing:"0.1em",lineHeight:1}}>
-                      ••••••&nbsp;<span style={{fontSize:16,fontWeight:500,color:"rgba(255,255,255,0.4)"}}>QUAI</span>
+                    <p className="wallet-bal-num" style={{fontWeight:900,color:"#fff",margin:0,letterSpacing:"0.1em",lineHeight:1,display:"flex",alignItems:"center",gap:8}}>
+                      ••••••&nbsp;<QuaiLogo size={22} />
                     </p>
                     <p style={{fontSize:15,fontWeight:600,color:"rgba(255,255,255,0.35)",margin:"6px 0 0"}}>••••••</p>
                   </>
@@ -671,7 +699,7 @@ export default function WalletPage() {
             <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:10,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)"}}>
               <span style={{width:7,height:7,borderRadius:"50%",background:T.yes,flexShrink:0,animation:"pulse-dot 2s ease-in-out infinite"}}/>
               <span className="wallet-addr-text">{walletAddress??"—"}</span>
-              <span style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.3)",background:"rgba(255,255,255,0.07)",padding:"2px 7px",borderRadius:4,flexShrink:0}}>Quai</span>
+              <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.55)",background:"rgba(255,255,255,0.07)",padding:"2px 7px",borderRadius:4,flexShrink:0}}><QuaiLogo size={12}/>Quai</span>
             </div>
 
             {/* action buttons */}
@@ -696,7 +724,7 @@ export default function WalletPage() {
           {/* header row */}
           <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between"}}>
             <div>
-              <p style={{fontSize:10,fontWeight:700,color:T.dim,letterSpacing:"0.12em",textTransform:"uppercase",margin:"0 0 6px"}}>QUAI / USD · 7 Day</p>
+              <p style={{fontSize:10,fontWeight:700,color:T.dim,letterSpacing:"0.12em",textTransform:"uppercase",margin:"0 0 6px",display:"flex",alignItems:"center",gap:5}}><QuaiLogo size={13}/>QUAI / USD · 7 Day</p>
               <div style={{display:"flex",alignItems:"baseline",gap:10}}>
                 <p style={{fontSize:28,fontWeight:900,color:"#fff",margin:0,letterSpacing:"-0.04em",lineHeight:1}}>
                   {price ? fmtP(price.price) : "—"}
@@ -769,11 +797,11 @@ export default function WalletPage() {
         <p style={{fontSize:11,fontWeight:700,letterSpacing:"0.1em",color:T.dim,textTransform:"uppercase",margin:"0 0 4px"}}>Wallet Details</p>
         {[
           {label:"Wallet Address", value:walletAddress??"—", mono:true,  copy:walletAddress},
-          {label:"Network",        value:"Quai Network · Zone 0-0", mono:false},
+          {label:"Network",        value:"Quai Network · Zone 0-0", mono:false, icon: true},
           {label:"Wallet Type",    value:"Embedded (BlipPay managed)", mono:false},
           {label:"Account Owner",  value:user?.email??"—", mono:false},
         ].map(({label,value,mono,copy},i,a)=>(
-          <DetailRow key={label} label={label} value={value} mono={mono} copy={copy} divider={i<a.length-1}/>
+          <DetailRow key={label} label={label} value={value} mono={mono} copy={copy} icon={icon} divider={i<a.length-1}/>
         ))}
       </div>
 

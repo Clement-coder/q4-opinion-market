@@ -15,7 +15,7 @@ export function usePositions() {
     setError(null);
     const { data, error: err } = await supabase
       .from("user_positions")
-      .select(`id, market_id, side, amount, switched, created_at,
+      .select(`id, market_id, side, amount, created_at,
         markets ( id, question, category, status, deadline, resolved_outcome,
           market_outcomes ( outcome, pool_amount ) )`)
       .eq("user_id", userId)
@@ -71,7 +71,7 @@ function normalisePosition(row) {
   const ms = dl ? dl - Date.now() : null;
   return {
     id: row.id, marketId: row.market_id, side: row.side,
-    amount: Number(row.amount), switched: row.switched, createdAt: row.created_at,
+    amount: Number(row.amount), createdAt: row.created_at,
     status: m?.status ?? "unknown", question: m?.question ?? "—", category: m?.category ?? "—",
     deadline: m?.deadline, resolvedOutcome: m?.resolved_outcome,
     yesPool: yes, noPool: no, totalPool: total,

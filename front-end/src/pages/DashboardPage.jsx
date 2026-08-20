@@ -17,7 +17,7 @@ import {
   Medal, Flame, Lock2, Target, Percent, Lightbulb, Zap, Star, Coins,
   Users, PieChart, Sparkles, ExternalLink, RefreshCw,
 } from "../components/icons";
-import { Q4Logo }   from "../components/icons";
+import { Q4Logo, QuaiLogo }   from "../components/icons";
 import { useAuth }  from "../context/AuthContext";
 import { useWallet } from "../context/WalletContext";
 import { useQuaiPrice, useNewsFeed, useBlipLeaderboard } from "../services/useBlipPay";
@@ -684,8 +684,8 @@ function PageDashboard({ onNavigate }) {
         {/* Wallet balance */}
         <GCard style={{ padding: "20px 22px" }}>
           <p style={{ fontSize: 11, color: T.textDim, margin: "0 0 8px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>Wallet Balance</p>
-          <p style={{ fontSize: 30, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.04em" }}>
-            {balance.quai.toFixed(4)}<span style={{ color: T.textMuted, fontSize: 15, fontWeight: 500, marginLeft: 5 }}>Q</span>
+          <p style={{ fontSize: 30, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.04em", display: "flex", alignItems: "center", gap: 6 }}>
+            {balance.quai.toFixed(4)}<QuaiLogo size={20} style={{ marginLeft: 4, opacity: 0.9 }} />
           </p>
           <p style={{ fontSize: 12, color: T.textDim, margin: "5px 0 0" }}>
             {balance.usd > 0 ? `≈ $${balance.usd.toFixed(2)} USD` : quaiPrice ? "—" : "Loading…"}
@@ -694,7 +694,9 @@ function PageDashboard({ onNavigate }) {
 
         {/* Live QUAI price */}
         <GCard style={{ padding: "20px 22px" }}>
-          <p style={{ fontSize: 11, color: T.textDim, margin: "0 0 8px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>QUAI Price</p>
+          <p style={{ fontSize: 11, color: T.textDim, margin: "0 0 8px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 5 }}>
+            <QuaiLogo size={14} /> QUAI Price
+          </p>
           {quaiPrice ? (
             <>
               <p style={{ fontSize: 30, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.04em" }}>
@@ -752,7 +754,7 @@ function PageDashboard({ onNavigate }) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }} className="dash-kpi-grid">
             {[
               { label: "Open Positions", value: open,                      color: "#38bdf8", icon: BookMarked },
-              { label: "Total Staked",   value: `${staked.toFixed(2)} Q`,  color: "#fbbf24", icon: Coins     },
+              { label: "Total Staked",   value: `${staked.toFixed(2)} QUAI`,  color: "#fbbf24", icon: Coins     },
               { label: "Wins",           value: wins,                      color: T.yes,     icon: Trophy    },
               { label: "Win Rate",       value: winRate != null ? `${winRate}%` : "—", color: T.violet, icon: Target },
             ].map(({ label, value, color, icon: Icon }) => (
@@ -847,7 +849,9 @@ function InteractivePriceChart({ history, priceChange, quaiPrice }) {
     <GCard style={{ padding: "20px 22px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>QUAI / USD — 7 Day</p>
+          <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0, display: "flex", alignItems: "center", gap: 5 }}>
+            <QuaiLogo size={14} /> QUAI / USD — 7 Day
+          </p>
           {hovered && (
             <span style={{ fontSize: 12, color: "#ffffff", fontWeight: 700 }}>${hovered.price.toFixed(6)}</span>
           )}
@@ -987,8 +991,8 @@ function ActivityFeed({ onNavigate }) {
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ fontSize: 12, fontWeight: 600, color: T.textPrimary, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.question}</p>
-                  <p style={{ fontSize: 11, color: T.textDim, margin: "1px 0 0" }}>
-                    {p.category} · <span style={{ color: col, fontWeight: 600 }}>{p.side}</span> · {p.amount.toFixed(2)} Q
+                  <p style={{ fontSize: 11, color: T.textDim, margin: "1px 0 0", display: "flex", alignItems: "center", gap: 3 }}>
+                    {p.category} · <span style={{ color: col, fontWeight: 600 }}>{p.side}</span> · {p.amount.toFixed(2)} <QuaiLogo size={11} />
                   </p>
                 </div>
                 <span style={{ padding: "2px 7px", borderRadius: 999, fontSize: 10, fontWeight: 700, background: T.glass, border: `1px solid ${T.border}`, color: T.textDim, flexShrink: 0 }}>
@@ -1439,153 +1443,188 @@ function ShareModal({ open, onClose, question }) {
    PAGE: QUESTION DETAIL
 ════════════════════════════════════════════════ */
 
-const DETAIL_TABS = ["About", "How It Resolves", "Rules"];
+const PROTOCOL_FEE_PCT = 5;   // 5% platform fee
+const MIN_STAKE        = 2;   // $2 minimum
+
+/** Live countdown — re-renders every second */
+function Countdown({ deadline }) {
+  const [label, setLabel] = useState("");
+  useEffect(() => {
+    const tick = () => {
+      const ms = new Date(deadline) - Date.now();
+      if (ms <= 0) { setLabel("Market closed"); return; }
+      const s = Math.floor(ms / 1000);
+      const m = Math.floor(s / 60);
+      const h = Math.floor(m / 60);
+      const d = Math.floor(h / 24);
+      if (d > 0)      setLabel(`${d}d ${h % 24}h ${m % 60}m`);
+      else if (h > 0) setLabel(`${h}h ${m % 60}m ${s % 60}s`);
+      else            setLabel(`${m}m ${s % 60}s`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [deadline]);
+  return <span>{label}</span>;
+}
 
 function PageQuestionDetail({ questionId, onBack, onConfetti }) {
-  const [tab, setTab]           = useState("About");
-  const [selected, setSelected] = useState(null);
-  const [usdcAmount, setUsdcAmount] = useState("");
+  const [tab, setTab]               = useState("How It Works");
+  const [selected, setSelected]     = useState(null);
+  /*
+   * lockedSide — set permanently after the user's FIRST confirmed stake.
+   * Once set, the user cannot tap the other side button at all.
+   * They can keep adding new positions on the locked side indefinitely.
+   */
+  const [lockedSide, setLockedSide] = useState(null);
+  const [amount, setAmount]         = useState("");
   const [confirmed, setConfirmed]   = useState(false);
   const [shareOpen, setShareOpen]   = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
 
-  const { profile } = useAuth();
-  const { market, loading: marketLoading } = useMarket(questionId);
+  const { profile }                     = useAuth();
+  const { balance, priceData }          = useWallet();
+  const { market, loading: mktLoading } = useMarket(questionId);
 
-  // Build the display object from live Supabase data
-  const yesPool   = market?.yesPool   ?? 0;
-  const noPool    = market?.noPool    ?? 0;
-  const totalPool = market?.totalPool ?? 0;
-  const yesPct    = totalPool > 0 ? Math.round((yesPool / totalPool) * 100) : 50;
-  const noPct     = 100 - yesPct;
-  const deadline  = market?.deadline ? new Date(market.deadline) : null;
-  const msLeft    = deadline ? deadline - Date.now() : null;
-  const closesLabel = msLeft != null && msLeft > 0 ? formatDetailTime(msLeft) : "Closed";
+  /* ── derived market values ── */
+  const totalPool        = market?.totalPool ?? 0;
+  const deadline         = market?.deadline ? new Date(market.deadline) : null;
+  const msLeft           = deadline ? deadline - Date.now() : null;
+  const isOpen           = market?.status === "active" && msLeft != null && msLeft > 0;
+  const totalParticipants = (market?.yesCount ?? 0) + (market?.noCount ?? 0);
 
-  const q = market
-    ? {
-        id:         market.id,
-        question:   market.question,
-        category:   market.category,
-        status:     market.status,
-        closes:     closesLabel,
-        totalPool,
-        yesPool,
-        noPool,
-        yes:        yesPct,
-        no:         noPct,
-        dataSource: market.data_source,
-        resolvedOutcome: market.resolved_outcome,
-      }
-    : questionId
-      ? { id: questionId, question: "Loading…", category: "—", closes: "—", totalPool: 0, yes: 50, no: 50, yesPool: 0, noPool: 0 }
-      : null;
+  /* ── USDT balance — using QUAI price to derive USD equivalent ── */
+  const quaiPrice = priceData?.current?.price ?? null;
+  const rate      = quaiPrice && quaiPrice > 0 ? parseFloat((1 / quaiPrice).toFixed(6)) : null;
+  const amtNum    = parseFloat(amount) || 0;
+  const quaiEquiv = amtNum > 0 && rate ? (amtNum * rate).toFixed(4) : null;
 
-  const RATE = 0.82;
-  const quaiEquiv = usdcAmount ? (parseFloat(usdcAmount) * RATE).toFixed(4) : null;
+  /* ── wallet balance check (USDT equivalent) ── */
+  const walletUsd = quaiPrice ? balance.quai * quaiPrice : null;
+  const balanceOk = walletUsd == null || amtNum <= walletUsd;
 
+  /* ── proportional payout preview ──
+   * Winner receives: stake_back + proportional_share_of_net_losing_pool
+   * net_losing_pool = losing_pool × (1 - fee)
+   * user_share      = (user_stake / total_winning_pool_after_stake) × net_losing_pool
+   */
+  const feeDecimal      = PROTOCOL_FEE_PCT / 100;
+  const yesPool         = market?.yesPool ?? 0;
+  const noPool          = market?.noPool  ?? 0;
+  const losePool        = selected === "YES" ? noPool  : yesPool;
+  const winPool         = selected === "YES" ? yesPool : noPool;
+  const newWinPool      = winPool + amtNum;
+  const netLosing       = losePool * (1 - feeDecimal);
+  const myShare         = newWinPool > 0 ? (amtNum / newWinPool) * netLosing : 0;
+  const estimatedPayout = amtNum + myShare;
+
+  /* ── YES / NO selection
+   * Free to toggle before first stake; locked to one side after. ── */
   const handleSelect = (side) => {
+    if (!isOpen) return;
+    if (lockedSide && side !== lockedSide) return; // answer is locked
     setSelected(side);
-    setUsdcAmount("");
+    setAmount("");
     setConfirmed(false);
     setSubmitError(null);
   };
 
+  /* ── Stake confirmation ── */
   const handleConfirm = async () => {
-    if (!usdcAmount || parseFloat(usdcAmount) <= 0) return;
-    if (!profile?.id) { setSubmitError("You must be signed in to place a position."); return; }
-    if (!q?.id) return;
+    // Client-side validations
+    if (!amount || amtNum < MIN_STAKE) {
+      setSubmitError(`Minimum stake is $${MIN_STAKE} USDT.`);
+      return;
+    }
+    if (amtNum <= 0) {
+      setSubmitError("Please enter a valid stake amount.");
+      return;
+    }
+    if (walletUsd != null && amtNum > walletUsd) {
+      setSubmitError(
+        `Insufficient balance. You have ≈$${walletUsd.toFixed(2)} USDT available.`
+      );
+      return;
+    }
+    if (!profile?.id) {
+      setSubmitError("You must be signed in to place a position.");
+      return;
+    }
+    if (!market?.id || !isOpen) {
+      setSubmitError("This market is not accepting positions right now.");
+      return;
+    }
+    if (!selected) {
+      setSubmitError("Please choose YES or NO first.");
+      return;
+    }
 
     setSubmitting(true);
     setSubmitError(null);
 
     try {
-      const amount = parseFloat(usdcAmount);
-
-      // Check if the user already has a position in this market
-      const { data: existing } = await supabase
+      /*
+       * Insert a new position row.
+       * The unique (user_id, market_id) constraint has been dropped —
+       * multiple rows per user per market are allowed.
+       * RLS policy: user_id must equal the signed-in user's Supabase id
+       * (resolved via firebase_uid header → users table lookup).
+       */
+      const { error: insertErr } = await supabase
         .from("user_positions")
-        .select("id, side, switched")
-        .eq("user_id", profile.id)
-        .eq("market_id", q.id)
-        .maybeSingle();
+        .insert({
+          user_id:   profile.id,
+          market_id: market.id,
+          side:      selected,
+          amount:    amtNum,
+          switched:  false,
+        });
+      if (insertErr) throw insertErr;
 
-      if (existing) {
-        // Already has a position — apply the switch rule
-        if (existing.switched) {
-          setSubmitError("You have already used your one allowed switch on this market.");
-          setSubmitting(false);
-          return;
-        }
-        if (existing.side === selected) {
-          setSubmitError(`You are already on the ${selected} side.`);
-          setSubmitting(false);
-          return;
-        }
-        if (msLeft != null && msLeft < 5 * 60 * 1000) {
-          setSubmitError("Cannot switch: less than 5 minutes remain before market close.");
-          setSubmitting(false);
-          return;
-        }
-        // Perform the switch
-        const { error: switchErr } = await supabase
-          .from("user_positions")
-          .update({ side: selected, amount, switched: true, updated_at: new Date().toISOString() })
-          .eq("id", existing.id);
+      /*
+       * Atomically update pool_amount + participant_count.
+       * Uses a SECURITY DEFINER RPC to bypass RLS on market_outcomes
+       * (users cannot write to that table directly).
+       */
+      const { error: poolErr } = await supabase.rpc("increment_pool", {
+        p_market_id: market.id,
+        p_outcome:   selected,
+        p_amount:    amtNum,
+      });
+      if (poolErr) throw poolErr;
 
-        if (switchErr) throw switchErr;
-      } else {
-        // New position
-        const { error: insertErr } = await supabase
-          .from("user_positions")
-          .insert({
-            user_id:   profile.id,
-            market_id: q.id,
-            side:      selected,
-            amount,
-            switched:  false,
-          });
+      // Log the event (best-effort — don't block on failure)
+      supabase.from("market_events").insert({
+        market_id:  market.id,
+        event_type: "position_placed",
+        user_id:    profile.id,
+        metadata:   { side: selected, amount: amtNum },
+      }).then(() => {});
 
-        if (insertErr) throw insertErr;
-
-        // Update the pool amount for the chosen side
-        const currentPool = selected === "YES" ? yesPool : noPool;
-        await supabase
-          .from("market_outcomes")
-          .update({ pool_amount: currentPool + amount, updated_at: new Date().toISOString() })
-          .eq("market_id", q.id)
-          .eq("outcome", selected);
-
-        // Log a market event
-        await supabase
-          .from("market_events")
-          .insert({
-            market_id:  q.id,
-            event_type: "position_placed",
-            user_id:    profile.id,
-            metadata:   { side: selected, amount },
-          });
-      }
-
+      /* Lock the side permanently after the first confirmed stake */
+      setLockedSide(selected);
       setConfirmed(true);
       if (onConfetti) onConfetti();
     } catch (err) {
-      console.error("[PageQuestionDetail] submit error:", err);
-      setSubmitError(err.message ?? "Failed to save your position. Please try again.");
+      console.error("[PageQuestionDetail] stake error:", err);
+      setSubmitError(
+        err.message ?? "Failed to save your position. Please try again."
+      );
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleReset = () => {
-    setSelected(null);
-    setUsdcAmount("");
+  /* Stake another position — resets amount/confirmed but keeps side locked */
+  const handleStakeAnother = () => {
+    setSelected(lockedSide); // preserve the locked side
+    setAmount("");
     setConfirmed(false);
     setSubmitError(null);
   };
 
-  if (marketLoading) {
+  if (mktLoading) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {[1, 2].map(i => (
@@ -1594,11 +1633,12 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
       </div>
     );
   }
-
-  if (!q) return null;
+  if (!market) return null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+      {/* ── back + share header ── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <button type="button" onClick={onBack}
           style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: T.textMuted, background: "none", border: "none", cursor: "pointer" }}
@@ -1608,11 +1648,8 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
           <ArrowLeft size={15} strokeWidth={2} /> Back to Markets
         </button>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <CategoryBadge category={q.category} />
-          <button
-            type="button"
-            onClick={() => setShareOpen(true)}
-            aria-label="Share this market"
+          <CategoryBadge category={market.category} />
+          <button type="button" onClick={() => setShareOpen(true)} aria-label="Share"
             style={{ width: 32, height: 32, borderRadius: 6, background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", color: T.textMuted, cursor: "pointer", transition: "border-color 0.15s, color 0.15s" }}
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.color = T.textPrimary; }}
             onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; }}
@@ -1622,243 +1659,469 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
         </div>
       </div>
 
-      <ShareModal open={shareOpen} onClose={() => setShareOpen(false)} question={q} />
+      <ShareModal open={shareOpen} onClose={() => setShareOpen(false)} question={{ id: market.id, question: market.question, category: market.category }} />
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 16, alignItems: "start" }} className="dash-detail-grid">
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 400px", gap: 16, alignItems: "start" }} className="dash-detail-grid">
 
-        {/* ── LEFT: question info + tabs ── */}
-        <GCard style={{ padding: "28px" }}>
-          {/* Question */}
-          <h1 className="market-question" style={{ fontSize: 20, color: "#ffffff", margin: "0 0 10px", lineHeight: 1.25 }}>{q.question}</h1>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 12, color: T.textDim, marginBottom: 24 }}>
-            <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Clock size={12} strokeWidth={1.8} /> Closes in {q.closes}</span>
-            <span style={{ width: 1, height: 12, background: T.border }} />
-            <span>Total Pool: <span style={{ color: T.textMuted, fontWeight: 600 }}>${q.totalPool.toLocaleString()}</span></span>
-          </div>
+        {/* ═══ LEFT COLUMN ═══ */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
 
-          {/* Switch policy */}
-          <div style={{ padding: "14px 16px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, marginBottom: 20 }}>
-            <p style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: T.textPrimary, margin: "0 0 8px" }}>
-              <CheckCircle2 size={13} strokeWidth={2} style={{ color: T.textMuted }} /> Switch Policy
-            </p>
-            {["You may switch your position once.", "Switch only if ≥ 5 minutes remain.", "Your position moves to the new side.", "No further switches after that."].map(r => (
-              <p key={r} style={{ fontSize: 12, color: T.textMuted, margin: "3px 0 0" }}>· {r}</p>
-            ))}
-          </div>
+          {/* ── Question + market stats card ── */}
+          <GCard style={{ padding: "28px 28px 24px" }}>
+            <h1 className="market-question" style={{ fontSize: 22, color: "#ffffff", margin: "0 0 20px", lineHeight: 1.2 }}>
+              {market.question}
+            </h1>
 
-          {/* Info tabs */}
-          <div style={{ display: "flex", gap: 2, borderBottom: `1px solid ${T.border}` }}>
-            {DETAIL_TABS.map(t => (
-              <button key={t} type="button" onClick={() => setTab(t)}
-                style={{ padding: "8px 14px 10px", background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: tab === t ? "#ffffff" : T.textMuted, borderBottom: tab === t ? "2px solid #ffffff" : "2px solid transparent", marginBottom: -1 }}>
-                {t}
-              </button>
-            ))}
-          </div>
-          <div style={{ marginTop: 12, padding: "12px 14px", borderRadius: 8, background: T.glass, fontSize: 13, color: T.textMuted, lineHeight: 1.6 }}>
-            {tab === "About"          && <p style={{ margin: 0 }}>{q.resolves   || "This market resolves based on the real-world outcome of the stated question."}</p>}
-            {tab === "How It Resolves"&& <p style={{ margin: 0 }}>{q.resolution || "Resolution will be based on official announcements from verified sources."}</p>}
-            {tab === "Rules"          && <p style={{ margin: 0 }}>Standard Q4 market rules apply. Stakes are final once the market closes and cannot be withdrawn.</p>}
-          </div>
-        </GCard>
+            {/* Market status badge */}
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 999, background: isOpen ? "rgba(34,197,94,0.1)" : "rgba(255,255,255,0.06)", border: `1px solid ${isOpen ? "rgba(34,197,94,0.3)" : T.border}`, marginBottom: 20 }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: isOpen ? T.yes : T.textDim, flexShrink: 0 }} />
+              <span style={{ fontSize: 11, fontWeight: 700, color: isOpen ? T.yes : T.textMuted, letterSpacing: "0.05em" }}>
+                {isOpen ? "MARKET OPEN" : market.status === "resolved" ? `RESOLVED: ${market.resolved_outcome}` : "MARKET CLOSED"}
+              </span>
+            </div>
 
-        {/* ── RIGHT: staking card ── */}
-        <GCard style={{ padding: "28px", position: "sticky", top: 80 }}>
+            {/* ── 4 stat cards — TOTAL only, no YES/NO split ── */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginBottom: 4 }}>
+              {[
+                {
+                  icon: <Users size={13} strokeWidth={2} />,
+                  label: "Participants",
+                  value: totalParticipants.toLocaleString(),
+                },
+                {
+                  icon: <Coins size={13} strokeWidth={2} />,
+                  label: "Total Staked",
+                  value: `$${totalPool.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT`,
+                },
+                {
+                  icon: <Clock size={13} strokeWidth={2} />,
+                  label: "Ends",
+                  value: deadline
+                    ? deadline.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+                    : "—",
+                },
+                {
+                  icon: <Zap size={13} strokeWidth={2} />,
+                  label: "Time Left",
+                  value: deadline ? <Countdown deadline={deadline} /> : "—",
+                },
+              ].map(({ icon, label, value }) => (
+                <div key={label} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "14px 16px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}` }}>
+                  <span style={{ color: T.textDim, marginTop: 1, flexShrink: 0 }}>{icon}</span>
+                  <div>
+                    <p style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 3px" }}>{label}</p>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: T.textPrimary, margin: 0 }}>{value}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </GCard>
 
-          {!confirmed ? (
-            <>
-              <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.1em", textTransform: "uppercase", margin: "0 0 16px" }}>Your Prediction</p>
+          {/* ── Info tabs: How It Works · Payout · Rules ── */}
+          <GCard style={{ padding: 0 }}>
+            <div style={{ display: "flex", borderBottom: `1px solid ${T.border}`, padding: "0 20px" }}>
+              {["How It Works", "Payout", "Rules"].map(t => (
+                <button key={t} type="button" onClick={() => setTab(t)}
+                  style={{ padding: "14px 16px", background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: tab === t ? "#ffffff" : T.textMuted, borderBottom: tab === t ? "2px solid #ffffff" : "2px solid transparent", marginBottom: -1, transition: "color 0.15s" }}>
+                  {t}
+                </button>
+              ))}
+            </div>
 
-              {/* YES / VS / NO buttons */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 6, marginBottom: 20, alignItems: "center" }}>
-                {["YES", "VS", "NO"].map(side => {
-                  if (side === "VS") return (
-                    <div key="vs" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <div style={{ width: 44, height: 44, borderRadius: "50%", background: "rgba(255,255,255,0.04)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.14)", boxShadow: "0 0 0 5px rgba(255,255,255,0.025), 0 6px 20px rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", flexShrink: 0 }}>
-                        <div style={{ position: "absolute", inset: 2, borderRadius: "50%", background: "radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%)" }} />
-                        <span style={{ fontFamily: "'YapariTrial','Yapari Trial','Yapari',sans-serif", fontSize: 14, fontWeight: 900, letterSpacing: "-0.02em", color: "rgba(255,255,255,0.7)", position: "relative", zIndex: 1, lineHeight: 1 }}>VS</span>
+            <div style={{ padding: "20px 22px" }}>
+
+              {tab === "How It Works" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  {[
+                    {
+                      n: "1",
+                      title: "Pick YES or NO",
+                      body: "Choose YES if you think the event will happen, NO if it won't. You can freely switch before your first stake. Once you confirm your first stake your answer is permanently locked.",
+                    },
+                    {
+                      n: "2",
+                      title: "Enter your stake",
+                      body: `Minimum $${MIN_STAKE} USDT per position. Your available USDT balance is shown and checked before every stake. You can open as many new positions as you like on your locked side while the market is open.`,
+                    },
+                    {
+                      n: "3",
+                      title: "Wait for resolution",
+                      body: "At the deadline an approved oracle fetches the verified real-world result. The market is resolved YES or NO automatically.",
+                    },
+                    {
+                      n: "4",
+                      title: "Payout",
+                      body: `Losing stakes are forfeited. Q4 takes a ${PROTOCOL_FEE_PCT}% fee from the losing pool. The remaining ${100 - PROTOCOL_FEE_PCT}% is split proportionally among all winning positions based on each winner's share of the total winning pool. Winners also receive their original stake back.`,
+                    },
+                  ].map(({ n, title, body }) => (
+                    <div key={n} style={{ display: "flex", gap: 14 }}>
+                      <div style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(255,255,255,0.08)", border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 12, fontWeight: 800, color: T.textMuted }}>{n}</div>
+                      <div>
+                        <p style={{ fontSize: 13, fontWeight: 700, color: T.textPrimary, margin: "0 0 3px" }}>{title}</p>
+                        <p style={{ fontSize: 12, color: T.textMuted, margin: 0, lineHeight: 1.6 }}>{body}</p>
                       </div>
                     </div>
-                  );
-                  const isActive = selected === side;
-                  const isYes = side === "YES";
-                  const col  = isYes ? "#22c55e" : "#ef4444";
-                  const colB = isYes ? "rgba(34,197,94,0.18)"  : "rgba(239,68,68,0.18)";
-                  const colD = isYes ? "rgba(34,197,94,0.45)"  : "rgba(239,68,68,0.45)";
-                  const glow = isYes ? "rgba(34,197,94,0.35)"  : "rgba(239,68,68,0.35)";
-                  return (
-                    <button
-                      key={side}
-                      type="button"
-                      onClick={() => handleSelect(side)}
-                      className={isActive ? `stake-btn-active-${side.toLowerCase()}` : ""}
-                      style={{
-                        padding: "20px 10px",
-                        borderRadius: 14,
-                        border: isActive ? `2px solid ${col}` : `1px solid ${isYes ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)"}`,
-                        background: isActive ? colB : isYes ? "rgba(34,197,94,0.05)" : "rgba(239,68,68,0.05)",
-                        color: col,
-                        cursor: "pointer",
-                        transition: "all 0.22s cubic-bezier(0.34,1.56,0.64,1)",
-                        boxShadow: isActive ? `0 0 28px ${glow}, 0 0 0 1px ${colD} inset` : "none",
-                        transform: isActive ? "translateY(-3px) scale(1.03)" : "scale(1)",
-                        display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
-                      }}
-                    >
-                      <span style={{ fontFamily: "'YapariTrial','Yapari Trial','Yapari',sans-serif", fontSize: 22, fontWeight: 900, lineHeight: 1, color: col, letterSpacing: "-0.02em" }}>{side}</span>
-                      <span style={{ fontSize: 10, fontWeight: 600, opacity: 0.65, letterSpacing: "0.06em", textTransform: "uppercase", color: col }}>
-                        {isYes ? "It will" : "It won't"}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+                  ))}
+                </div>
+              )}
 
-              {/* Stake input — slides in when a side is selected */}
-              <div style={{
-                overflow: "hidden",
-                maxHeight: selected ? 240 : 0,
-                opacity: selected ? 1 : 0,
-                transition: "max-height 0.35s ease, opacity 0.25s ease",
-              }}>
-                <div style={{ paddingTop: 4 }}>
-                  <p style={{ fontSize: 11, fontWeight: 600, color: T.textDim, margin: "0 0 8px", letterSpacing: "0.04em" }}>STAKE AMOUNT</p>
-
-                  {/* USDC input */}
-                  <div style={{ position: "relative", marginBottom: 10 }}>
-                    <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", fontSize: 13, fontWeight: 700, color: T.textMuted }}>$</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      placeholder="0.00"
-                      value={usdcAmount}
-                      onChange={(e) => setUsdcAmount(e.target.value)}
-                      style={{
-                        width: "100%",
-                        padding: "13px 14px 13px 26px",
-                        background: T.glass,
-                        border: `1px solid ${T.border}`,
-                        borderRadius: 10,
-                        color: "#ffffff",
-                        fontSize: 20,
-                        fontWeight: 800,
-                        outline: "none",
-                        boxSizing: "border-box",
-                        letterSpacing: "-0.02em",
-                        transition: "border-color 0.15s",
-                      }}
-                      onFocus={(e) => { e.target.style.borderColor = T.borderHover; }}
-                      onBlur={(e)  => { e.target.style.borderColor = T.border; }}
-                    />
-                    <span style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", fontSize: 12, fontWeight: 700, color: T.textDim }}>USDC</span>
+              {tab === "Payout" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  <div style={{ padding: "14px 16px", borderRadius: 10, background: "rgba(34,197,94,0.07)", border: `1px solid ${T.yesBorder}` }}>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: T.yes, margin: "0 0 8px" }}>💸 Proportional Payout Formula</p>
+                    <p style={{ fontSize: 12, color: T.textMuted, margin: 0, lineHeight: 1.8 }}>
+                      • Losers forfeit their entire stake.<br/>
+                      • <strong style={{ color: T.textPrimary }}>{PROTOCOL_FEE_PCT}% fee</strong> is taken from the losing pool.<br/>
+                      • The remaining <strong style={{ color: T.textPrimary }}>{100 - PROTOCOL_FEE_PCT}%</strong> is shared <strong style={{ color: T.textPrimary }}>proportionally</strong> among winners based on each winner's share of the total winning pool.<br/>
+                      • Winners also <strong style={{ color: T.textPrimary }}>get their original stake back</strong>.
+                    </p>
                   </div>
 
-                  {/* Quai equivalent */}
-                  <div style={{ padding: "10px 14px", borderRadius: 8, background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-                    <span style={{ fontSize: 12, color: T.textDim }}>≈ Quai equivalent</span>
-                    <span style={{ fontSize: 14, fontWeight: 800, color: quaiEquiv ? "#ffffff" : T.textDim, letterSpacing: "-0.02em" }}>
-                      {quaiEquiv ?? "—"} <span style={{ fontSize: 11, fontWeight: 500, color: T.textDim }}>QUAI</span>
-                    </span>
+                  <div style={{ padding: "14px 16px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}` }}>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary, margin: "0 0 12px" }}>📊 Example</p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                      {[
+                        ["Total market pool",              "$100 USDT"],
+                        ["Winning pool (e.g. YES side)",   "$60"],
+                        ["Losing pool (NO side)",          "$40"],
+                        [`Platform fee (${PROTOCOL_FEE_PCT}% of $40)`, "-$2"],
+                        ["Net losing pool distributed",    "$38"],
+                        ["", ""],
+                        ["Winner A staked",   "$30 → 30/60 = 50% → +$19.00"],
+                        ["Winner B staked",   "$20 → 20/60 = 33% → +$12.67"],
+                        ["Winner C staked",   "$10 → 10/60 = 17% → +$6.33"],
+                      ].map(([l, v], i) => l === "" ? (
+                        <div key={i} style={{ height: 1, background: T.border, margin: "4px 0" }} />
+                      ) : (
+                        <div key={l} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                          <span style={{ color: T.textMuted }}>{l}</span>
+                          <span style={{ fontWeight: 700, color: T.textPrimary }}>{v}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <p style={{ fontSize: 11, color: T.textDim, margin: "10px 0 0", lineHeight: 1.5 }}>
+                      Each winner receives their original stake back <em>plus</em> their proportional share of $38.
+                    </p>
                   </div>
 
-                  {/* Confirm button */}
-                  <button
-                    type="button"
-                    onClick={handleConfirm}
-                    disabled={!usdcAmount || parseFloat(usdcAmount) <= 0 || submitting}
-                    style={{
-                      width: "100%",
-                      padding: "13px",
-                      borderRadius: 10,
-                      border: "none",
-                      background: selected === "YES"
-                        ? (usdcAmount && parseFloat(usdcAmount) > 0 ? T.yes : "rgba(34,197,94,0.3)")
-                        : (usdcAmount && parseFloat(usdcAmount) > 0 ? T.no  : "rgba(239,68,68,0.3)"),
-                      color: "#ffffff",
-                      fontSize: 14,
-                      fontWeight: 800,
-                      cursor: usdcAmount && parseFloat(usdcAmount) > 0 && !submitting ? "pointer" : "not-allowed",
-                      letterSpacing: "-0.01em",
-                      transition: "background 0.2s",
-                      opacity: submitting ? 0.7 : 1,
-                    }}
-                  >
-                    {submitting ? "Saving…" : `Confirm ${selected} · $${usdcAmount || "0.00"} USDC`}
-                  </button>
+                  <div style={{ padding: "10px 14px", borderRadius: 8, background: "rgba(239,68,68,0.07)", border: `1px solid ${T.noBorder}` }}>
+                    <p style={{ fontSize: 12, color: T.no, margin: 0 }}>
+                      ⚠️ Losers forfeit their entire stake. No partial refunds unless the market is cancelled.
+                    </p>
+                  </div>
+                </div>
+              )}
 
-                  {/* Inline error */}
-                  {submitError && (
-                    <p style={{ fontSize: 11, color: "#ef4444", textAlign: "center", margin: "8px 0 0", lineHeight: 1.5 }}>
-                      {submitError}
+              {tab === "Rules" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+
+                  {/* Position Rules */}
+                  <div>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 8px" }}>Position Rules</p>
+                    {[
+                      `Minimum stake per position: $${MIN_STAKE} USDT.`,
+                      "You must have enough USDT balance to stake — checked on every position.",
+                      "You can freely choose YES or NO before your first confirmed stake.",
+                      "Once you confirm a stake your answer is permanently locked — you cannot switch sides.",
+                      "You can open additional positions on your locked side as many times as you like before the market closes.",
+                      "Each confirmed position is final and cannot be cancelled or withdrawn.",
+                    ].map((rule, i) => (
+                      <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 6 }}>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: T.textDim, flexShrink: 0, marginTop: 1 }}>·</span>
+                        <p style={{ fontSize: 12, color: T.textMuted, margin: 0, lineHeight: 1.6 }}>{rule}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Resolution Rules */}
+                  <div>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 8px" }}>Resolution Rules</p>
+                    {[
+                      "The market closes automatically at the specified deadline.",
+                      "An approved oracle fetches the verified real-world outcome.",
+                      "The market resolves as YES or NO — no draws.",
+                      "Losing positions are not refunded.",
+                      "Winners receive their original stake back.",
+                      `Q4 takes a ${PROTOCOL_FEE_PCT}% platform fee from the losing pool.`,
+                      `The remaining ${100 - PROTOCOL_FEE_PCT}% of the losing pool is distributed proportionally among all winning positions, based on each winner's share of the total winning pool.`,
+                      "If the market is cancelled, all stakers receive a full refund.",
+                      `Data source: ${market.data_source ?? "verified oracle"}.`,
+                    ].map((rule, i) => (
+                      <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 6 }}>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: T.textDim, flexShrink: 0, marginTop: 1 }}>·</span>
+                        <p style={{ fontSize: 12, color: T.textMuted, margin: 0, lineHeight: 1.6 }}>{rule}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                </div>
+              )}
+
+            </div>
+          </GCard>
+        </div>
+
+        {/* ═══ RIGHT COLUMN — staking card ═══ */}
+        <div style={{ position: "sticky", top: 80 }}>
+          <GCard style={{ padding: "24px" }}>
+
+            {!confirmed ? (
+              <>
+                <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.1em", textTransform: "uppercase", margin: "0 0 14px" }}>
+                  {isOpen ? "Place Your Stake" : "Market Closed"}
+                </p>
+
+                {!isOpen && (
+                  <div style={{ padding: "14px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, textAlign: "center" }}>
+                    <p style={{ fontSize: 13, color: T.textMuted, margin: 0 }}>
+                      {market.status === "resolved"
+                        ? `Market resolved: ${market.resolved_outcome}`
+                        : "This market is no longer accepting predictions."}
+                    </p>
+                  </div>
+                )}
+
+                {isOpen && (
+                  <>
+                    {/* ── YES / VS / NO buttons ── */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 6, marginBottom: 14, alignItems: "center" }}>
+                      {["YES", "VS", "NO"].map(side => {
+                        if (side === "VS") return (
+                          <div key="vs" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <div style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.14)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                              <span style={{ fontFamily: "'YapariTrial','Yapari Trial','Yapari',sans-serif", fontSize: 13, fontWeight: 900, color: "rgba(255,255,255,0.6)" }}>VS</span>
+                            </div>
+                          </div>
+                        );
+                        const isActive  = selected === side;
+                        const isLocked  = lockedSide !== null;
+                        const isBlocked = isLocked && side !== lockedSide;
+                        const isYes     = side === "YES";
+                        const col  = isYes ? "#22c55e" : "#ef4444";
+                        const colB = isYes ? "rgba(34,197,94,0.18)" : "rgba(239,68,68,0.18)";
+                        const glow = isYes ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)";
+                        return (
+                          <button key={side} type="button"
+                            onClick={() => handleSelect(side)}
+                            disabled={isBlocked}
+                            title={isBlocked ? `Your answer is locked to ${lockedSide}.` : undefined}
+                            style={{
+                              padding: "20px 8px", borderRadius: 12,
+                              border: isActive
+                                ? `2px solid ${col}`
+                                : isBlocked
+                                  ? "1px solid rgba(255,255,255,0.05)"
+                                  : `1px solid ${isYes ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)"}`,
+                              background: isActive
+                                ? colB
+                                : isBlocked
+                                  ? "rgba(255,255,255,0.02)"
+                                  : isYes ? "rgba(34,197,94,0.04)" : "rgba(239,68,68,0.04)",
+                              cursor: isBlocked ? "not-allowed" : "pointer",
+                              opacity: isBlocked ? 0.25 : 1,
+                              transition: "all 0.2s cubic-bezier(0.34,1.56,0.64,1)",
+                              boxShadow: isActive ? `0 0 24px ${glow}` : "none",
+                              transform: isActive ? "translateY(-2px) scale(1.03)" : "scale(1)",
+                              display: "flex", flexDirection: "column", alignItems: "center", gap: 5,
+                            }}>
+                            <span style={{ fontFamily: "'YapariTrial','Yapari Trial','Yapari',sans-serif", fontSize: 22, fontWeight: 900, color: isBlocked ? T.textDim : col, lineHeight: 1 }}>{side}</span>
+                            {isLocked && !isBlocked
+                              ? <span style={{ fontSize: 9, fontWeight: 800, color: col, letterSpacing: "0.06em" }}>LOCKED ✓</span>
+                              : <span style={{ fontSize: 11, color: isBlocked ? T.textDim : T.textMuted, fontWeight: 500 }}>{isYes ? "It will" : "It won't"}</span>
+                            }
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Lock notice — shown once user has staked */}
+                    {lockedSide && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 8, background: lockedSide === "YES" ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)", border: `1px solid ${lockedSide === "YES" ? T.yesBorder : T.noBorder}`, marginBottom: 12 }}>
+                        <Lock2 size={12} strokeWidth={2} style={{ color: lockedSide === "YES" ? T.yes : T.no, flexShrink: 0 }} />
+                        <p style={{ fontSize: 11, color: lockedSide === "YES" ? T.yes : T.no, margin: 0, lineHeight: 1.4 }}>
+                          Answer locked to <strong>{lockedSide}</strong>. You can keep adding more positions.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Stake input — slides in after a side is selected */}
+                    <div style={{ overflow: "hidden", maxHeight: selected ? 500 : 0, opacity: selected ? 1 : 0, transition: "max-height 0.35s ease, opacity 0.25s ease" }}>
+                      <div style={{ paddingTop: 4, display: "flex", flexDirection: "column", gap: 10 }}>
+
+                        {/* Amount input */}
+                        <div>
+                          <p style={{ fontSize: 11, fontWeight: 600, color: T.textDim, margin: "0 0 6px", letterSpacing: "0.04em" }}>
+                            STAKE AMOUNT <span style={{ fontWeight: 400 }}>(min ${MIN_STAKE} USDT)</span>
+                          </p>
+                          <div style={{ position: "relative" }}>
+                            <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", fontSize: 14, fontWeight: 700, color: T.textMuted }}>$</span>
+                            <input
+                              type="number" min={MIN_STAKE} step="0.01"
+                              placeholder={`${MIN_STAKE}.00`}
+                              value={amount}
+                              onChange={(e) => { setAmount(e.target.value); setSubmitError(null); }}
+                              style={{
+                                width: "100%", padding: "12px 68px 12px 28px",
+                                background: T.glass,
+                                border: `1px solid ${walletUsd != null && amtNum > walletUsd && amtNum > 0 ? T.no : T.border}`,
+                                borderRadius: 10, color: "#fff", fontSize: 20, fontWeight: 800,
+                                outline: "none", boxSizing: "border-box",
+                                letterSpacing: "-0.02em", transition: "border-color 0.15s",
+                              }}
+                              onFocus={(e) => { e.target.style.borderColor = T.borderHover; }}
+                              onBlur={(e)  => { e.target.style.borderColor = (walletUsd != null && amtNum > walletUsd && amtNum > 0) ? T.no : T.border; }}
+                            />
+                            <span style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", fontSize: 11, fontWeight: 700, color: T.textDim }}>USDT</span>
+                          </div>
+                        </div>
+
+                        {/* USDT balance — always visible so user knows what they have */}
+                        <div style={{
+                          display: "flex", alignItems: "center", justifyContent: "space-between",
+                          padding: "9px 12px", borderRadius: 8,
+                          background: T.glass,
+                          border: `1px solid ${walletUsd != null && amtNum > walletUsd && amtNum > 0 ? T.no : T.border}`,
+                        }}>
+                          <span style={{ fontSize: 11, color: T.textDim, display: "flex", alignItems: "center", gap: 5 }}>
+                            <WalletCards size={12} strokeWidth={2} /> Available balance
+                          </span>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: walletUsd != null && amtNum > walletUsd && amtNum > 0 ? T.no : T.textPrimary }}>
+                            {walletUsd != null ? `≈$${walletUsd.toFixed(2)} USDT` : `${balance.quai.toFixed(4)} QUAI`}
+                          </span>
+                        </div>
+
+                        {/* QUAI equiv */}
+                        {quaiEquiv && (
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderRadius: 8, background: T.glass, border: `1px solid ${T.border}` }}>
+                            <span style={{ fontSize: 11, color: T.textDim }}>≈ Quai equivalent</span>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 4 }}>
+                              {quaiEquiv} <QuaiLogo size={13} />
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Payout preview — only when valid amount entered */}
+                        {amtNum >= MIN_STAKE && balanceOk && (
+                          <div style={{ padding: "12px 14px", borderRadius: 10, background: selected === "YES" ? "rgba(34,197,94,0.07)" : "rgba(239,68,68,0.07)", border: `1px solid ${selected === "YES" ? T.yesBorder : T.noBorder}` }}>
+                            <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, margin: "0 0 8px", letterSpacing: "0.06em", textTransform: "uppercase" }}>Est. payout if {selected} wins</p>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                                <span style={{ color: T.textDim }}>Your stake returned</span>
+                                <span style={{ color: T.textPrimary, fontWeight: 600 }}>${amtNum.toFixed(2)}</span>
+                              </div>
+                              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                                <span style={{ color: T.textDim }}>Your share of losing pool</span>
+                                <span style={{ color: T.textPrimary, fontWeight: 600 }}>+${myShare.toFixed(2)}</span>
+                              </div>
+                              <div style={{ height: 1, background: T.border, margin: "4px 0" }} />
+                              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                                <span style={{ fontWeight: 700, color: selected === "YES" ? T.yes : T.no }}>Estimated total</span>
+                                <span style={{ fontWeight: 800, color: selected === "YES" ? T.yes : T.no }}>${estimatedPayout.toFixed(2)}</span>
+                              </div>
+                              <p style={{ fontSize: 10, color: T.textDim, margin: "4px 0 0", lineHeight: 1.5 }}>
+                                Based on current pool. Final payout depends on all positions at close. {PROTOCOL_FEE_PCT}% fee applies.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Confirm button */}
+                        <button
+                          type="button" onClick={handleConfirm}
+                          disabled={!amount || amtNum < MIN_STAKE || !balanceOk || submitting}
+                          style={{
+                            width: "100%", padding: "13px", borderRadius: 10, border: "none",
+                            background: selected === "YES"
+                              ? (amtNum >= MIN_STAKE && balanceOk ? T.yes : "rgba(34,197,94,0.3)")
+                              : (amtNum >= MIN_STAKE && balanceOk ? T.no  : "rgba(239,68,68,0.3)"),
+                            color: "#fff", fontSize: 14, fontWeight: 800,
+                            cursor: amtNum >= MIN_STAKE && balanceOk && !submitting ? "pointer" : "not-allowed",
+                            transition: "background 0.2s", opacity: submitting ? 0.7 : 1,
+                          }}
+                        >
+                          {submitting ? "Confirming…" : `Stake $${amount || "0.00"} on ${selected}`}
+                        </button>
+
+                        {submitError && (
+                          <p style={{ fontSize: 11, color: T.no, textAlign: "center", margin: 0, lineHeight: 1.5 }}>{submitError}</p>
+                        )}
+
+                        <p style={{ fontSize: 10, color: T.textDim, textAlign: "center", margin: 0, lineHeight: 1.5 }}>
+                          Positions are final · {PROTOCOL_FEE_PCT}% platform fee · Min ${MIN_STAKE} USDT
+                        </p>
+                      </div>
+                    </div>
+
+                    {!selected && (
+                      <p style={{ fontSize: 13, color: T.textDim, textAlign: "center", margin: "4px 0 0", lineHeight: 1.6 }}>
+                        Choose YES or NO to open a position.
+                      </p>
+                    )}
+                  </>
+                )}
+              </>
+            ) : (
+              /* ── Confirmed / celebration state ── */
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "8px 0" }}>
+                <div style={{
+                  width: 68, height: 68, borderRadius: "50%",
+                  background: `radial-gradient(circle, ${selected === "YES" ? "rgba(34,197,94,0.25)" : "rgba(239,68,68,0.25)"} 0%, transparent 70%)`,
+                  border: `2px solid ${selected === "YES" ? T.yes : T.no}`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  boxShadow: `0 0 28px ${selected === "YES" ? "rgba(34,197,94,0.4)" : "rgba(239,68,68,0.4)"}`,
+                  animation: "pop-in 0.4s cubic-bezier(0.34,1.56,0.64,1) both",
+                }}>
+                  <CheckCircle2 size={32} strokeWidth={2} style={{ color: selected === "YES" ? T.yes : T.no }} />
+                </div>
+
+                <div style={{ textAlign: "center" }}>
+                  <p style={{ fontSize: 18, fontWeight: 900, color: "#fff", margin: "0 0 4px", letterSpacing: "-0.03em" }}>🎉 Position Confirmed!</p>
+                  <p style={{ fontSize: 12, color: T.textMuted, margin: "0 0 2px" }}>
+                    <span style={{ color: "#fff", fontWeight: 700 }}>${amount} USDT</span> staked on{" "}
+                    <span style={{ color: selected === "YES" ? T.yes : T.no, fontWeight: 800 }}>{selected}</span>
+                  </p>
+                  {quaiEquiv && (
+                    <p style={{ fontSize: 11, color: T.textDim, margin: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 3 }}>
+                      {quaiEquiv} <QuaiLogo size={12} /> QUAI locked in
                     </p>
                   )}
+                </div>
 
-                  <p style={{ fontSize: 10, color: T.textDim, textAlign: "center", margin: "10px 0 0", lineHeight: 1.5 }}>
-                    Rate: 1 USDC = {RATE} QUAI · Stake is final on confirmation
+                {/* Payout estimate */}
+                <div style={{ width: "100%", padding: "12px 14px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}` }}>
+                  <p style={{ fontSize: 11, color: T.textDim, margin: "0 0 6px", fontWeight: 600 }}>Est. payout if {selected} wins</p>
+                  <p style={{ fontSize: 18, fontWeight: 800, color: selected === "YES" ? T.yes : T.no, margin: 0 }}>${estimatedPayout.toFixed(2)}</p>
+                  <p style={{ fontSize: 10, color: T.textDim, margin: "3px 0 0" }}>Based on current pool. Final payout may vary.</p>
+                </div>
+
+                {/* Lock notice */}
+                <div style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 8, background: selected === "YES" ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)", border: `1px solid ${selected === "YES" ? T.yesBorder : T.noBorder}` }}>
+                  <Lock2 size={12} strokeWidth={2} style={{ color: selected === "YES" ? T.yes : T.no, flexShrink: 0 }} />
+                  <p style={{ fontSize: 11, color: selected === "YES" ? T.yes : T.no, margin: 0, lineHeight: 1.4 }}>
+                    Your answer is locked to <strong>{selected}</strong>. You can add more positions on this side.
                   </p>
                 </div>
-              </div>
 
-              {/* Prompt when nothing selected yet */}
-              {!selected && (
-                <p style={{ fontSize: 13, color: T.textDim, textAlign: "center", margin: "4px 0 0", lineHeight: 1.6 }}>
-                  Choose YES or NO to make your prediction.
-                </p>
-              )}
-            </>
-          ) : (
-            /* ── Confirmed / celebration state ── */
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 18, padding: "16px 0" }}>
-              {/* Big animated check */}
-              <div style={{
-                width: 72, height: 72, borderRadius: "50%",
-                background: `radial-gradient(circle, ${selected === "YES" ? "rgba(34,197,94,0.25)" : "rgba(239,68,68,0.25)"} 0%, transparent 70%)`,
-                border: `2px solid ${selected === "YES" ? T.yes : T.no}`,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                boxShadow: `0 0 32px ${selected === "YES" ? "rgba(34,197,94,0.45)" : "rgba(239,68,68,0.45)"}`,
-                animation: "pop-in 0.4s cubic-bezier(0.34,1.56,0.64,1) both",
-              }}>
-                <CheckCircle2 size={36} strokeWidth={2} style={{ color: selected === "YES" ? T.yes : T.no }} />
+                <button type="button" onClick={handleStakeAnother}
+                  style={{ width: "100%", padding: "11px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, color: T.textMuted, fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "border-color 0.15s, color 0.15s" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.color = T.textPrimary; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; }}
+                >
+                  + Add Another Position
+                </button>
               </div>
+            )}
 
-              <div style={{ textAlign: "center" }}>
-                <p style={{ fontSize: 20, fontWeight: 900, color: "#ffffff", margin: "0 0 6px", letterSpacing: "-0.03em" }}>
-                  🎉 Position Confirmed!
-                </p>
-                <p style={{ fontSize: 13, color: T.textMuted, margin: "0 0 4px" }}>
-                  You staked <span style={{ color: "#ffffff", fontWeight: 700 }}>${usdcAmount} USDC</span> on{" "}
-                  <span style={{ color: selected === "YES" ? T.yes : T.no, fontWeight: 800 }}>{selected}</span>
-                </p>
-                <p style={{ fontSize: 12, color: T.textDim, margin: 0 }}>{quaiEquiv} QUAI locked in</p>
-              </div>
+          </GCard>
+        </div>
 
-              {/* Summary row */}
-              <div style={{ width: "100%", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                <div style={{ padding: "10px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, textAlign: "center" }}>
-                  <p style={{ fontSize: 10, color: T.textDim, margin: "0 0 3px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Side</p>
-                  <p style={{ fontSize: 16, fontWeight: 800, color: selected === "YES" ? T.yes : T.no, margin: 0 }}>{selected}</p>
-                </div>
-                <div style={{ padding: "10px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, textAlign: "center" }}>
-                  <p style={{ fontSize: 10, color: T.textDim, margin: "0 0 3px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Staked</p>
-                  <p style={{ fontSize: 16, fontWeight: 800, color: "#ffffff", margin: 0 }}>${usdcAmount}</p>
-                </div>
-              </div>
-
-              <button type="button" onClick={handleReset}
-                style={{ width: "100%", padding: "12px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, color: T.textMuted, fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "border-color 0.15s, color 0.15s" }}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.color = T.textPrimary; }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; }}
-              >
-                View Another Market
-              </button>
-            </div>
-          )}
-        </GCard>
       </div>
     </div>
   );
 }
+
+
+
 
 /* ════════════════════════════════════════════════
    PAGE: MY CONVICTIONS
@@ -1871,66 +2134,50 @@ function ConvictionCard({ c }) {
   const col       = isYes ? T.yes  : T.no;
   const colBg     = isYes ? T.yesBg : T.noBg;
   const colBorder = isYes ? T.yesBorder : T.noBorder;
-  const switched  = c.switched !== "No";
 
   return (
     <GCard style={{ padding: "18px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
 
-      {/* Top row: category + status + timer */}
+      {/* Top row: category + status */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
         <CategoryBadge category={c.category} />
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {switched && (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 600, color: T.violet, background: T.violetBg, border: `1px solid rgba(124,111,247,0.2)` }}>
-              <ArrowLeftRight size={10} strokeWidth={2.5} /> Switched
-            </span>
-          )}
-          <span style={{ padding: "2px 8px", borderRadius: 999, background: T.glass, border: `1px solid ${T.border}`, color: T.textDim, fontSize: 10, fontWeight: 600 }}>
-            {c.status}
-          </span>
-        </div>
+        <span style={{ padding: "2px 8px", borderRadius: 999, background: T.glass, border: `1px solid ${T.border}`, color: T.textDim, fontSize: 10, fontWeight: 600 }}>
+          {c.status}
+        </span>
       </div>
 
-      {/* Question text */}
+      {/* Question */}
       <p className="market-question" style={{ fontSize: 13, color: T.textPrimary, margin: 0, lineHeight: 1.3 }}>
         {c.question}
       </p>
 
-      {/* Conviction bar */}
-      <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-          <span style={{ fontSize: 10, color: T.textDim, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Market Conviction</span>
-          <span style={{ fontSize: 11, fontWeight: 700, color: col }}>{c.side}% {c.answer}</span>
-        </div>
-        <ConvictionBar yes={c.answer === "YES" ? c.side : 100 - c.side} no={c.answer === "NO" ? c.side : 100 - c.side} />
-      </div>
-
       {/* Stats row */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-
         {/* Your side */}
         <div style={{ padding: "10px 12px", borderRadius: 10, background: colBg, border: `1px solid ${colBorder}`, display: "flex", flexDirection: "column", gap: 3, alignItems: "center" }}>
           <span style={{ fontSize: 10, color: col, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", opacity: 0.8 }}>Your Side</span>
           <span style={{ fontSize: 18, fontWeight: 900, color: col, letterSpacing: "-0.02em" }}>{c.answer}</span>
         </div>
-
         {/* Staked */}
         <div style={{ padding: "10px 12px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, display: "flex", flexDirection: "column", gap: 3, alignItems: "center" }}>
           <span style={{ fontSize: 10, color: T.textDim, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>Staked</span>
-          <span style={{ fontSize: 15, fontWeight: 800, color: T.textPrimary, letterSpacing: "-0.02em" }}>{c.staked.toFixed(2)}<span style={{ fontSize: 10, color: T.textDim, fontWeight: 500, marginLeft: 3 }}>Q</span></span>
+          <span style={{ fontSize: 15, fontWeight: 800, color: T.textPrimary, letterSpacing: "-0.02em", display: "inline-flex", alignItems: "center", gap: 3 }}>${c.staked.toFixed(2)}</span>
         </div>
-
         {/* Pool */}
         <div style={{ padding: "10px 12px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, display: "flex", flexDirection: "column", gap: 3, alignItems: "center" }}>
           <span style={{ fontSize: 10, color: T.textDim, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>Pool</span>
-          <span style={{ fontSize: 15, fontWeight: 800, color: T.textPrimary, letterSpacing: "-0.02em" }}>${(c.totalPool / 1000).toFixed(1)}<span style={{ fontSize: 10, color: T.textDim, fontWeight: 500, marginLeft: 2 }}>K</span></span>
+          <span style={{ fontSize: 15, fontWeight: 800, color: T.textPrimary, letterSpacing: "-0.02em" }}>
+            {c.totalPool >= 1000
+              ? `$${(c.totalPool / 1000).toFixed(1)}K`
+              : `$${c.totalPool.toFixed(2)}`}
+          </span>
         </div>
       </div>
 
-      {/* Switch info */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: switched ? T.violet : T.textDim }}>
-        <ArrowLeftRight size={11} strokeWidth={2} style={{ flexShrink: 0 }} />
-        <span>{switched ? `Switched: ${c.switched}` : "No switch used — 1 switch remaining"}</span>
+      {/* Closes / resolved info */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: T.textDim }}>
+        <Clock size={11} strokeWidth={2} style={{ flexShrink: 0 }} />
+        <span>{c.status === "resolved" ? `Resolved: ${c.closes}` : `Closes: ${c.closes}`}</span>
       </div>
     </GCard>
   );
@@ -1954,10 +2201,8 @@ function PageMyConvictions() {
     category:  p.category,
     status:    p.status,
     answer:    p.side,
-    side:      p.yesPct,
     staked:    p.amount,
     totalPool: p.totalPool,
-    switched:  p.switched ? "Yes" : "No",
     closes:    p.closesLabel,
   });
 
@@ -2144,9 +2389,9 @@ function ResultCard({ r }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
         {[
           { label: "Your Side",   value: r.yourSide,                  color: r.yourSide === "YES" ? T.yes : T.no },
-          { label: "Staked",      value: `${r.yourStake.toFixed(2)} Q`, color: T.textPrimary },
+          { label: "Staked",      value: `${r.yourStake.toFixed(2)} QUAI`, color: T.textPrimary },
           { label: "Pool",        value: `$${(r.totalPool/1000).toFixed(1)}K`, color: T.textPrimary },
-          { label: "Reward",      value: r.won ? `+${r.reward.toFixed(2)} Q` : "—", color: r.won ? T.yes : T.textDim },
+          { label: "Reward",      value: r.won ? `+${r.reward.toFixed(2)} QUAI` : "—", color: r.won ? T.yes : T.textDim },
         ].map(({ label, value, color }) => (
           <div key={label} style={{ padding: "8px 10px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, textAlign: "center" }}>
             <p style={{ fontSize: 9, color: T.textDim, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 3px" }}>{label}</p>
@@ -2273,8 +2518,8 @@ function LeaderboardRow({ entry }) {
 
       <div style={{ display: "flex", gap: 20, flexShrink: 0, alignItems: "center" }}>
         <div style={{ textAlign: "right" }}>
-          <p style={{ fontSize: 13, fontWeight: 700, color: T.yes, margin: 0 }}>
-            {entry.rewardsQuai != null ? `${entry.rewardsQuai.toFixed(2)} Q` : "—"}
+          <p style={{ fontSize: 13, fontWeight: 700, color: T.yes, margin: 0, display: "flex", alignItems: "center", gap: 3 }}>
+            {entry.rewardsQuai != null ? <>{entry.rewardsQuai.toFixed(2)} <QuaiLogo size={13} /></> : "—"}
           </p>
           <p style={{ fontSize: 10, color: T.textDim, margin: 0 }}>Rewards</p>
         </div>
@@ -2393,7 +2638,7 @@ function PageLeaderboard() {
                 <div>
                   <p style={{ fontSize: 13, fontWeight: 700, color: "#ffffff", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 120 }}>{entry.name}</p>
                   {entry.rewardsQuai != null && (
-                    <p style={{ fontSize: 11, color: colors[i], margin: "2px 0 0", fontWeight: 700 }}>{entry.rewardsQuai.toFixed(4)} Q</p>
+                    <p style={{ fontSize: 11, color: colors[i], margin: "2px 0 0", fontWeight: 700, display: "flex", alignItems: "center", gap: 2 }}>{entry.rewardsQuai.toFixed(4)} <QuaiLogo size={10} /></p>
                   )}
                   <p style={{ fontSize: 10, color: T.textDim, margin: "2px 0 0" }}>{entry.activatedReferrals} referrals</p>
                 </div>
@@ -2452,7 +2697,7 @@ function RewardCard({ r, onClaim, claiming }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
         <div style={{ padding: "10px 12px", borderRadius: 10, background: !r.claimed ? T.yesBg : T.glass, border: `1px solid ${!r.claimed ? T.yesBorder : T.border}` }}>
           <p style={{ fontSize: 9, color: !r.claimed ? T.yes : T.textDim, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 3px" }}>Reward</p>
-          <p style={{ fontSize: 18, fontWeight: 800, color: !r.claimed ? T.yes : T.textMuted, margin: 0 }}>+{r.reward.toFixed(2)} <span style={{ fontSize: 11, opacity: 0.6 }}>Q</span></p>
+          <p style={{ fontSize: 18, fontWeight: 800, color: !r.claimed ? T.yes : T.textMuted, margin: 0, display: "flex", alignItems: "center", gap: 5 }}>+{r.reward.toFixed(2)} <QuaiLogo size={15} /></p>
         </div>
       </div>
 
@@ -2464,7 +2709,7 @@ function RewardCard({ r, onClaim, claiming }) {
           disabled={claiming === r.id}
           style={{ width: "100%", padding: "12px", borderRadius: 10, border: "none", background: claiming === r.id ? "rgba(34,197,94,0.4)" : T.yes, color: "#000000", fontSize: 13, fontWeight: 800, cursor: claiming === r.id ? "not-allowed" : "pointer", transition: "background 0.15s", letterSpacing: "-0.01em" }}
         >
-          {claiming === r.id ? "Claiming…" : `Claim ${r.reward.toFixed(2)} Q`}
+          {claiming === r.id ? "Claiming…" : `Claim ${r.reward.toFixed(2)} QUAI`}
         </button>
       ) : (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}` }}>
@@ -2525,8 +2770,8 @@ function PageRewards() {
             </div>
             <div>
               <p style={{ fontSize: 10, color: T.textDim, margin: "0 0 2px", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</p>
-              <p style={{ fontSize: 20, fontWeight: 800, color: T.textPrimary, margin: 0, letterSpacing: "-0.03em" }}>
-                {loading ? "—" : value.toFixed(2)} <span style={{ fontSize: 13, fontWeight: 500, color: T.textDim }}>Q</span>
+              <p style={{ fontSize: 20, fontWeight: 800, color: T.textPrimary, margin: 0, letterSpacing: "-0.03em", display: "flex", alignItems: "center", gap: 5 }}>
+                {loading ? "—" : value.toFixed(2)} <QuaiLogo size={16} />
               </p>
             </div>
           </GCard>
@@ -2887,7 +3132,7 @@ function AdminBarChart({ markets }) {
                   background: "rgba(16,16,16,0.97)", border: `1px solid ${d.color}40`,
                   borderRadius: 8, padding: "6px 10px", whiteSpace: "nowrap", zIndex: 10, pointerEvents: "none",
                 }}>
-                  <p style={{ fontSize: 12, fontWeight: 800, color: d.color, margin: 0 }}>{d.value.toFixed(2)} Q</p>
+                  <p style={{ fontSize: 12, fontWeight: 800, color: d.color, margin: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 3 }}>{d.value.toFixed(2)} <QuaiLogo size={11} /></p>
                   <p style={{ fontSize: 10, color: T.textDim, margin: "2px 0 0" }}>{d.count} market{d.count !== 1 ? "s" : ""}</p>
                 </div>
               )}
@@ -2917,8 +3162,8 @@ function AdminBarChart({ markets }) {
       <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
         {data.map((d) => (
           <div key={d.label} style={{ flex: 1, textAlign: "center" }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: d.color }}>
-              {d.value >= 1000 ? `${(d.value / 1000).toFixed(1)}K` : d.value.toFixed(0)} Q
+            <span style={{ fontSize: 11, fontWeight: 700, color: d.color, display: "inline-flex", alignItems: "center", gap: 2 }}>
+              {d.value >= 1000 ? `${(d.value / 1000).toFixed(1)}K` : d.value.toFixed(0)} <QuaiLogo size={10} />
             </span>
           </div>
         ))}
@@ -3071,7 +3316,7 @@ const ADMIN_TABS = [
 /* ── shared tab bar ── */
 function AdminTabBar({ tab, setTab }) {
   return (
-    <div style={{ display: "flex", gap: 2, padding: 4, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 10, flexWrap: "wrap", width: "fit-content" }}>
+    <div className="admin-tab-bar">
       {ADMIN_TABS.map(t => (
         <button key={t.key} type="button" onClick={() => setTab(t.key)}
           style={{
@@ -3081,6 +3326,7 @@ function AdminTabBar({ tab, setTab }) {
             color: tab === t.key ? (t.key === "create" ? "#000" : "#080808") : T.textMuted,
             transition: "all 0.15s",
             whiteSpace: "nowrap",
+            flexShrink: 0,
           }}>
           {t.label}
         </button>
@@ -3092,9 +3338,9 @@ function AdminTabBar({ tab, setTab }) {
 /* ── admin header row (shared) ── */
 function AdminHeader({ tab, setTab, onRefresh }) {
   return (
-    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+    <div className="admin-header">
       <div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>Admin Dashboard</h1>
           <span style={{ padding: "2px 10px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.3)", color: "#fbbf24" }}>ADMIN</span>
         </div>
@@ -3311,7 +3557,7 @@ function PageAdmin() {
                     <StatusBadge status={m.status} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.question}</p>
-                      <p style={{ fontSize: 11, color: T.textDim, margin: "2px 0 0" }}>{m.category} · Pool: {m.totalPool.toFixed(2)} Q</p>
+                      <p style={{ fontSize: 11, color: T.textDim, margin: "2px 0 0" }}>{m.category} · Pool: {m.totalPool.toFixed(2)} QUAI</p>
                     </div>
                     <CategoryBadge category={m.category} />
                   </div>
@@ -3842,66 +4088,260 @@ export default function DashboardPage() {
   };
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: T.bg, color: T.textPrimary }}>
+    <>
+      {/* ── Global mobile responsive styles ── */}
+      <style>{`
+        /* ── Dashboard Responsive Layout ── */
+        .dash-sidebar-desktop {
+          width: 240px;
+          flex-shrink: 0;
+          position: fixed;
+          top: 0;
+          left: 0;
+          bottom: 0;
+          z-index: 40;
+        }
+        
+        .dash-main-area {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          margin-left: 240px;
+          min-height: 100vh;
+        }
+        
+        .dash-mobile-only {
+          display: none;
+        }
+        
+        .dash-mobile-left {
+          display: none;
+          align-items: center;
+          gap: 10px;
+        }
+        
+        /* ── Admin Mobile Responsive ── */
+        .admin-tab-bar {
+          display: flex;
+          gap: 2px;
+          padding: 4px;
+          background: rgba(255,255,255,0.04);
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 10px;
+          flex-wrap: wrap;
+          width: fit-content;
+          overflow-x: auto;
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
+        
+        .admin-tab-bar::-webkit-scrollbar {
+          display: none;
+        }
+        
+        .admin-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 12px;
+          margin-bottom: 20px;
+        }
+        
+        .admin-stats-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 16px;
+          margin-bottom: 24px;
+        }
+        
+        .admin-table-container {
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+          border-radius: 12px;
+          border: 1px solid rgba(255,255,255,0.08);
+        }
+        
+        .admin-table {
+          width: 100%;
+          min-width: 600px;
+          border-collapse: collapse;
+        }
+        
+        .admin-table th,
+        .admin-table td {
+          text-align: left;
+          padding: 12px 16px;
+          border-bottom: 1px solid rgba(255,255,255,0.05);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 200px;
+        }
+        
+        .admin-table th {
+          background: rgba(255,255,255,0.02);
+          font-weight: 700;
+          font-size: 11px;
+          color: rgba(255,255,255,0.5);
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          position: sticky;
+          top: 0;
+          z-index: 10;
+        }
+        
+        .admin-form-grid {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 16px;
+        }
+        
+        /* ── Mobile Breakpoints ── */
+        @media (max-width: 1024px) {
+          .dash-sidebar-desktop {
+            display: none;
+          }
+          
+          .dash-main-area {
+            margin-left: 0;
+          }
+          
+          .dash-mobile-only {
+            display: block;
+          }
+          
+          .dash-mobile-left {
+            display: flex;
+          }
+          
+          main {
+            padding: 20px 16px 32px !important;
+          }
+          
+          .admin-header {
+            flex-direction: column;
+            align-items: stretch;
+          }
+          
+          .admin-tab-bar {
+            width: 100%;
+            justify-content: flex-start;
+          }
+          
+          .admin-stats-grid {
+            grid-template-columns: 1fr;
+          }
+          
+          .admin-form-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+        
+        @media (max-width: 640px) {
+          .admin-stats-grid {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+          }
+          
+          .admin-table th,
+          .admin-table td {
+            padding: 8px 12px;
+            font-size: 12px;
+            max-width: 150px;
+          }
+          
+          .admin-tab-bar {
+            gap: 1px;
+            padding: 3px;
+          }
+          
+          .admin-tab-bar button {
+            padding: 6px 12px !important;
+            font-size: 11px !important;
+            white-space: nowrap;
+          }
+        }
+        
+        @media (max-width: 480px) {
+          .admin-stats-grid {
+            grid-template-columns: 1fr;
+          }
+          
+          .admin-table-container {
+            margin: 0 -16px;
+            border-radius: 0;
+            border-left: none;
+            border-right: none;
+          }
+          
+          main {
+            padding: 16px 12px 24px !important;
+          }
+        }
+      `}</style>
+      
+      <div style={{ display: "flex", minHeight: "100vh", background: T.bg, color: T.textPrimary }}>
 
-      {/* ── Fixed sidebar desktop ── */}
-      <div className="dash-sidebar-desktop">
-        <Sidebar active={activeNav} onNavigate={handleNavigate} onLogout={handleLogout} />
-      </div>
-
-      {/* ── Mobile sidebar overlay ── */}
-      {mobileSidebarOpen && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 50 }} className="dash-mobile-only">
-          <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.7)" }} onClick={() => setMobileSidebarOpen(false)} />
-          <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 240, zIndex: 51 }}>
-            <Sidebar active={activeNav} onNavigate={handleNavigate} onLogout={handleLogout} />
-            <button type="button" onClick={() => setMobileSidebarOpen(false)}
-              style={{ position: "absolute", top: 12, right: 12, background: "transparent", border: "none", color: T.textMuted, cursor: "pointer" }}>
-              <X size={18} strokeWidth={2} />
-            </button>
-          </div>
+        {/* ── Fixed sidebar desktop ── */}
+        <div className="dash-sidebar-desktop">
+          <Sidebar active={activeNav} onNavigate={handleNavigate} onLogout={handleLogout} />
         </div>
-      )}
 
-      {/* ── Main area ── */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", marginLeft: 240, minHeight: "100vh" }} className="dash-main-area">
-        <TopHeader pageLabel={pageLabelMap[page] || page} onOpenMobileSidebar={() => setMobileSidebarOpen(true)} onNavigate={handleNavigate} user={user} onOpenNotifications={() => setNotifOpen(true)} unreadCount={unreadCount} />
-
-        <main style={{ flex: 1, overflowY: "auto", padding: "28px 28px 48px", position: "relative" }}>
-          <Confetti active={showConfetti} />
-          <div style={{ maxWidth: 1160, margin: "0 auto" }}>
-            {page === "dashboard"       && <PageDashboard onNavigate={handleNavigate} />}
-            {page === "questions"       && <PageQuestions onOpenQuestion={handleOpenQ} />}
-            {page === "question-detail" && <PageQuestionDetail questionId={selectedQ} onBack={() => handleNavigate("questions")} onConfetti={handleConfettiTrigger} />}
-            {page === "convictions"     && <PageMyConvictions />}
-            {page === "results"         && <PageResults />}
-            {page === "leaderboard"     && <PageLeaderboard />}
-            {page === "rewards"         && <PageRewards />}
-            {page === "how"             && <PageHowItWorks onNavigate={handleNavigate} />}
-            {page === "wallet"          && <WalletPage />}
-            {page === "profile"         && <PageProfile user={user} onLogout={handleLogout} />}
-            {page === "admin"           && isAdmin && <PageAdmin />}
-            {page === "admin"           && !isAdmin && (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "80px 24px", gap: 16, textAlign: "center" }}>
-                <div style={{ width: 56, height: 56, borderRadius: 16, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <ShieldCheck size={24} strokeWidth={1.4} style={{ color: "#ef4444" }} />
-                </div>
-                <p style={{ fontSize: 16, fontWeight: 700, color: T.textMuted, margin: 0 }}>Access Denied</p>
-                <p style={{ fontSize: 13, color: T.textDim, margin: 0, maxWidth: 320 }}>You need admin privileges to access this page.</p>
-              </div>
-            )}
+        {/* ── Mobile sidebar overlay ── */}
+        {mobileSidebarOpen && (
+          <div style={{ position: "fixed", inset: 0, zIndex: 50 }} className="dash-mobile-only">
+            <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.7)" }} onClick={() => setMobileSidebarOpen(false)} />
+            <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 240, zIndex: 51 }}>
+              <Sidebar active={activeNav} onNavigate={handleNavigate} onLogout={handleLogout} />
+              <button type="button" onClick={() => setMobileSidebarOpen(false)}
+                style={{ position: "absolute", top: 12, right: 12, background: "transparent", border: "none", color: T.textMuted, cursor: "pointer" }}>
+                <X size={18} strokeWidth={2} />
+              </button>
+            </div>
           </div>
-        </main>
-      </div>
+        )}
 
-      {/* ── Notification sidebar ── */}
-      <NotificationSidebar
-        open={notifOpen}
-        onClose={() => setNotifOpen(false)}
-        notifications={notifications}
-        onMarkAllRead={handleMarkAllRead}
-        onMarkRead={handleMarkRead}
-      />
-    </div>
+        {/* ── Main area ── */}
+        <div className="dash-main-area">
+          <TopHeader pageLabel={pageLabelMap[page] || page} onOpenMobileSidebar={() => setMobileSidebarOpen(true)} onNavigate={handleNavigate} user={user} onOpenNotifications={() => setNotifOpen(true)} unreadCount={unreadCount} />
+
+          <main style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "28px 28px 48px", position: "relative" }}>
+            <Confetti active={showConfetti} />
+            <div style={{ maxWidth: 1160, margin: "0 auto", width: "100%" }}>
+              {page === "dashboard"       && <PageDashboard onNavigate={handleNavigate} />}
+              {page === "questions"       && <PageQuestions onOpenQuestion={handleOpenQ} />}
+              {page === "question-detail" && <PageQuestionDetail questionId={selectedQ} onBack={() => handleNavigate("questions")} onConfetti={handleConfettiTrigger} />}
+              {page === "convictions"     && <PageMyConvictions />}
+              {page === "results"         && <PageResults />}
+              {page === "leaderboard"     && <PageLeaderboard />}
+              {page === "rewards"         && <PageRewards />}
+              {page === "how"             && <PageHowItWorks onNavigate={handleNavigate} />}
+              {page === "wallet"          && <WalletPage />}
+              {page === "profile"         && <PageProfile user={user} onLogout={handleLogout} />}
+              {page === "admin"           && isAdmin && <PageAdmin />}
+              {page === "admin"           && !isAdmin && (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "80px 24px", gap: 16, textAlign: "center" }}>
+                  <div style={{ width: 56, height: 56, borderRadius: 16, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <ShieldCheck size={24} strokeWidth={1.4} style={{ color: "#ef4444" }} />
+                  </div>
+                  <p style={{ fontSize: 16, fontWeight: 700, color: T.textMuted, margin: 0 }}>Access Denied</p>
+                  <p style={{ fontSize: 13, color: T.textDim, margin: 0, maxWidth: 320 }}>You need admin privileges to access this page.</p>
+                </div>
+              )}
+            </div>
+          </main>
+        </div>
+
+        {/* ── Notification sidebar ── */}
+        <NotificationSidebar
+          open={notifOpen}
+          onClose={() => setNotifOpen(false)}
+          notifications={notifications}
+          onMarkAllRead={handleMarkAllRead}
+          onMarkRead={handleMarkRead}
+        />
+      </div>
+    </>
   );
 }
