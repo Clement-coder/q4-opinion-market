@@ -17,3 +17,6 @@ smart_contract/cache/
 # OS
 .DS_Store
 Thumbs.db
+
+# Sensitive keys
+blip-key/
