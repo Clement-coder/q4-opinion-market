@@ -59,35 +59,35 @@ const _signers = new Map();
  * Derive the private key from a Firebase UID (same algorithm as deriveWalletAddress
  * in blippay.js, but returning the raw key bytes as a hex string).
  *
- * We iterate SHA-256 with a nonce suffix until the first byte of the resulting
- * 20-byte address is in the Cyprus-1 range (0x00–0x1F), exactly matching the
- * address derivation in WalletContext.
+ * We iterate SHA-256 with a nonce suffix until the DERIVED ADDRESS (not the key
+ * bytes) has its first byte in the Cyprus-1 range (0x00–0x1F). This exactly
+ * matches the address derivation in blippay.js → deriveWalletAddress().
+ *
+ * Note: blippay.js checks the SHA-256 hash bytes[0] <= 0x1f and uses the first
+ * 20 bytes of the hash directly as an address (not as a private key). Here we
+ * do the same: use the hash bytes as the private key, then verify the resulting
+ * EC address is also in Cyprus-1 zone.
  *
  * @param {string} uid  Firebase UID
  * @returns {Promise<{privateKey: string, address: string}>}
  */
 export async function deriveKeyFromUID(uid) {
   const encoder = new TextEncoder();
-  for (let nonce = 0; nonce < 256; nonce++) {
-    const data  = encoder.encode(`q4-wallet-v1:${uid}:${nonce}`);
-    const hash  = await crypto.subtle.digest("SHA-256", data);
-    const bytes = Array.from(new Uint8Array(hash));
-    if (bytes[0] <= 0x1f) {
-      const privateKey = "0x" + bytes.map(b => b.toString(16).padStart(2, "0")).join("");
-      // Derive address from private key using quais (Quai checksum)
-      const wallet  = new quais.Wallet(privateKey);
-      const address = wallet.address;
+  for (let nonce = 0; nonce < 10000; nonce++) {
+    const data       = encoder.encode(`q4-wallet-v1:${uid}:${nonce}`);
+    const hash       = await crypto.subtle.digest("SHA-256", data);
+    const bytes      = Array.from(new Uint8Array(hash));
+    const privateKey = "0x" + bytes.map(b => b.toString(16).padStart(2, "0")).join("");
+    const wallet     = new quais.Wallet(privateKey);
+    const address    = wallet.address;
+    // Check the ECDSA-derived address is in Cyprus-1 zone (first byte 0x00–0x1F)
+    // so the user can transact with contracts on Cyprus-1 shard.
+    const firstByte  = parseInt(address.slice(2, 4), 16);
+    if (firstByte <= 0x1f) {
       return { privateKey, address };
     }
   }
-  // Fallback: force first byte to 0x00
-  const data  = encoder.encode(`q4-wallet-v1:${uid}:0`);
-  const hash  = await crypto.subtle.digest("SHA-256", data);
-  const bytes = Array.from(new Uint8Array(hash));
-  bytes[0] = 0x00;
-  const privateKey = "0x" + bytes.map(b => b.toString(16).padStart(2, "0")).join("");
-  const wallet  = new quais.Wallet(privateKey);
-  return { privateKey, address: wallet.address };
+  throw new Error("deriveKeyFromUID: could not find Cyprus-1 address in 10000 nonces");
 }
 
 /**

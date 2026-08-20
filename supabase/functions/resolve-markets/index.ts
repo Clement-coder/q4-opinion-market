@@ -63,8 +63,8 @@ async function resolveMarketOnChain(
     const signer    = new quais.Wallet("0x" + ORACLE_PRIVATE_KEY, provider);
 
     // Call resolve(bool) directly on the Q4Market contract
-    // selector: cast sig "resolve(bool)" = 0x3fad9ae0
-    const calldata = "0x3fad9ae0" + (outcome === "YES"
+    // selector: cast sig "resolve(bool)" = 0x0bede3f8
+    const calldata = "0x0bede3f8" + (outcome === "YES"
       ? "0000000000000000000000000000000000000000000000000000000000000001"
       : "0000000000000000000000000000000000000000000000000000000000000000");
 
