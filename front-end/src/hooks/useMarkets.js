@@ -26,6 +26,7 @@ export function useMarkets({ category = null, status = "active", limit = 100 } =
           deadline,
           resolved_outcome,
           data_source,
+          contract_address,
           created_at,
           market_outcomes ( outcome, pool_amount )
         `)
@@ -54,21 +55,22 @@ export function useMarkets({ category = null, status = "active", limit = 100 } =
         const closesLabel = msLeft != null && msLeft > 0 ? formatTimeLeft(msLeft) : "Closed";
 
         return {
-          id:             m.id,
-          question:       m.question,
-          category:       m.category,
-          status:         m.status,
-          deadline:       m.deadline,
+          id:              m.id,
+          question:        m.question,
+          category:        m.category,
+          status:          m.status,
+          deadline:        m.deadline,
           resolvedOutcome: m.resolved_outcome,
-          dataSource:     m.data_source,
+          dataSource:      m.data_source,
+          contractAddress: m.contract_address ?? null,
           yesPool,
           noPool,
           totalPool,
-          yes:            yesPct,
-          no:             noPct,
-          closes:         closesLabel,
-          pool:           formatPool(totalPool),
-          trending:       totalPool > 5000,
+          yes:             yesPct,
+          no:              noPct,
+          closes:          closesLabel,
+          pool:            formatPool(totalPool),
+          trending:        totalPool > 5000,
         };
       });
 
@@ -123,7 +125,7 @@ export function useMarket(id) {
       const yesCount = Number(yesRow?.participant_count ?? 0);
       const noCount  = Number(noRow?.participant_count  ?? 0);
       const totalPool = yesPool + noPool;
-      setMarket({ ...data, yesPool, noPool, totalPool, yesCount, noCount, market_outcomes: data.market_outcomes });
+      setMarket({ ...data, yesPool, noPool, totalPool, yesCount, noCount, contractAddress: data.contract_address ?? null, market_outcomes: data.market_outcomes });
       setLoading(false);
     };
 

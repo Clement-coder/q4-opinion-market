@@ -28,6 +28,15 @@ const SPORTSDB_API_KEY          = Deno.env.get("SPORTSDB_API_KEY")     ?? "123";
 const ALPHAVANTAGE_API_KEY      = Deno.env.get("ALPHAVANTAGE_API_KEY") ?? "";
 const OPENWEATHER_API_KEY       = Deno.env.get("OPENWEATHER_API_KEY")  ?? "";
 
+// ── On-chain config ───────────────────────────────────────────────────────────
+// ORACLE_PRIVATE_KEY: the oracle wallet private key (hex, no 0x prefix)
+// Used to call createMarket() on Q4MarketFactory from the edge function.
+const ORACLE_PRIVATE_KEY  = Deno.env.get("ORACLE_PRIVATE_KEY")  ?? "";
+const FACTORY_ADDRESS     = Deno.env.get("FACTORY_ADDRESS")     ?? "";
+const QUAI_RPC_URL        = Deno.env.get("QUAI_RPC_URL")        ?? "https://rpc.quai.network/cyprus1";
+const QUAI_CHAIN_ID       = 9;
+const IPFS_HASH           = "QmVEPzAtYQAiBUptVbUcVQsV8Tv7zPVPTJs2iJC1L9pCFy"; // Q4Market source CIDv0
+
 const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
@@ -87,29 +96,77 @@ Deno.serve(async (req) => {
     );
 
     let filled = 0;
-    const cutoff = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+    const cutoff = todayStart.toISOString();
+
+    // Build a set of deadline hours already covered by active/closed markets today.
+    // Key: "YYYY-MM-DDTHH" — one market per deadline hour is the hard cap.
+    const { data: existingActive } = await db
+      .from("markets")
+      .select("deadline")
+      .in("status", ["active", "closed"])
+      .gte("created_at", cutoff);
+
+    const occupiedHours = new Set<string>(
+      (existingActive ?? []).map((m: { deadline: string }) =>
+        new Date(m.deadline).toISOString().slice(0, 13)
+      )
+    );
 
     for (const t of allCandidates) {
       if (filled >= needed) break;
 
-      // Dedup — skip if same question was created in the last 25h
+      // Hard cap: skip if the deadline hour is already occupied
+      const deadlineHour = t.deadline.toISOString().slice(0, 13);
+      if (occupiedHours.has(deadlineHour)) {
+        skipped.push(`${t.question} (hour ${deadlineHour} occupied)`);
+        continue;
+      }
+
+      // Skip if the deadline is less than 60 minutes away
+      if (t.deadline.getTime() - Date.now() < 60 * 60 * 1000) {
+        skipped.push(`${t.question} (deadline too soon)`);
+        continue;
+      }
+
+      // Secondary dedup: exact question match today (belt-and-suspenders)
       const { data: existing } = await db
         .from("markets")
         .select("id")
-        .ilike("question", `%${t.dedup_key}%`)
+        .eq("question", t.question)
         .gte("created_at", cutoff)
         .limit(1);
 
-      if (existing && existing.length > 0) { skipped.push(t.question); continue; }
+      if (existing && existing.length > 0) {
+        skipped.push(t.question);
+        continue;
+      }
+
+      const deadlineUnixSec = Math.floor(t.deadline.getTime() / 1000);
+
+      // ── Deploy Q4Market on-chain ──────────────────────────────────────
+      const contractAddress = await deployMarketContract(
+        t.question,
+        t.category,
+        deadlineUnixSec,
+      );
 
       const { data: market, error: mErr } = await db
         .from("markets")
         .insert({
-          question: t.question, category: t.category, status: "active",
-          deadline: t.deadline.toISOString(), data_source: t.data_source,
-          coin_id: t.coin_id, target_value: t.target_value,
-          resolution_field: t.resolution_field, resolution_op: t.resolution_op,
-          target_time: t.target_time.toISOString(),
+          question:         t.question,
+          category:         t.category,
+          status:           "active",
+          deadline:         t.deadline.toISOString(),
+          data_source:      t.data_source,
+          coin_id:          t.coin_id,
+          target_value:     t.target_value,
+          resolution_field: t.resolution_field,
+          resolution_op:    t.resolution_op,
+          target_time:      t.target_time.toISOString(),
+          // store the deployed contract address (null if on-chain deploy was skipped)
+          contract_address: contractAddress,
         })
         .select("id").single();
 
@@ -121,9 +178,19 @@ Deno.serve(async (req) => {
       ]);
 
       await db.from("market_events").insert({
-        market_id: market.id, event_type: "created",
-        metadata: { created_by: "generate_function", category: t.category },
+        market_id:        market.id,
+        event_type:       "created",
+        transaction_hash: contractAddress ? `factory:${contractAddress}` : null,
+        metadata: {
+          created_by:       "generate_function",
+          category:         t.category,
+          contract_address: contractAddress,
+        },
       });
+
+      // Mark this deadline hour as occupied so the current run doesn't
+      // create a second market into the same slot
+      occupiedHours.add(deadlineHour);
 
       created.push(t.question);
       filled++;
@@ -138,6 +205,75 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: (err as Error).message }), { status: 500 });
   }
 });
+
+/* ════════════════════════════════════════════════════════════════════════
+   ON-CHAIN: deploy a Q4Market via Q4MarketFactory.createMarket()
+   Uses quais.js (Quai's ethers fork) which handles zone-aware checksums
+   and protobuf transaction encoding.
+════════════════════════════════════════════════════════════════════════ */
+
+// Lazy import quais only when ORACLE_PRIVATE_KEY is set, so the function
+// boots fast when on-chain features are disabled.
+async function getQuaisLib() {
+  // @ts-ignore — deno import
+  const { quais } = await import("npm:quais@1.0.0-alpha.56");
+  return quais;
+}
+
+/**
+ * Deploy a Q4Market contract via Q4MarketFactory.createMarket().
+ * Returns the deployed market contract address, or null on failure.
+ */
+async function deployMarketContract(
+  question: string,
+  category: string,
+  deadlineTs: number, // Unix timestamp (seconds)
+): Promise<string | null> {
+  if (!ORACLE_PRIVATE_KEY || !FACTORY_ADDRESS) return null;
+
+  try {
+    const quais    = await getQuaisLib();
+    const provider = new quais.JsonRpcProvider(QUAI_RPC_URL, undefined, { usePathing: true });
+    const signer   = new quais.Wallet("0x" + ORACLE_PRIVATE_KEY, provider);
+
+    // createMarket(string question, string category, uint256 deadline)
+    const factoryAbi = [
+      "function createMarket(string question, string category, uint256 deadline) returns (uint256 marketId, address market)"
+    ];
+    const factory = new quais.Contract(FACTORY_ADDRESS, factoryAbi, signer);
+
+    // quais ContractFactory requires IPFS hash; for a plain Contract call we just send the tx
+    const tx = await signer.sendTransaction({
+      to:   FACTORY_ADDRESS,
+      data: factory.interface.encodeFunctionData("createMarket", [
+        question,
+        category,
+        BigInt(deadlineTs),
+      ]),
+    });
+
+    // Wait for 1 confirmation
+    const receipt = await tx.wait(1);
+
+    // Find MarketCreated event to extract the deployed market address
+    // Event sig: MarketCreated(uint256 indexed marketId, address indexed market, ...)
+    const MARKET_CREATED_TOPIC = "0xb964ec62ce8297156f9b8af2d30a75fe682aa65bdc010b422c15b3feda3db103";
+    const log = receipt.logs?.find((l: { topics: string[] }) => l.topics[0] === MARKET_CREATED_TOPIC);
+    if (log) {
+      // topics[2] = market address (indexed), padded to 32 bytes
+      const marketAddress = "0x" + log.topics[2].slice(26);
+      console.log(`[generate-markets] Q4Market deployed: ${marketAddress} (tx: ${receipt.hash})`);
+      return marketAddress;
+    }
+
+    // Fallback: derive from receipt if available
+    console.warn("[generate-markets] MarketCreated log not found — receipt:", JSON.stringify(receipt));
+    return null;
+  } catch (err) {
+    console.error("[generate-markets] deployMarketContract failed:", (err as Error).message);
+    return null;
+  }
+}
 
 /* ════════════════════════════════════════════════════════════════════════
    DATA FETCHERS
@@ -275,58 +411,69 @@ function buildCandidates(
   stocks:  Record<string, StockReading>,
 ): MarketTemplate[] {
   const candidates: MarketTemplate[] = [];
-  const deadlines = nextDeadlines(6);
+  // Generate 10 deadline slots — enough to fill the full queue from any state
+  const deadlines = nextDeadlines(10);
+
+  if (deadlines.length === 0) {
+    // No valid deadlines left today — nothing to create
+    return candidates;
+  }
 
   /* ── CRYPTO ─────────────────────────────────────────────────────────── */
   const btc = prices["bitcoin"];
   if (btc) {
-    for (const dl of deadlines.slice(0, 4)) {
-      const above = roundSig(btc * 1.005, 4);
-      const below = roundSig(btc * 0.995, 4);
-      candidates.push(makeCrypto("Bitcoin", "bitcoin", above, "gt", dl));
-      candidates.push(makeCrypto("Bitcoin", "bitcoin", below, "gt", dl));
+    // BTC gets every other slot (0, 2, 4, 6, 8), alternating above/below
+    for (let i = 0; i < deadlines.length; i += 2) {
+      const isEven = (i / 2) % 2 === 0;
+      const target = roundSig(btc * (isEven ? 1.005 : 0.995), 4);
+      candidates.push(makeCrypto("Bitcoin", "bitcoin", target, "gt", deadlines[i]));
     }
   }
+
   const eth = prices["ethereum"];
   if (eth) {
-    for (const dl of deadlines.slice(0, 3)) {
-      candidates.push(makeCrypto("Ethereum", "ethereum", roundSig(eth * 1.005, 3), "gt", dl));
-      candidates.push(makeCrypto("Ethereum", "ethereum", roundSig(eth * 0.995, 3), "gt", dl));
+    // ETH gets odd slots (1, 5, 9)
+    for (let i = 1; i < deadlines.length; i += 4) {
+      const target = roundSig(eth * 1.005, 3);
+      candidates.push(makeCrypto("Ethereum", "ethereum", target, "gt", deadlines[i]));
     }
   }
+
   const quai = prices["quai-network"];
   if (quai) {
-    const eod = endOfDay();
-    candidates.push(makeCrypto("Quai", "quai-network", parseFloat((quai * 1.03).toFixed(5)), "gt", eod));
+    // QUAI gets slot 3 and 7
+    for (let i = 3; i < deadlines.length; i += 4) {
+      const target = parseFloat((quai * 1.03).toFixed(5));
+      candidates.push(makeCrypto("Quai", "quai-network", target, "gt", deadlines[i]));
+    }
   }
 
   /* ── SPORTS ─────────────────────────────────────────────────────────── */
   for (const ev of sports) {
-    const matchTime = new Date(`${ev.dateEvent}T22:00:00Z`); // after typical match end
-    const dl = matchTime > new Date() ? matchTime : endOfDay();
+    const matchTime = new Date(`${ev.dateEvent}T22:00:00Z`);
+    const dl = matchTime > new Date() ? matchTime : deadlines[0];
 
-    // "Will X score at least 1 goal?"
     candidates.push({
       question:         `Will ${ev.teamName} score in their match against ${ev.opponent}?`,
       category:         "Sports",
       data_source:      `TheSportsDB — ${ev.leagueName}`,
       deadline:         dl,
       coin_id:          ev.teamId,
-      target_value:     0,           // score > 0 = YES
+      target_value:     0,
       resolution_field: "score",
       resolution_op:    "gt",
       target_time:      dl,
+      // Date-based dedup so the same fixture never duplicates across cron runs
       dedup_key:        `${ev.teamName}-score-${ev.dateEvent}`,
     });
 
-    // "Will the match have more than 2 goals total?"
     candidates.push({
       question:         `Will the ${ev.teamName} vs ${ev.opponent} match have more than 2 goals?`,
       category:         "Sports",
       data_source:      `TheSportsDB — ${ev.leagueName}`,
       deadline:         dl,
       coin_id:          ev.teamId,
-      target_value:     2,           // total_score > 2 = YES
+      target_value:     2,
       resolution_field: "total_score",
       resolution_op:    "gt",
       target_time:      dl,
@@ -336,23 +483,22 @@ function buildCandidates(
 
   /* ── WEATHER ─────────────────────────────────────────────────────────── */
   for (const [city, w] of Object.entries(weather)) {
-    const eod = endOfDay();
+    const eod  = endOfDay();
+    const today = eod.toISOString().slice(0, 10);
 
-    // Rain market
     candidates.push({
       question:         `Will it rain in ${city} before ${fmtTime(eod)}?`,
       category:         "Weather",
       data_source:      `OpenWeatherMap — ${city}`,
       deadline:         eod,
       coin_id:          city,
-      target_value:     0.1,         // rain_mm > 0.1 = YES
+      target_value:     0.1,
       resolution_field: "rain_mm",
       resolution_op:    "gt",
       target_time:      eod,
-      dedup_key:        `Weather-${city}-rain-${eod.toISOString().slice(0,10)}`,
+      dedup_key:        `weather-${city}-rain-${today}`,
     });
 
-    // Temperature market — will it be above current + 2°C?
     const tempTarget = Math.round(w.tempC + 2);
     candidates.push({
       question:         `Will the temperature in ${city} exceed ${tempTarget}°C today?`,
@@ -364,14 +510,15 @@ function buildCandidates(
       resolution_field: "temp_c",
       resolution_op:    "gt",
       target_time:      eod,
-      dedup_key:        `Weather-${city}-temp-${tempTarget}-${eod.toISOString().slice(0,10)}`,
+      dedup_key:        `weather-${city}-temp${tempTarget}-${today}`,
     });
   }
 
   /* ── STOCKS ─────────────────────────────────────────────────────────── */
   for (const [symbol, s] of Object.entries(stocks)) {
-    const eod = marketCloseTime(); // 9 PM UTC ~ after US market close
-    const above = parseFloat((s.price * 1.005).toFixed(2)); // 0.5% above current
+    const eod   = marketCloseTime();
+    const today = eod.toISOString().slice(0, 10);
+    const above = parseFloat((s.price * 1.005).toFixed(2));
 
     candidates.push({
       question:         `Will ${symbol} close above $${fmt(above)} today?`,
@@ -383,7 +530,7 @@ function buildCandidates(
       resolution_field: "close_price",
       resolution_op:    "gt",
       target_time:      eod,
-      dedup_key:        `Stock-${symbol}-${above}-${eod.toISOString().slice(0,10)}`,
+      dedup_key:        `stock-${symbol}-${above}-${today}`,
     });
   }
 
@@ -395,6 +542,9 @@ function makeCrypto(
   name: string, coinId: string, target: number, op: string, dl: Date
 ): MarketTemplate {
   const dir = op === "gt" ? "above" : "below";
+  // Dedup key: asset + target price + deadline date+hour (not full ISO timestamp)
+  // This prevents duplicates when the cron regenerates within the same hour
+  const dedupHour = dl.toISOString().slice(0, 13); // "YYYY-MM-DDTHH"
   return {
     question:         `Will ${name} be ${dir} $${fmt(target)} at ${fmtTime(dl)}?`,
     category:         "Crypto",
@@ -405,28 +555,43 @@ function makeCrypto(
     resolution_field: "price",
     resolution_op:    op,
     target_time:      dl,
-    dedup_key:        `${name}-${target}-${dl.toISOString()}`,
+    dedup_key:        `${coinId}-${target}-${dedupHour}`,
   };
 }
 
 /* ── Deadline helpers ────────────────────────────────────────────────── */
+
+/**
+ * Returns up to `count` whole-hour UTC deadlines spaced MIN_SPACING_HRS apart.
+ * Starts 2 hours from now and extends across today AND tomorrow, so the
+ * generator always has enough candidate slots to fill the 10-market queue
+ * even if most of today's hours are already taken.
+ *
+ * The hard limit is MIN_LEAD_MS: we never create a market that resolves
+ * in less than 90 minutes.
+ */
+const MIN_LEAD_MS     = 90 * 60 * 1000; // 90-minute minimum lead time
+const MIN_SPACING_HRS = 2;              // 2-hour gap between deadline slots
+
 function nextDeadlines(count: number): Date[] {
   const deadlines: Date[] = [];
   const now  = new Date();
+
+  // Snap to next whole hour, then add 2 h to ensure MIN_LEAD_MS is met
   const base = new Date(now);
   base.setUTCMinutes(0, 0, 0);
-  base.setUTCHours(base.getUTCHours() + 1);
+  base.setUTCHours(base.getUTCHours() + 2);
 
-  for (let i = 0; i < count; i++) {
-    const d = new Date(base);
-    d.setUTCHours(base.getUTCHours() + i * 2);
-    if (d.getUTCDate() !== now.getUTCDate()) break;
-    deadlines.push(d);
+  let cursor = base;
+  // Scan up to 48 hours forward — guarantees enough slots even at end-of-day
+  const limit = new Date(now.getTime() + 48 * 3600 * 1000);
+
+  while (deadlines.length < count && cursor < limit) {
+    if (cursor.getTime() - now.getTime() >= MIN_LEAD_MS) {
+      deadlines.push(new Date(cursor));
+    }
+    cursor = new Date(cursor.getTime() + MIN_SPACING_HRS * 3600 * 1000);
   }
-
-  const eod = endOfDay();
-  if (!deadlines.find(d => Math.abs(d.getTime() - eod.getTime()) < 60_000))
-    deadlines.push(eod);
 
   return deadlines;
 }

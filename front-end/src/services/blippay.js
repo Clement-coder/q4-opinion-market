@@ -154,6 +154,37 @@ export async function getBlipLeaderboard(limit = 50, countryCode) {
   return get(`/api/referrals/leaderboard?${params}`);
 }
 
+// ─── wallet QI payment code ──────────────────────────────────────────────────
+
+/**
+ * Fetch the QI (BIP47) reusable payment code for a Quai wallet address.
+ *
+ * BlipPay profiles are registered with the user's own external wallet address
+ * stored as `contactQuaiAddress`. We search the leaderboard for an entry whose
+ * `contactQuaiAddress` matches the given address (case-insensitive), then return
+ * its `contactQiPaymentCode`.
+ *
+ * Falls back to null if no matching profile is found.
+ *
+ * @param {string} address  Quai wallet address (0x…)
+ * @returns {Promise<string|null>}  QI payment code string, or null if none registered
+ */
+export async function getWalletQiCode(address) {
+  if (!address) return null;
+  const normalised = address.toLowerCase();
+  try {
+    // Fetch a broad leaderboard slice and look for a matching contactQuaiAddress
+    const data = await get("/api/referrals/leaderboard?limit=200");
+    const entries = data?.entries ?? [];
+    const match = entries.find(
+      (e) => e.contactQuaiAddress?.toLowerCase() === normalised
+    );
+    return match?.contactQiPaymentCode ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── wallet helpers ───────────────────────────────────────────────────────────
 
 /**

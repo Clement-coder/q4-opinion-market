@@ -11,6 +11,7 @@ import {
   getWalletBalance,
   getTransactions,
   getQuaiPriceFull,
+  getWalletQiCode,
 } from "../services/blippay";
 
 const WalletContext = createContext(null);
@@ -19,6 +20,7 @@ export function WalletProvider({ children }) {
   const { user } = useAuth();
 
   const [walletAddress,  setWalletAddress]  = useState(null);
+  const [qiCode,         setQiCode]         = useState(null);
   const [balance,        setBalance]        = useState({ quai: 0, usd: 0 });
   const [priceData,      setPriceData]      = useState(null);
   const [transactions,   setTransactions]   = useState([]);
@@ -48,10 +50,11 @@ export function WalletProvider({ children }) {
       if (!isMounted.current) return;
       setWalletAddress(address);
 
-      const [priceResult, balResult, txResult] = await Promise.allSettled([
+      const [priceResult, balResult, txResult, qiResult] = await Promise.allSettled([
         getQuaiPriceFull(7),
         getWalletBalance(address),
         getTransactions(address),
+        getWalletQiCode(address),
       ]);
 
       if (!isMounted.current) return;
@@ -59,11 +62,13 @@ export function WalletProvider({ children }) {
       const price     = priceResult.status === "fulfilled" ? priceResult.value : null;
       const bal       = balResult.status   === "fulfilled" ? balResult.value   : { quai: 0 };
       const txs       = txResult.status    === "fulfilled" ? txResult.value    : [];
+      const qi        = qiResult.status    === "fulfilled" ? qiResult.value    : null;
       const quaiPrice = price?.current?.price ?? 0;
 
       setPriceData(price);
       setBalance({ quai: bal.quai, usd: parseFloat((bal.quai * quaiPrice).toFixed(2)) });
       setTransactions(txs);
+      setQiCode(qi);
     } catch (e) {
       if (isMounted.current) setError(e.message);
     } finally {
@@ -76,6 +81,7 @@ export function WalletProvider({ children }) {
       loadWallet(user.uid);
     } else {
       setWalletAddress(null);
+      setQiCode(null);
       setBalance({ quai: 0, usd: 0 });
       setPriceData(null);
       setTransactions([]);
@@ -90,6 +96,7 @@ export function WalletProvider({ children }) {
   return (
     <WalletContext.Provider value={{
       walletAddress,
+      qiCode,
       balance,
       priceData,
       transactions,

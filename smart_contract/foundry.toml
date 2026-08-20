@@ -1,5 +1,13 @@
 [profile.default]
-src = "src"
-out = "out"
-libs = ["lib"]
+src      = "src"
+out      = "out"
+libs     = ["lib"]
+solc     = "0.8.20"
+evm_version = "london"
+
+[rpc_endpoints]
+quai_mainnet = "https://rpc.quai.network/cyprus1"
+
+[etherscan]
+quai_mainnet = { key = "no-key-needed", url = "https://quaiscan.io/api" }
 

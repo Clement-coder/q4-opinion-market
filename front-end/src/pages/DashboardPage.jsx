@@ -27,7 +27,8 @@ import { useNotifications }      from "../hooks/useNotifications";
 import { useResults }            from "../hooks/useResults";
 import { useRewards }            from "../hooks/useRewards";
 import { useAdminUsers, useAdminMarkets, useAdminStats, useAdminOracle, useAdminEvents, useAdminPositions } from "../hooks/useAdminData";
-import { supabase }              from "../lib/supabase";
+import { supabase, getFirebaseUID } from "../lib/supabase";
+import { onChainPredict }            from "../lib/contractService";
 import WalletPage   from "./WalletPage";
 
 /* ════════════════════════════════════════════════
@@ -1483,7 +1484,7 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
 
-  const { profile }                     = useAuth();
+  const { profile, user }               = useAuth();
   const { balance, priceData }          = useWallet();
   const { market, loading: mktLoading } = useMarket(questionId);
 
@@ -1551,6 +1552,11 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
       setSubmitError("You must be signed in to place a position.");
       return;
     }
+    // Guard: ensure the Firebase UID header is set before hitting Supabase RLS
+    if (!getFirebaseUID()) {
+      setSubmitError("Authentication is still loading. Please wait a moment and try again.");
+      return;
+    }
     if (!market?.id || !isOpen) {
       setSubmitError("This market is not accepting positions right now.");
       return;
@@ -1563,29 +1569,54 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
     setSubmitting(true);
     setSubmitError(null);
 
+    let stakeTxHash = null;
+
     try {
+      // ── Step 1: On-chain predict() — send QUAI stake to the contract ──────
+      if (market.contractAddress) {
+        // Convert QUAI balance → QUAI amount for the stake.
+        // amtNum is in USDT; convert to QUAI using the live price.
+        const quaiAmount = rate ? amtNum * rate : 0;
+        if (quaiAmount <= 0) {
+          throw new Error("Could not determine QUAI equivalent of your stake. Please try again.");
+        }
+
+        try {
+          const result = await onChainPredict({
+            uid:                   user.uid,
+            marketContractAddress: market.contractAddress,
+            isYes:                 selected === "YES",
+            amountQuai:            quaiAmount,
+          });
+          stakeTxHash = result.hash;
+          console.log(`[handleConfirm] predict() tx: ${stakeTxHash}`);
+        } catch (chainErr) {
+          throw new Error(`On-chain stake failed: ${chainErr.message ?? chainErr}`);
+        }
+      }
+
+      // ── Step 2: Insert position row in Supabase ───────────────────────────
       /*
-       * Insert a new position row.
-       * The unique (user_id, market_id) constraint has been dropped —
-       * multiple rows per user per market are allowed.
-       * RLS policy: user_id must equal the signed-in user's Supabase id
-       * (resolved via firebase_uid header → users table lookup).
+       * Multiple rows per user per market are allowed.
+       * RLS policy: user_id must equal the signed-in user's Supabase id.
        */
+      const positionRow = {
+        user_id:   profile.id,
+        market_id: market.id,
+        side:      selected,
+        amount:    amtNum,
+        switched:  false,
+      };
+      if (stakeTxHash) positionRow.stake_tx_hash = stakeTxHash;
+
       const { error: insertErr } = await supabase
         .from("user_positions")
-        .insert({
-          user_id:   profile.id,
-          market_id: market.id,
-          side:      selected,
-          amount:    amtNum,
-          switched:  false,
-        });
+        .insert(positionRow);
       if (insertErr) throw insertErr;
 
+      // ── Step 3: Atomically update pool amounts in Supabase ────────────────
       /*
-       * Atomically update pool_amount + participant_count.
-       * Uses a SECURITY DEFINER RPC to bypass RLS on market_outcomes
-       * (users cannot write to that table directly).
+       * Uses a SECURITY DEFINER RPC to bypass RLS on market_outcomes.
        */
       const { error: poolErr } = await supabase.rpc("increment_pool", {
         p_market_id: market.id,
@@ -1596,10 +1627,11 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
 
       // Log the event (best-effort — don't block on failure)
       supabase.from("market_events").insert({
-        market_id:  market.id,
-        event_type: "position_placed",
-        user_id:    profile.id,
-        metadata:   { side: selected, amount: amtNum },
+        market_id:        market.id,
+        event_type:       "position_placed",
+        user_id:          profile.id,
+        transaction_hash: stakeTxHash ?? null,
+        metadata:         { side: selected, amount: amtNum, txHash: stakeTxHash },
       }).then(() => {});
 
       /* Lock the side permanently after the first confirmed stake */
@@ -2129,11 +2161,15 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
 
 const CONV_TABS = ["Open", "Resolved", "Cancelled"];
 
-function ConvictionCard({ c }) {
+function ConvictionCard({ c, onWithdrawRefund, withdrawing }) {
   const isYes     = c.answer === "YES";
   const col       = isYes ? T.yes  : T.no;
   const colBg     = isYes ? T.yesBg : T.noBg;
   const colBorder = isYes ? T.yesBorder : T.noBorder;
+
+  const isCancelled   = c.status === "cancelled" || c.status === "paused";
+  const hasRefundTx   = Boolean(c.refundTxHash);
+  const isWithdrawing = withdrawing === c.id;
 
   return (
     <GCard style={{ padding: "18px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
@@ -2179,13 +2215,65 @@ function ConvictionCard({ c }) {
         <Clock size={11} strokeWidth={2} style={{ flexShrink: 0 }} />
         <span>{c.status === "resolved" ? `Resolved: ${c.closes}` : `Closes: ${c.closes}`}</span>
       </div>
+
+      {/* Stake tx link */}
+      {c.stakeTxHash && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: T.textDim }}>
+          <ExternalLink size={11} strokeWidth={2} style={{ flexShrink: 0 }} />
+          <a
+            href={`https://quaiscan.io/tx/${c.stakeTxHash}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: T.violet, textDecoration: "none", fontWeight: 600 }}
+          >
+            View stake tx
+          </a>
+        </div>
+      )}
+
+      {/* Withdraw Refund — only for cancelled markets with a contract address */}
+      {isCancelled && c.contractAddress && (
+        <div style={{ marginTop: 2 }}>
+          {hasRefundTx ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#22c55e" }}>
+              <CheckCircle2 size={13} strokeWidth={2} />
+              <span style={{ fontWeight: 600 }}>Refund withdrawn</span>
+              <a
+                href={`https://quaiscan.io/tx/${c.refundTxHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: T.textDim, textDecoration: "none", marginLeft: 4 }}
+              >
+                <ExternalLink size={11} strokeWidth={2} />
+              </a>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={isWithdrawing}
+              onClick={() => onWithdrawRefund && onWithdrawRefund(c.id)}
+              style={{
+                width: "100%", padding: "10px 0", borderRadius: 10, border: "1px solid rgba(239,68,68,0.35)",
+                background: "rgba(239,68,68,0.08)", color: "#ef4444", fontSize: 13, fontWeight: 700,
+                cursor: isWithdrawing ? "not-allowed" : "pointer", opacity: isWithdrawing ? 0.6 : 1,
+                transition: "all 0.15s",
+              }}
+              onMouseEnter={(e) => { if (!isWithdrawing) e.currentTarget.style.background = "rgba(239,68,68,0.15)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.08)"; }}
+            >
+              {isWithdrawing ? "Withdrawing…" : `Withdraw Refund ($${c.staked.toFixed(2)})`}
+            </button>
+          )}
+        </div>
+      )}
     </GCard>
   );
 }
 
 function PageMyConvictions() {
-  const [tab, setTab] = useState("Open");
-  const { positions, loading, error, refresh } = usePositions();
+  const [tab, setTab]         = useState("Open");
+  const [refundError, setRefundError] = useState(null);
+  const { positions, loading, error, refresh, withdrawing, withdrawRefund } = usePositions();
 
   const filtered = positions.filter(p => {
     if (tab === "Open")      return p.status === "active" || p.status === "closed";
@@ -2194,17 +2282,29 @@ function PageMyConvictions() {
     return true;
   });
 
-  // Map position shape → ConvictionCard shape
+  // Map position shape → ConvictionCard shape (keep full position props for contract integration)
   const toCardShape = (p) => ({
-    id:        p.id,
-    question:  p.question,
-    category:  p.category,
-    status:    p.status,
-    answer:    p.side,
-    staked:    p.amount,
-    totalPool: p.totalPool,
-    closes:    p.closesLabel,
+    id:              p.id,
+    question:        p.question,
+    category:        p.category,
+    status:          p.status,
+    answer:          p.side,
+    staked:          p.amount,
+    totalPool:       p.totalPool,
+    closes:          p.closesLabel,
+    stakeTxHash:     p.stakeTxHash,
+    refundTxHash:    p.refundTxHash,
+    contractAddress: p.contractAddress,
   });
+
+  const handleWithdrawRefund = async (positionId) => {
+    setRefundError(null);
+    try {
+      await withdrawRefund(positionId);
+    } catch (err) {
+      setRefundError(err.message ?? "Refund failed. Please try again.");
+    }
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -2238,6 +2338,12 @@ function PageMyConvictions() {
         </div>
       )}
 
+      {refundError && (
+        <div style={{ padding: "12px 16px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", fontSize: 12, color: "#ef4444" }}>
+          {refundError}
+        </div>
+      )}
+
       {loading && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {[1,2].map(i => <div key={i} style={{ height: 180, borderRadius: 16, background: T.surface, border: `1px solid ${T.border}`, animation: "pulse 1.5s ease-in-out infinite" }} />)}
@@ -2246,7 +2352,14 @@ function PageMyConvictions() {
 
       {!loading && filtered.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {filtered.map(p => <ConvictionCard key={p.id} c={toCardShape(p)} />)}
+          {filtered.map(p => (
+            <ConvictionCard
+              key={p.id}
+              c={toCardShape(p)}
+              onWithdrawRefund={handleWithdrawRefund}
+              withdrawing={withdrawing}
+            />
+          ))}
         </div>
       )}
 
@@ -2670,7 +2783,18 @@ function PageLeaderboard() {
 
 const REWARD_TABS = ["Unclaimed", "Claimed"];
 
-function RewardCard({ r, onClaim, claiming }) {
+function RewardCard({ r, onClaim, claiming, claimError, setClaimError }) {
+  const isClaiming = claiming === r.id;
+
+  const handleClaim = async () => {
+    if (setClaimError) setClaimError(null);
+    try {
+      await onClaim(r.id);
+    } catch (err) {
+      if (setClaimError) setClaimError(err.message ?? "Claim failed. Please try again.");
+    }
+  };
+
   return (
     <GCard style={{ padding: "18px 20px", display: "flex", flexDirection: "column", gap: 14, borderColor: !r.claimed ? "rgba(34,197,94,0.2)" : T.border }}>
       {/* Top */}
@@ -2701,20 +2825,32 @@ function RewardCard({ r, onClaim, claiming }) {
         </div>
       </div>
 
-      {/* Claim button */}
+      {/* Claim button / claimed state */}
       {!r.claimed ? (
         <button
           type="button"
-          onClick={() => onClaim(r.id)}
-          disabled={claiming === r.id}
-          style={{ width: "100%", padding: "12px", borderRadius: 10, border: "none", background: claiming === r.id ? "rgba(34,197,94,0.4)" : T.yes, color: "#000000", fontSize: 13, fontWeight: 800, cursor: claiming === r.id ? "not-allowed" : "pointer", transition: "background 0.15s", letterSpacing: "-0.01em" }}
+          onClick={handleClaim}
+          disabled={isClaiming}
+          style={{ width: "100%", padding: "12px", borderRadius: 10, border: "none", background: isClaiming ? "rgba(34,197,94,0.4)" : T.yes, color: "#000000", fontSize: 13, fontWeight: 800, cursor: isClaiming ? "not-allowed" : "pointer", transition: "background 0.15s", letterSpacing: "-0.01em" }}
         >
-          {claiming === r.id ? "Claiming…" : `Claim ${r.reward.toFixed(2)} QUAI`}
+          {isClaiming ? "Confirming on-chain…" : `Claim ${r.reward.toFixed(2)} QUAI`}
         </button>
       ) : (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}` }}>
-          <CheckCircle2 size={14} strokeWidth={2} style={{ color: T.textDim }} />
-          <span style={{ fontSize: 12, fontWeight: 600, color: T.textDim }}>Claimed</span>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}` }}>
+            <CheckCircle2 size={14} strokeWidth={2} style={{ color: T.textDim }} />
+            <span style={{ fontSize: 12, fontWeight: 600, color: T.textDim }}>Claimed</span>
+          </div>
+          {r.txHash && (
+            <a
+              href={`https://quaiscan.io/tx/${r.txHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, fontSize: 11, color: T.violet, textDecoration: "none", fontWeight: 600 }}
+            >
+              <ExternalLink size={11} strokeWidth={2} /> View on Quaiscan
+            </a>
+          )}
         </div>
       )}
     </GCard>
@@ -2722,7 +2858,8 @@ function RewardCard({ r, onClaim, claiming }) {
 }
 
 function PageRewards() {
-  const [tab, setTab] = useState("Unclaimed");
+  const [tab, setTab]           = useState("Unclaimed");
+  const [claimError, setClaimError] = useState(null);
   const { rewards, loading, error, claiming, claimReward, refresh } = useRewards();
 
   const filtered = rewards.filter(r => tab === "Unclaimed" ? !r.claimed : r.claimed);
@@ -2784,6 +2921,12 @@ function PageRewards() {
         </div>
       )}
 
+      {claimError && (
+        <div style={{ padding: "12px 16px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", fontSize: 12, color: "#ef4444" }}>
+          {claimError}
+        </div>
+      )}
+
       {loading && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {[1,2].map(i => <div key={i} style={{ height: 200, borderRadius: 16, background: T.surface, border: `1px solid ${T.border}`, animation: "pulse 1.5s ease-in-out infinite" }} />)}
@@ -2792,7 +2935,16 @@ function PageRewards() {
 
       {!loading && filtered.length > 0 && (
         <div style={{ display: "grid", gap: 12 }} className="q-grid">
-          {filtered.map(r => <RewardCard key={r.id} r={r} onClaim={claimReward} claiming={claiming} />)}
+          {filtered.map(r => (
+            <RewardCard
+              key={r.id}
+              r={r}
+              onClaim={claimReward}
+              claiming={claiming}
+              claimError={claimError}
+              setClaimError={setClaimError}
+            />
+          ))}
         </div>
       )}
 

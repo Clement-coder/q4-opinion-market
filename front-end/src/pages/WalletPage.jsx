@@ -503,7 +503,8 @@ export default function WalletPage() {
   const { user }                              = useAuth();
   const { walletAddress, balance, priceData,
           transactions, balanceVisible, toggleBalanceVisibility,
-          loading, refreshing, error, refresh } = useWallet();
+          loading, refreshing, error, refresh,
+          qiCode } = useWallet();
 
   const [sendOpen,    setSendOpen]    = useState(false);
   const [receiveOpen, setReceiveOpen] = useState(false);
@@ -702,6 +703,15 @@ export default function WalletPage() {
               <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.55)",background:"rgba(255,255,255,0.07)",padding:"2px 7px",borderRadius:4,flexShrink:0}}><QuaiLogo size={12}/>Quai</span>
             </div>
 
+            {/* QI payment code pill */}
+            {qiCode && (
+              <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:10,background:"rgba(124,111,247,0.06)",border:"1px solid rgba(124,111,247,0.18)"}}>
+                <span style={{fontSize:10,fontWeight:700,color:"rgba(124,111,247,0.8)",flexShrink:0,letterSpacing:"0.06em",textTransform:"uppercase"}}>QI</span>
+                <span style={{flex:1,fontSize:11,fontFamily:"monospace",color:"rgba(255,255,255,0.45)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{qiCode}</span>
+                <span style={{display:"inline-flex",alignItems:"center",fontSize:10,fontWeight:700,color:"rgba(124,111,247,0.7)",background:"rgba(124,111,247,0.10)",padding:"2px 7px",borderRadius:4,flexShrink:0}}>Payment Code</span>
+              </div>
+            )}
+
             {/* action buttons */}
             <div className="wallet-actions">
               <button type="button" onClick={()=>setSendOpen(true)}
@@ -796,13 +806,24 @@ export default function WalletPage() {
       <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:22,padding:"20px 22px"}}>
         <p style={{fontSize:11,fontWeight:700,letterSpacing:"0.1em",color:T.dim,textTransform:"uppercase",margin:"0 0 4px"}}>Wallet Details</p>
         {[
-          {label:"Wallet Address", value:walletAddress??"—", mono:true,  copy:walletAddress},
-          {label:"Network",        value:"Quai Network · Zone 0-0", mono:false, icon: true},
-          {label:"Wallet Type",    value:"Embedded (BlipPay managed)", mono:false},
-          {label:"Account Owner",  value:user?.email??"—", mono:false},
-        ].map(({label,value,mono,copy},i,a)=>(
+          {label:"Wallet Address", value:walletAddress??"—", mono:true,  copy:walletAddress, icon:false},
+          {label:"Network",        value:"Quai Network · Zone 0-0", mono:false, icon:true},
+          {label:"Wallet Type",    value:"Embedded (BlipPay managed)", mono:false, icon:false},
+          {label:"Account Owner",  value:user?.email??"—", mono:false, icon:false},
+        ].map(({label,value,mono,copy,icon},i,a)=>(
           <DetailRow key={label} label={label} value={value} mono={mono} copy={copy} icon={icon} divider={i<a.length-1}/>
         ))}
+
+        {/* QI Payment Code — fetched from BlipPay via the linked Quai address */}
+        {qiCode && (
+          <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${T.border}`}}>
+            <p style={{fontSize:10,fontWeight:700,color:T.dim,letterSpacing:"0.06em",textTransform:"uppercase",margin:"0 0 6px"}}>QI Payment Code</p>
+            <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:10,background:"rgba(124,111,247,0.06)",border:"1px solid rgba(124,111,247,0.18)"}}>
+              <span style={{fontSize:10,fontWeight:700,color:"rgba(124,111,247,0.9)",flexShrink:0,background:"rgba(124,111,247,0.15)",padding:"2px 7px",borderRadius:4}}>QI</span>
+              <p style={{flex:1,fontSize:11,fontFamily:"monospace",color:"rgba(255,255,255,0.5)",margin:0,wordBreak:"break-all",overflowWrap:"anywhere"}}>{qiCode}</p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── MODALS ── */}

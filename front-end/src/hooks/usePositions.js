@@ -1,12 +1,14 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
+import { onChainWithdrawRefund } from "../lib/contractService";
 
 export function usePositions() {
-  const { profile, loading: authLoading } = useAuth();
-  const [positions, setPositions] = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [error,     setError]     = useState(null);
+  const { profile, user, loading: authLoading } = useAuth();
+  const [positions,       setPositions]       = useState([]);
+  const [loading,         setLoading]         = useState(true);
+  const [error,           setError]           = useState(null);
+  const [withdrawing,     setWithdrawing]     = useState(null); // position id being refunded
   const channelRef = useRef(null);
 
   const fetchPositions = useCallback(async (userId) => {
@@ -15,13 +17,17 @@ export function usePositions() {
     setError(null);
     const { data, error: err } = await supabase
       .from("user_positions")
-      .select(`id, market_id, side, amount, created_at,
-        markets ( id, question, category, status, deadline, resolved_outcome,
+      .select(`id, market_id, side, amount, stake_tx_hash, refund_tx_hash, created_at,
+        markets ( id, question, category, status, deadline, resolved_outcome, contract_address,
           market_outcomes ( outcome, pool_amount ) )`)
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
-    if (err) { console.error("[usePositions]", err.message); setError(err.message); }
-    else setPositions((data ?? []).map(normalisePosition));
+    if (err) {
+      console.error("[usePositions]", err.message);
+      setError(err.message);
+    } else {
+      setPositions((data ?? []).map(normalisePosition));
+    }
     setLoading(false);
   }, []);
 
@@ -34,23 +40,18 @@ export function usePositions() {
   // Real-time — create channel only once per userId, tear down on change
   useEffect(() => {
     if (!profile?.id) return;
-
-    // Remove any existing channel before creating a new one
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
     }
-
     const ch = supabase
       .channel(`positions-${profile.id}-${Date.now()}`)
       .on("postgres_changes",
         { event: "*", schema: "public", table: "user_positions", filter: `user_id=eq.${profile.id}` },
         () => fetchPositions(profile.id)
       );
-
     ch.subscribe();
     channelRef.current = ch;
-
     return () => {
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
@@ -59,25 +60,91 @@ export function usePositions() {
     };
   }, [profile?.id, fetchPositions]);
 
-  return { positions, loading, error, refresh: () => fetchPositions(profile?.id ?? null) };
+  /**
+   * Withdraw refund for a cancelled market.
+   *
+   * Flow:
+   *  1. Call withdrawRefund() on-chain (sends QUAI back to user wallet).
+   *  2. Record the refund tx hash in Supabase (best-effort).
+   */
+  const withdrawRefund = useCallback(async (positionId) => {
+    if (!profile?.id || !user?.uid) return;
+
+    const position = positions.find(p => p.id === positionId);
+    if (!position) return;
+    if (!position.contractAddress) {
+      throw new Error("This market has no on-chain contract — contact support.");
+    }
+    if (position.status !== "cancelled") {
+      throw new Error("Market is not cancelled.");
+    }
+
+    setWithdrawing(positionId);
+    try {
+      const { hash } = await onChainWithdrawRefund({
+        uid:                   user.uid,
+        marketContractAddress: position.contractAddress,
+      });
+      console.log(`[usePositions] withdrawRefund tx: ${hash}`);
+
+      // Record tx hash (best-effort)
+      await supabase
+        .from("user_positions")
+        .update({ refund_tx_hash: hash })
+        .eq("id", positionId)
+        .eq("user_id", profile.id);
+
+      // Optimistic update
+      setPositions(prev =>
+        prev.map(p => p.id === positionId ? { ...p, refundTxHash: hash } : p)
+      );
+
+      return hash;
+    } catch (err) {
+      console.error("[usePositions] withdrawRefund error:", err);
+      throw err;
+    } finally {
+      setWithdrawing(null);
+    }
+  }, [profile?.id, user?.uid, positions]);
+
+  return {
+    positions,
+    loading,
+    error,
+    withdrawing,
+    withdrawRefund,
+    refresh: () => fetchPositions(profile?.id ?? null),
+  };
 }
 
 function normalisePosition(row) {
-  const m = row.markets;
+  const m   = row.markets;
   const yes = Number(m?.market_outcomes?.find(o => o.outcome === "YES")?.pool_amount ?? 0);
   const no  = Number(m?.market_outcomes?.find(o => o.outcome === "NO")?.pool_amount  ?? 0);
   const total = yes + no;
-  const dl = m?.deadline ? new Date(m.deadline) : null;
-  const ms = dl ? dl - Date.now() : null;
+  const dl  = m?.deadline ? new Date(m.deadline) : null;
+  const ms  = dl ? dl - Date.now() : null;
   return {
-    id: row.id, marketId: row.market_id, side: row.side,
-    amount: Number(row.amount), createdAt: row.created_at,
-    status: m?.status ?? "unknown", question: m?.question ?? "—", category: m?.category ?? "—",
-    deadline: m?.deadline, resolvedOutcome: m?.resolved_outcome,
-    yesPool: yes, noPool: no, totalPool: total,
-    yesPct: total > 0 ? Math.round((yes / total) * 100) : 50,
-    closesLabel: ms != null && ms > 0 ? fmtTime(ms) : "Closed",
-    won: m?.resolved_outcome != null ? m.resolved_outcome === row.side : null,
+    id:              row.id,
+    marketId:        row.market_id,
+    side:            row.side,
+    amount:          Number(row.amount),
+    stakeTxHash:     row.stake_tx_hash   ?? null,
+    refundTxHash:    row.refund_tx_hash  ?? null,
+    createdAt:       row.created_at,
+    status:          m?.status          ?? "unknown",
+    question:        m?.question        ?? "—",
+    category:        m?.category        ?? "—",
+    deadline:        m?.deadline,
+    resolvedOutcome: m?.resolved_outcome,
+    contractAddress: m?.contract_address ?? null,
+    yesPool:         yes,
+    noPool:          no,
+    totalPool:       total,
+    yesPct:          total > 0 ? Math.round((yes / total) * 100) : 50,
+    closesLabel:     ms != null && ms > 0 ? fmtTime(ms) : "Closed",
+    won:             m?.resolved_outcome != null ? m.resolved_outcome === row.side : null,
   };
 }
 

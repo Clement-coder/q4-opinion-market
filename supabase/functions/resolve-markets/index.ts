@@ -26,17 +26,63 @@ const SPORTSDB_API_KEY          = Deno.env.get("SPORTSDB_API_KEY")          ?? "
 const ALPHAVANTAGE_API_KEY      = Deno.env.get("ALPHAVANTAGE_API_KEY")      ?? "";
 const OPENWEATHER_API_KEY       = Deno.env.get("OPENWEATHER_API_KEY")       ?? "";
 
+// ── On-chain config ───────────────────────────────────────────────────────────
+const ORACLE_PRIVATE_KEY = Deno.env.get("ORACLE_PRIVATE_KEY") ?? "";
+const FACTORY_ADDRESS    = Deno.env.get("FACTORY_ADDRESS")    ?? "";
+const QUAI_RPC_URL       = Deno.env.get("QUAI_RPC_URL")       ?? "https://rpc.quai.network/cyprus1";
+
 const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
 
 const PROTOCOL_FEE = 0.05; // 5%
 
+/* ── On-chain resolution helper ──────────────────────────────────────── */
+/**
+ * Calls resolveMarket(marketContractAddress, outcome) on Q4MarketFactory.
+ * marketContractAddress is the address of the individual Q4Market contract
+ * (stored in markets.contract_address).
+ *
+ * We look up the factory's internal market ID by matching the contract address,
+ * OR we call resolveMarket directly on the Q4Market contract via the factory.
+ *
+ * The factory's resolveMarket(uint256 marketId, bool outcome) takes a sequential
+ * marketId — but we don't store that. Instead we call resolve(bool) directly
+ * on the individual Q4Market contract using the oracle key.
+ */
+async function resolveMarketOnChain(
+  contractAddress: string,
+  outcome: "YES" | "NO",
+): Promise<string | null> {
+  if (!ORACLE_PRIVATE_KEY || !contractAddress) return null;
+
+  try {
+    // @ts-ignore
+    const { quais } = await import("npm:quais@1.0.0-alpha.56");
+    const provider  = new quais.JsonRpcProvider(QUAI_RPC_URL, undefined, { usePathing: true });
+    const signer    = new quais.Wallet("0x" + ORACLE_PRIVATE_KEY, provider);
+
+    // Call resolve(bool) directly on the Q4Market contract
+    // selector: cast sig "resolve(bool)" = 0x3fad9ae0
+    const calldata = "0x3fad9ae0" + (outcome === "YES"
+      ? "0000000000000000000000000000000000000000000000000000000000000001"
+      : "0000000000000000000000000000000000000000000000000000000000000000");
+
+    const tx = await signer.sendTransaction({ to: contractAddress, data: calldata });
+    const receipt = await tx.wait(1);
+    console.log(`[resolve-markets] resolved on-chain: ${contractAddress} → ${outcome} (tx: ${receipt.hash})`);
+    return receipt.hash as string;
+  } catch (err) {
+    console.error(`[resolve-markets] on-chain resolve failed for ${contractAddress}:`, (err as Error).message);
+    return null;
+  }
+}
+
 /* ── Types ────────────────────────────────────────────────────────────── */
 interface Market {
   id: string; question: string; category: string;
   status: string; deadline: string; resolved_outcome: string | null;
-  data_source: string | null;
+  data_source: string | null; contract_address: string | null;
   coin_id: string | null; target_value: number | null;
   resolution_field: string | null; resolution_op: string | null;
   target_time: string | null;
@@ -59,7 +105,8 @@ Deno.serve(async (req) => {
     const { data: expired, error: fetchErr } = await db
       .from("markets")
       .select(`id, question, category, status, deadline, resolved_outcome,
-               data_source, coin_id, target_value, resolution_field, resolution_op, target_time`)
+               data_source, contract_address, coin_id, target_value,
+               resolution_field, resolution_op, target_time`)
       .in("status", ["active", "closed"])
       .lt("deadline", now);
 
@@ -88,14 +135,22 @@ Deno.serve(async (req) => {
           status: "resolved", resolved_outcome: outcome, updated_at: now,
         }).eq("id", market.id);
 
+        // ── Resolve on-chain (if this market has a deployed contract) ────
+        let onChainTxHash: string | null = null;
+        if (market.contract_address) {
+          onChainTxHash = await resolveMarketOnChain(market.contract_address, outcome);
+        }
+
         await db.from("oracle_results").insert({
           market_id: market.id, result_value: outcome, resolved_at: now,
           data_source: market.data_source ?? "auto",
         });
 
         await db.from("market_events").insert({
-          market_id: market.id, event_type: "resolved",
-          metadata: { outcome, resolved_by: "oracle_function" },
+          market_id:        market.id,
+          event_type:       "resolved",
+          transaction_hash: onChainTxHash ?? null,
+          metadata: { outcome, resolved_by: "oracle_function", on_chain: Boolean(onChainTxHash) },
         });
 
         const { data: pools }     = await db.from("market_outcomes").select("outcome, pool_amount").eq("market_id", market.id);
