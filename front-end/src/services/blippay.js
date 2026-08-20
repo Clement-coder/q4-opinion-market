@@ -254,42 +254,75 @@ async function quaiRpc(method, params) {
  * Fetch the on-chain QUAI balance for a wallet address via quai_getBalance.
  * Returns balance in QUAI (converted from Wei, 18 decimals).
  *
- * @param {string} address  Cyprus-1 zone Quai address (0x00–0x1F prefix)
+ * Quai RPC only accepts its own zone-aware checksum format, NOT EIP-55.
+ * We use quai_getBalance which works with the mixed-case Quai-checksummed
+ * address directly, and falls back to lowercase if that fails.
+ *
+ * @param {string} address  Cyprus-1 zone Quai address
  * @returns {{ quai: number }}
  */
 export async function getWalletBalance(address) {
+  if (!address || !address.startsWith("0x")) return { quai: 0 };
   try {
-    // Normalize to lowercase — the Quai RPC rejects EIP-55 mixed-case checksums
-    const addr = address?.toLowerCase();
-    if (!addr || !addr.startsWith("0x")) return { quai: 0 };
-    const hex  = await quaiRpc("quai_getBalance", [addr, "latest"]);
+    // Try Quai-checksummed address first (the format Quai RPC expects)
+    const hex  = await quaiRpc("quai_getBalance", [address, "latest"]);
     const wei  = BigInt(hex);
     const quai = Number(wei) / 1e18;
     return { quai: parseFloat(quai.toFixed(6)) };
   } catch {
-    return { quai: 0 };
+    try {
+      // Fallback: lowercase (works on some Quai RPC implementations)
+      const hex  = await quaiRpc("quai_getBalance", [address.toLowerCase(), "latest"]);
+      const quai = Number(BigInt(hex)) / 1e18;
+      return { quai: parseFloat(quai.toFixed(6)) };
+    } catch {
+      return { quai: 0 };
+    }
   }
 }
 
 /**
  * Fetch recent transactions for a Quai address.
- * Uses quai_getBlockByNumber to scan recent blocks for transactions involving
- * the address. Returns up to 20 recent txs.
+ *
+ * NOTE: Quai Network has no transaction-index API (no eth_getTransactionsByAddress,
+ * no event logs index). The only way to find txs is to scan blocks one by one,
+ * which takes 200+ seconds for a 200-block window — completely unusable in a browser.
+ *
+ * This implementation uses a small parallel batch (10 blocks max) with a hard
+ * 8-second timeout so the wallet page always loads quickly. Users with recent
+ * transactions in the last 10 blocks will see them; otherwise the list is empty.
+ * A "View on Quaiscan" link is provided in the UI for full history.
  *
  * @param {string} address
  * @returns {Promise<Array<Transaction>>}
  */
 export async function getTransactions(address) {
+  if (!address) return [];
   try {
-    const latestHex   = await quaiRpc("eth_blockNumber", []);
+    const addr       = address.toLowerCase();
+    const latestHex  = await Promise.race([
+      quaiRpc("eth_blockNumber", []),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 5000)),
+    ]);
     const latestBlock = parseInt(latestHex, 16);
-    const addr        = address.toLowerCase();
-    const txs         = [];
-    const scanDepth   = 200; // scan last 200 blocks
 
-    for (let i = latestBlock; i > Math.max(0, latestBlock - scanDepth) && txs.length < 20; i--) {
-      const block = await quaiRpc("quai_getBlockByNumber", [`0x${i.toString(16)}`, true]);
-      if (!block || !block.transactions) continue;
+    // Fetch the last 10 blocks in parallel (each block takes ~1.4s, 10 in parallel ≈ 2s)
+    const SCAN_DEPTH = 10;
+    const blockNums  = Array.from({ length: SCAN_DEPTH }, (_, k) => latestBlock - k);
+
+    const blockResults = await Promise.allSettled(
+      blockNums.map(n =>
+        Promise.race([
+          quaiRpc("quai_getBlockByNumber", [`0x${n.toString(16)}`, true]),
+          new Promise((_, rej) => setTimeout(() => rej(new Error("block timeout")), 6000)),
+        ])
+      )
+    );
+
+    const txs = [];
+    for (const result of blockResults) {
+      if (result.status !== "fulfilled" || !result.value?.transactions) continue;
+      const block = result.value;
 
       for (const tx of block.transactions) {
         const from = (tx.from || "").toLowerCase();
@@ -301,20 +334,21 @@ export async function getTransactions(address) {
         const amount = parseFloat((Number(weiVal) / 1e18).toFixed(6));
 
         txs.push({
-          id:        tx.hash,
+          id:          tx.hash,
           type,
-          label:     type === "sent" ? "Sent QUAI" : "Received QUAI",
+          label:       type === "sent" ? "Sent QUAI" : "Received QUAI",
           amount,
-          from:      tx.from,
-          to:        tx.to,
-          hash:      tx.hash,
-          timestamp: new Date(parseInt(block.timestamp || "0", 16) * 1000),
-          status:    "confirmed",
-          blockNumber: i,
+          from:        tx.from,
+          to:          tx.to,
+          hash:        tx.hash,
+          timestamp:   new Date(parseInt(block.timestamp || "0", 16) * 1000),
+          status:      "confirmed",
+          blockNumber: parseInt(block.number || "0x0", 16),
         });
 
         if (txs.length >= 20) break;
       }
+      if (txs.length >= 20) break;
     }
 
     return txs;

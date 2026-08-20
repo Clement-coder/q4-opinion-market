@@ -45,16 +45,36 @@ export function WalletProvider({ children }) {
     else           setLoading(true);
     setError(null);
 
+    // Hard 12s timeout on the entire load — prevents "Setting up wallet…" forever
+    // on slow connections or unresponsive APIs.
+    const timeoutId = setTimeout(() => {
+      if (isMounted.current) {
+        setLoading(false);
+        setRefreshing(false);
+        // Don't set error — show whatever loaded; wallet address is derived locally
+        console.warn("[WalletContext] loadWallet timed out after 12s");
+      }
+    }, 12_000);
+
     try {
+      // Address derivation is local (SHA-256 only) — always fast
       const address = await getOrCreateWallet(uid);
       if (!isMounted.current) return;
       setWalletAddress(address);
 
+      // Run all network calls in parallel with individual timeouts
+      // so a slow/failed call never blocks the others
+      const withTimeout = (promise, ms, fallback) =>
+        Promise.race([
+          promise,
+          new Promise(resolve => setTimeout(() => resolve(fallback), ms)),
+        ]);
+
       const [priceResult, balResult, txResult, qiResult] = await Promise.allSettled([
-        getQuaiPriceFull(7),
-        getWalletBalance(address),
-        getTransactions(address),
-        getWalletQiCode(address),
+        withTimeout(getQuaiPriceFull(7),       8000, null),
+        withTimeout(getWalletBalance(address), 6000, { quai: 0 }),
+        withTimeout(getTransactions(address),  9000, []),
+        withTimeout(getWalletQiCode(address),  5000, null),
       ]);
 
       if (!isMounted.current) return;
@@ -66,12 +86,13 @@ export function WalletProvider({ children }) {
       const quaiPrice = price?.current?.price ?? 0;
 
       setPriceData(price);
-      setBalance({ quai: bal.quai, usd: parseFloat((bal.quai * quaiPrice).toFixed(2)) });
-      setTransactions(txs);
+      setBalance({ quai: bal.quai ?? 0, usd: parseFloat(((bal.quai ?? 0) * quaiPrice).toFixed(2)) });
+      setTransactions(txs ?? []);
       setQiCode(qi);
     } catch (e) {
       if (isMounted.current) setError(e.message);
     } finally {
+      clearTimeout(timeoutId);
       if (isMounted.current) { setLoading(false); setRefreshing(false); }
     }
   }, []);

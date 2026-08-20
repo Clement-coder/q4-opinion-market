@@ -513,26 +513,34 @@ export default function WalletPage() {
   const history = priceData?.history ?? [];
   const pos24h  = (price?.changePercent24h??0) >= 0;
 
-  // Debug logging
-  console.log("WalletPage debug:", { 
-    user: user?.uid, 
-    walletAddress, 
-    balance, 
-    priceData, 
-    loading, 
-    error 
-  });
+  // user===undefined means Firebase auth is still resolving (initial page load)
+  // user===null means signed out
+  // loading===true means WalletContext is fetching data
+  const authResolving = user === undefined;
 
-  /* ─── loading ─── */
-  if (loading) return (
+  /* ─── loading: show spinner only while auth is resolving OR wallet is genuinely loading ─── */
+  if (authResolving || (loading && !walletAddress)) return (
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"60vh",gap:16}}>
       <Loader size={28} strokeWidth={1.5} style={{color:T.dim,animation:"spin 0.9s linear infinite"}}/>
-      <p style={{fontSize:13,color:T.muted,margin:0}}>Setting up your wallet…</p>
+      <p style={{fontSize:13,color:T.muted,margin:0}}>
+        {authResolving ? "Checking sign-in…" : "Setting up your wallet…"}
+      </p>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 
-  /* ─── error state ─── */
+  /* ─── not signed in ─── */
+  if (!user) return (
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"60vh",gap:16}}>
+      <div style={{width:56,height:56,borderRadius:16,background:T.glass,border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <AlertCircle size={24} strokeWidth={1.4} style={{color:T.muted}} />
+      </div>
+      <p style={{fontSize:16,fontWeight:700,color:T.text,margin:0}}>Sign in to view your wallet</p>
+      <p style={{fontSize:13,color:T.muted,margin:0}}>Your embedded QUAI wallet is tied to your account.</p>
+    </div>
+  );
+
+  /* ─── error state — only show if we have no address at all ─── */
   if (error && !walletAddress) return (
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"60vh",gap:16}}>
       <div style={{width:56,height:56,borderRadius:16,background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -793,12 +801,36 @@ export default function WalletPage() {
           {refreshing&&<span style={{fontSize:10,color:T.dim,display:"flex",alignItems:"center",gap:4}}><Loader size={10} strokeWidth={2} style={{animation:"spin 0.8s linear infinite"}}/>Updating…</span>}
         </div>
         {transactions.length===0?(
-          <div style={{padding:"48px 0",textAlign:"center"}}>
-            <p style={{fontSize:14,color:T.muted,margin:0}}>No transactions yet.</p>
-            <p style={{fontSize:12,color:T.dim,margin:"6px 0 0"}}>Your activity will appear here once you start using your wallet.</p>
+          <div style={{padding:"36px 0",textAlign:"center"}}>
+            <p style={{fontSize:14,color:T.muted,margin:0}}>No recent transactions found.</p>
+            <p style={{fontSize:12,color:T.dim,margin:"6px 0 8px"}}>Only the last 10 blocks are scanned. View your full history on Quaiscan.</p>
+            {walletAddress && (
+              <a
+                href={`https://quaiscan.io/address/${walletAddress}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{fontSize:12,color:"#7c6ff7",fontWeight:600,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:4}}
+              >
+                View on Quaiscan ↗
+              </a>
+            )}
           </div>
         ):(
-          <div>{transactions.map((tx,i)=><TxRow key={tx.id} tx={tx} quaiPrice={price?.price} last={i===transactions.length-1}/>)}</div>
+          <div>
+            {transactions.map((tx,i)=><TxRow key={tx.id} tx={tx} quaiPrice={price?.price} last={i===transactions.length-1}/>)}
+            {walletAddress && (
+              <div style={{paddingTop:12,textAlign:"center"}}>
+                <a
+                  href={`https://quaiscan.io/address/${walletAddress}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{fontSize:11,color:T.dim,fontWeight:600,textDecoration:"none"}}
+                >
+                  View full history on Quaiscan ↗
+                </a>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
