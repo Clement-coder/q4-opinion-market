@@ -692,7 +692,7 @@ function PageDashboard({ onNavigate }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
 
       {/* ── KPI ROW ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }} className="dash-kpi-grid">
+      <div className="dash-kpi-grid-3">
 
         {/* Wallet balance */}
         <GCard style={{ padding: "20px 22px" }}>
@@ -758,7 +758,7 @@ function PageDashboard({ onNavigate }) {
 
       {/* ── MY STATS ROW ── */}
       {positions.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }} className="dash-kpi-grid">
+        <div className="dash-kpi-grid-5">
           {[
             { label: "Open Positions",   value: openPositions,                                   color: "#38bdf8", icon: BookMarked },
             { label: "Total Staked",     value: `$${totalStakedUsdt.toFixed(2)} USDT`,           color: "#fbbf24", icon: Coins     },
@@ -783,7 +783,7 @@ function PageDashboard({ onNavigate }) {
       <UserDashboardCharts markets={markets} positions={positions} wins={wins} losses={losses} />
 
       {/* ── PLATFORM INFO ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }} className="dash-sec-grid">
+      <div className="dash-sec-grid">
         {[
           { icon: ShieldCheck, label: "Non-Custodial",      sub: "You control your funds" },
           { icon: Globe,       label: "On-Chain Settlement",  sub: "Verified on-chain"      },
@@ -1707,7 +1707,7 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
 
       <ShareModal open={shareOpen} onClose={() => setShareOpen(false)} question={{ id: market.id, question: market.question, category: market.category }} />
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 400px", gap: 16, alignItems: "start" }} className="dash-detail-grid">
+      <div className="dash-detail-grid">
 
         {/* ═══ LEFT COLUMN ═══ */}
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -2171,7 +2171,7 @@ function ConvictionCard({ c, onWithdrawRefund, withdrawing }) {
       </p>
 
       {/* Stats row */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+      <div style={{ display: "grid", gap: 8 }} className="positions-stats-grid">
         {/* Your side */}
         <div style={{ padding: "10px 12px", borderRadius: 10, background: colBg, border: `1px solid ${colBorder}`, display: "flex", flexDirection: "column", gap: 3, alignItems: "center" }}>
           <span style={{ fontSize: 10, color: col, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", opacity: 0.8 }}>Your Side</span>
@@ -2482,7 +2482,7 @@ function ResultCard({ r }) {
       </div>
 
       {/* Stats row */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+      <div style={{ display: "grid", gap: 8 }} className="results-stats-grid">
         {[
           { label: "Your Side",   value: r.yourSide,                  color: r.yourSide === "YES" ? T.yes : T.no },
           { label: "Staked",      value: `${r.yourStake.toFixed(2)} QUAI`, color: T.textPrimary },
@@ -2946,7 +2946,7 @@ function PageRewards() {
       {/* How rewards work — static explainer */}
       <GCard style={{ padding: "18px 22px" }}>
         <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px" }}>How rewards work</p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }} className="reward-how-grid">
           {[
             { icon: Target, label: "Predict correctly",  desc: "Pick the winning side and commit your prediction." },
             { icon: Lock2,  label: "Market resolves",    desc: "Once the deadline passes, the oracle verifies the real-world result." },
@@ -3065,7 +3065,7 @@ function PageHowItWorks({ onNavigate }) {
       {/* Market lifecycle */}
       <div>
         <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.1em", textTransform: "uppercase", margin: "0 0 14px" }}>Market lifecycle</p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }} className="dash-how-grid">
+        <div style={{ display: "grid", gap: 10 }} className="dash-how-grid">
           {[
             { status: "Created",  color: "#38bdf8", desc: "Deployed with a question, YES/NO outcomes, deadline, and oracle data source." },
             { status: "Active",   color: T.yes,    desc: "Users browse and commit YES or NO predictions before the deadline." },
@@ -4265,7 +4265,7 @@ export default function DashboardPage() {
           bottom: 0;
           z-index: 40;
         }
-        
+
         .dash-main-area {
           flex: 1;
           display: flex;
@@ -4273,18 +4273,74 @@ export default function DashboardPage() {
           margin-left: 240px;
           min-height: 100vh;
         }
-        
-        .dash-mobile-only {
-          display: none;
+
+        .dash-mobile-only { display: none; }
+        .dash-mobile-left { display: none; align-items: center; gap: 10px; }
+
+        /* ── KPI grids — default desktop ── */
+        /* top 3-col row */
+        .dash-kpi-grid-3 {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 14px;
         }
-        
-        .dash-mobile-left {
-          display: none;
-          align-items: center;
+        /* stats 5-col row */
+        .dash-kpi-grid-5 {
+          display: grid;
+          grid-template-columns: repeat(5, 1fr);
+          gap: 12px;
+        }
+        /* platform info 3-col row */
+        .dash-sec-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 14px;
+        }
+        /* charts 2-col row */
+        .dash-kpi-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 14px;
+        }
+        /* market detail: info + staking card */
+        .dash-detail-grid {
+          display: grid;
+          grid-template-columns: 1fr 400px;
+          gap: 16px;
+          align-items: start;
+        }
+        /* rewards / positions card grid */
+        .q-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 12px;
+        }
+        /* how it works steps */
+        .dash-how-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
           gap: 10px;
         }
-        
-        /* ── Admin Mobile Responsive ── */
+        /* reward explainer 3-col */
+        .reward-how-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 12px;
+        }
+        /* results stats 4-col */
+        .results-stats-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 8px;
+        }
+        /* positions stats 3-col */
+        .positions-stats-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 8px;
+        }
+
+        /* ── Admin ── */
         .admin-tab-bar {
           display: flex;
           gap: 2px;
@@ -4298,11 +4354,7 @@ export default function DashboardPage() {
           scrollbar-width: none;
           -ms-overflow-style: none;
         }
-        
-        .admin-tab-bar::-webkit-scrollbar {
-          display: none;
-        }
-        
+        .admin-tab-bar::-webkit-scrollbar { display: none; }
         .admin-header {
           display: flex;
           align-items: flex-start;
@@ -4311,29 +4363,20 @@ export default function DashboardPage() {
           gap: 12px;
           margin-bottom: 20px;
         }
-        
         .admin-stats-grid {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
           gap: 16px;
           margin-bottom: 24px;
         }
-        
         .admin-table-container {
           overflow-x: auto;
           -webkit-overflow-scrolling: touch;
           border-radius: 12px;
           border: 1px solid rgba(255,255,255,0.08);
         }
-        
-        .admin-table {
-          width: 100%;
-          min-width: 600px;
-          border-collapse: collapse;
-        }
-        
-        .admin-table th,
-        .admin-table td {
+        .admin-table { width: 100%; min-width: 600px; border-collapse: collapse; }
+        .admin-table th, .admin-table td {
           text-align: left;
           padding: 12px 16px;
           border-bottom: 1px solid rgba(255,255,255,0.05);
@@ -4342,7 +4385,6 @@ export default function DashboardPage() {
           text-overflow: ellipsis;
           max-width: 200px;
         }
-        
         .admin-table th {
           background: rgba(255,255,255,0.02);
           font-weight: 700;
@@ -4354,94 +4396,91 @@ export default function DashboardPage() {
           top: 0;
           z-index: 10;
         }
-        
-        .admin-form-grid {
-          display: grid;
-          grid-template-columns: 1fr;
-          gap: 16px;
-        }
-        
-        /* ── Mobile Breakpoints ── */
+        .admin-form-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+
+        /* ════════════════════════
+           TABLET  ≤ 1024px
+        ════════════════════════ */
         @media (max-width: 1024px) {
-          .dash-sidebar-desktop {
-            display: none;
-          }
-          
-          .dash-main-area {
-            margin-left: 0;
-          }
-          
-          .dash-mobile-only {
-            display: block;
-          }
-          
-          .dash-mobile-left {
-            display: flex;
-          }
-          
-          main {
-            padding: 20px 16px 32px !important;
-          }
-          
-          .admin-header {
-            flex-direction: column;
-            align-items: stretch;
-          }
-          
-          .admin-tab-bar {
-            width: 100%;
-            justify-content: flex-start;
-          }
-          
-          .admin-stats-grid {
-            grid-template-columns: 1fr;
-          }
-          
-          .admin-form-grid {
-            grid-template-columns: 1fr;
-          }
+          .dash-sidebar-desktop { display: none; }
+          .dash-main-area { margin-left: 0; }
+          .dash-mobile-only { display: block; }
+          .dash-mobile-left { display: flex; }
+
+          main { padding: 20px 16px 32px !important; }
+
+          /* 3-col → 2-col */
+          .dash-kpi-grid-3  { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+          /* 5-col → 2-col */
+          .dash-kpi-grid-5  { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+          /* sec 3-col → 1-col */
+          .dash-sec-grid    { grid-template-columns: 1fr; gap: 10px; }
+          /* charts 2-col stays */
+          /* detail grid → stack */
+          .dash-detail-grid { grid-template-columns: 1fr; }
+          /* rewards/positions cards → 1-col */
+          .q-grid           { grid-template-columns: 1fr; }
+          /* how grid 4-col → 2-col */
+          .dash-how-grid    { grid-template-columns: repeat(2, 1fr); }
+          /* reward how → 1-col */
+          .reward-how-grid  { grid-template-columns: 1fr; gap: 10px; }
+          /* results stats → 2-col */
+          .results-stats-grid   { grid-template-columns: repeat(2, 1fr); }
+          /* positions stats → 2-col */
+          .positions-stats-grid { grid-template-columns: repeat(2, 1fr); }
+
+          .admin-header     { flex-direction: column; align-items: stretch; }
+          .admin-tab-bar    { width: 100%; justify-content: flex-start; }
+          .admin-stats-grid { grid-template-columns: repeat(2, 1fr); }
+          .admin-form-grid  { grid-template-columns: 1fr; }
         }
-        
+
+        /* ════════════════════════
+           MOBILE  ≤ 640px
+        ════════════════════════ */
         @media (max-width: 640px) {
-          .admin-stats-grid {
-            grid-template-columns: repeat(2, 1fr);
-            gap: 12px;
-          }
-          
-          .admin-table th,
-          .admin-table td {
+          main { padding: 16px 12px 28px !important; }
+
+          /* all multi-col grids → 1-col */
+          .dash-kpi-grid-3  { grid-template-columns: 1fr; gap: 10px; }
+          .dash-kpi-grid-5  { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+          .dash-kpi-grid    { grid-template-columns: 1fr; gap: 10px; }
+          .dash-sec-grid    { grid-template-columns: 1fr; gap: 10px; }
+          .dash-how-grid    { grid-template-columns: 1fr; gap: 10px; }
+          .reward-how-grid  { grid-template-columns: 1fr; gap: 10px; }
+          .results-stats-grid   { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+          .positions-stats-grid { grid-template-columns: 1fr; gap: 8px; }
+
+          /* reward / position cards full width */
+          .q-grid { grid-template-columns: 1fr; gap: 10px; }
+
+          /* market question text smaller on mobile */
+          .market-question { font-size: 13px !important; }
+
+          .admin-stats-grid { grid-template-columns: 1fr; gap: 10px; }
+          .admin-table th, .admin-table td {
             padding: 8px 12px;
             font-size: 12px;
             max-width: 150px;
           }
-          
-          .admin-tab-bar {
-            gap: 1px;
-            padding: 3px;
-          }
-          
-          .admin-tab-bar button {
-            padding: 6px 12px !important;
-            font-size: 11px !important;
-            white-space: nowrap;
-          }
-        }
-        
-        @media (max-width: 480px) {
-          .admin-stats-grid {
-            grid-template-columns: 1fr;
-          }
-          
+          .admin-tab-bar { gap: 1px; padding: 3px; }
+          .admin-tab-bar button { padding: 6px 12px !important; font-size: 11px !important; white-space: nowrap; }
+
+          /* admin table full-bleed on small screens */
           .admin-table-container {
-            margin: 0 -16px;
+            margin: 0 -12px;
             border-radius: 0;
             border-left: none;
             border-right: none;
           }
-          
-          main {
-            padding: 16px 12px 24px !important;
-          }
+        }
+
+        /* ════════════════════════
+           SMALL MOBILE  ≤ 400px
+        ════════════════════════ */
+        @media (max-width: 400px) {
+          main { padding: 12px 10px 24px !important; }
+          .dash-kpi-grid-5 { grid-template-columns: 1fr; gap: 8px; }
         }
       `}</style>
       
