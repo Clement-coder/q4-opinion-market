@@ -674,9 +674,19 @@ function PageDashboard({ onNavigate }) {
   const low24h      = priceData?.current?.low24h ?? null;
   const history     = priceData?.history ?? [];
 
-  // Live markets + positions for platform breakdown charts
-  const { markets }   = useMarkets({});
-  const { positions } = usePositions();
+  // Live markets + positions + rewards for breakdown charts
+  const { markets }                     = useMarkets({});
+  const { positions }                   = usePositions();
+  const { rewards }                     = useRewards();
+
+  // Derived stats from demo data
+  const openPositions    = positions.filter(p => p.status === "active" || p.status === "closed").length;
+  const resolvedPos      = positions.filter(p => p.status === "resolved");
+  const wins             = resolvedPos.filter(p => p.won === true).length;
+  const losses           = resolvedPos.filter(p => p.won === false).length;
+  const totalStakedUsdt  = positions.reduce((s, p) => s + p.amount, 0);
+  const winRate          = resolvedPos.length > 0 ? Math.round((wins / resolvedPos.length) * 100) : null;
+  const pendingRewards   = rewards.filter(r => !r.claimed).reduce((s, r) => s + r.reward, 0);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -747,36 +757,30 @@ function PageDashboard({ onNavigate }) {
       )}
 
       {/* ── MY STATS ROW ── */}
-      {positions.length > 0 && (() => {
-        const open     = positions.filter(p => p.status === "active" || p.status === "closed").length;
-        const resolved = positions.filter(p => p.status === "resolved");
-        const wins     = resolved.filter(p => p.won === true).length;
-        const staked   = positions.reduce((s, p) => s + p.amount, 0);
-        const winRate  = resolved.length > 0 ? Math.round((wins / resolved.length) * 100) : null;
-        return (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }} className="dash-kpi-grid">
-            {[
-              { label: "Open Positions", value: open,                      color: "#38bdf8", icon: BookMarked },
-              { label: "Total Staked",   value: `${staked.toFixed(2)} QUAI`,  color: "#fbbf24", icon: Coins     },
-              { label: "Wins",           value: wins,                      color: T.yes,     icon: Trophy    },
-              { label: "Win Rate",       value: winRate != null ? `${winRate}%` : "—", color: T.violet, icon: Target },
-            ].map(({ label, value, color, icon: Icon }) => (
-              <GCard key={label} style={{ padding: "16px 18px" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                  <p style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>{label}</p>
-                  <div style={{ width: 28, height: 28, borderRadius: 7, background: `${color}18`, border: `1px solid ${color}30`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <Icon size={12} strokeWidth={2} style={{ color }} />
-                  </div>
+      {positions.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }} className="dash-kpi-grid">
+          {[
+            { label: "Open Positions",   value: openPositions,                                   color: "#38bdf8", icon: BookMarked },
+            { label: "Total Staked",     value: `$${totalStakedUsdt.toFixed(2)} USDT`,           color: "#fbbf24", icon: Coins     },
+            { label: "Wins / Losses",    value: `${wins} / ${losses}`,                           color: T.yes,     icon: Trophy    },
+            { label: "Win Rate",         value: winRate != null ? `${winRate}%` : "—",           color: T.violet,  icon: Target    },
+            { label: "Pending Rewards",  value: pendingRewards > 0 ? `$${pendingRewards.toFixed(2)}` : "—", color: "#34d399", icon: Gift },
+          ].map(({ label, value, color, icon: Icon }) => (
+            <GCard key={label} style={{ padding: "16px 18px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <p style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>{label}</p>
+                <div style={{ width: 28, height: 28, borderRadius: 7, background: `${color}18`, border: `1px solid ${color}30`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Icon size={12} strokeWidth={2} style={{ color }} />
                 </div>
-                <p style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>{value}</p>
-              </GCard>
-            ))}
-          </div>
-        );
-      })()}
+              </div>
+              <p style={{ fontSize: 20, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>{value}</p>
+            </GCard>
+          ))}
+        </div>
+      )}
 
       {/* ── PLATFORM BREAKDOWN CHARTS ── */}
-      <UserDashboardCharts markets={markets} positions={positions} />
+      <UserDashboardCharts markets={markets} positions={positions} wins={wins} losses={losses} />
 
       {/* ── PLATFORM INFO ── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }} className="dash-sec-grid">
@@ -1447,7 +1451,7 @@ function ShareModal({ open, onClose, question }) {
 ════════════════════════════════════════════════ */
 
 const PROTOCOL_FEE_PCT = 5;   // 5% platform fee
-const MIN_STAKE        = 2;   // $2 minimum
+const MIN_STAKE        = 1;   // $1 minimum
 
 /** Live countdown — re-renders every second */
 function Countdown({ deadline }) {
@@ -3340,7 +3344,7 @@ function AdminBarChart({ markets }) {
  * User-facing dashboard platform breakdown charts.
  * Shows: category distribution donut + market status bars + YES/NO pool split.
  */
-function UserDashboardCharts({ markets, positions }) {
+function UserDashboardCharts({ markets, positions, wins = 0, losses = 0 }) {
   const [hovCat, setHovCat] = useState(null);
   const [hovStatus, setHovStatus] = useState(null);
 
@@ -3362,10 +3366,13 @@ function UserDashboardCharts({ markets, positions }) {
   }));
   const maxStatus = Math.max(...statusCounts.map((s) => s.value), 1);
 
-  // — Position side breakdown —
+  // — Position side breakdown (all positions, not just open) —
   const yesPositions = positions.filter((p) => p.side === "YES").length;
   const noPositions  = positions.filter((p) => p.side === "NO").length;
-  const totalPos = yesPositions + noPositions || 1;
+  const totalPos     = yesPositions + noPositions || 1;
+
+  // — Win / Loss breakdown (resolved positions only) —
+  const totalResolved = wins + losses;
 
   if (markets.length === 0 && positions.length === 0) return null;
 
@@ -3384,7 +3391,7 @@ function UserDashboardCharts({ markets, positions }) {
         )}
       </GCard>
 
-      {/* Market status bars + my positions split */}
+      {/* Right panel: market status + my positions breakdown */}
       <GCard style={{ padding: "18px 22px" }}>
         <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px" }}>
           Market Status Breakdown
@@ -3415,13 +3422,13 @@ function UserDashboardCharts({ markets, positions }) {
           ))}
         </div>
 
-        {/* My positions YES/NO split */}
+        {/* My positions: YES/NO split */}
         {positions.length > 0 && (
           <>
             <p style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 10px" }}>
-              My Positions Split
+              My Positions — YES / NO
             </p>
-            <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ display: "flex", gap: 10, marginBottom: 8 }}>
               <div style={{ flex: yesPositions || 1, padding: "10px", borderRadius: 8, background: T.yesBg, border: `1px solid ${T.yesBorder}`, textAlign: "center" }}>
                 <p style={{ fontSize: 18, fontWeight: 800, color: T.yes, margin: 0 }}>{yesPositions}</p>
                 <p style={{ fontSize: 10, color: T.yes, margin: "2px 0 0", opacity: 0.7 }}>YES</p>
@@ -3431,13 +3438,39 @@ function UserDashboardCharts({ markets, positions }) {
                 <p style={{ fontSize: 10, color: T.no, margin: "2px 0 0", opacity: 0.7 }}>NO</p>
               </div>
             </div>
-            <div style={{ marginTop: 8, height: 6, borderRadius: 3, background: T.noBg, overflow: "hidden", border: `1px solid ${T.noBorder}` }}>
+            <div style={{ height: 6, borderRadius: 3, background: T.noBg, overflow: "hidden", border: `1px solid ${T.noBorder}` }}>
               <div style={{ width: `${(yesPositions / totalPos) * 100}%`, height: "100%", background: T.yes, borderRadius: 3, transition: "width 0.5s ease" }} />
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, marginBottom: 14 }}>
               <span style={{ fontSize: 10, color: T.yes, fontWeight: 700 }}>{Math.round((yesPositions / totalPos) * 100)}% YES</span>
-              <span style={{ fontSize: 10, color: T.no, fontWeight: 700 }}>{Math.round((noPositions / totalPos) * 100)}% NO</span>
+              <span style={{ fontSize: 10, color: T.no,  fontWeight: 700 }}>{Math.round((noPositions  / totalPos) * 100)}% NO</span>
             </div>
+
+            {/* Resolved: Wins / Losses */}
+            {totalResolved > 0 && (
+              <>
+                <p style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 10px" }}>
+                  Resolved — Wins / Losses
+                </p>
+                <div style={{ display: "flex", gap: 10, marginBottom: 8 }}>
+                  <div style={{ flex: wins || 1, padding: "10px", borderRadius: 8, background: T.yesBg, border: `1px solid ${T.yesBorder}`, textAlign: "center" }}>
+                    <p style={{ fontSize: 18, fontWeight: 800, color: T.yes, margin: 0 }}>{wins}</p>
+                    <p style={{ fontSize: 10, color: T.yes, margin: "2px 0 0", opacity: 0.7 }}>Won</p>
+                  </div>
+                  <div style={{ flex: losses || 1, padding: "10px", borderRadius: 8, background: T.noBg, border: `1px solid ${T.noBorder}`, textAlign: "center" }}>
+                    <p style={{ fontSize: 18, fontWeight: 800, color: T.no, margin: 0 }}>{losses}</p>
+                    <p style={{ fontSize: 10, color: T.no, margin: "2px 0 0", opacity: 0.7 }}>Lost</p>
+                  </div>
+                </div>
+                <div style={{ height: 6, borderRadius: 3, background: T.noBg, overflow: "hidden", border: `1px solid ${T.noBorder}` }}>
+                  <div style={{ width: `${(wins / totalResolved) * 100}%`, height: "100%", background: T.yes, borderRadius: 3, transition: "width 0.5s ease" }} />
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+                  <span style={{ fontSize: 10, color: T.yes, fontWeight: 700 }}>{Math.round((wins   / totalResolved) * 100)}% Win</span>
+                  <span style={{ fontSize: 10, color: T.no,  fontWeight: 700 }}>{Math.round((losses / totalResolved) * 100)}% Loss</span>
+                </div>
+              </>
+            )}
           </>
         )}
       </GCard>

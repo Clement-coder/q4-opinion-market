@@ -12,7 +12,7 @@ import {
   DEMO_PRICE_DATA,
   DEMO_QI_CODE,
 } from "../data/demoData";
-import { demoStore } from "../data/demoStore";
+import { demoStore, setCachedQuaiPrice } from "../data/demoStore";
 import {
   getOrCreateWallet,
   getWalletBalance,
@@ -105,18 +105,41 @@ export function WalletProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    // ── Demo mode: skip all network calls, inject store data ──
+    // ── Demo mode: fetch live QUAI price, then inject store data ──
     if (DEMO_MODE) {
-      const load = () => {
+      const load = async () => {
         setWalletAddress(DEMO_WALLET_ADDRESS);
         setQiCode(DEMO_QI_CODE);
-        setBalance(demoStore.get("balance"));
-        setPriceData(DEMO_PRICE_DATA);
+
+        // Fetch real QUAI price; fall back to DEMO_PRICE_DATA on failure
+        let priceResult = DEMO_PRICE_DATA;
+        try {
+          priceResult = await getQuaiPriceFull(7);
+        } catch {
+          /* network unavailable — keep the demo fallback */
+        }
+        const livePrice = priceResult?.current?.price ?? DEMO_PRICE_DATA.current.price;
+
+        // Cache the live price so demoStake / demoClaim use it for QUAI conversions
+        setCachedQuaiPrice(livePrice);
+
+        // Always present exactly $4.00 USDT, converted to QUAI at the live rate
+        const USDT_AMOUNT = 4.00;
+        const storedBal   = demoStore.get("balance");
+        // Only reset to $4 if the stored balance is still at the seed usd value
+        // (avoids resetting after the user has staked some away)
+        const currentUsd  = storedBal.usd;
+        const quaiEquiv   = parseFloat((currentUsd / livePrice).toFixed(4));
+        const newBalance  = { quai: quaiEquiv, usd: currentUsd };
+        demoStore.set("balance", newBalance);
+
+        setPriceData(priceResult);
+        setBalance(newBalance);
         setTransactions(demoStore.get("transactions"));
         setLoading(false);
       };
       load();
-      // Refresh when the tab regains focus (e.g. after staking navigates back)
+      // Refresh balance display when user returns to the tab
       window.addEventListener("focus", load);
       return () => window.removeEventListener("focus", load);
     }
@@ -133,9 +156,22 @@ export function WalletProvider({ children }) {
     }
   }, [user?.uid, loadWallet]);
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback(async () => {
     if (DEMO_MODE) {
-      setBalance(demoStore.get("balance"));
+      setRefreshing(true);
+      // Re-fetch live price on manual refresh too
+      let priceResult = DEMO_PRICE_DATA;
+      try {
+        priceResult = await getQuaiPriceFull(7);
+      } catch { /* keep fallback */ }
+      const livePrice = priceResult?.current?.price ?? DEMO_PRICE_DATA.current.price;
+      setCachedQuaiPrice(livePrice);
+      const storedBal = demoStore.get("balance");
+      const quaiEquiv = parseFloat((storedBal.usd / livePrice).toFixed(4));
+      const newBalance = { quai: quaiEquiv, usd: storedBal.usd };
+      demoStore.set("balance", newBalance);
+      setBalance(newBalance);
+      setPriceData(priceResult);
       setTransactions(demoStore.get("transactions"));
       setRefreshing(false);
       return;

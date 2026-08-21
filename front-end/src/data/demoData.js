@@ -10,9 +10,12 @@
 /* ── Wallet ──────────────────────────────────────────────────── */
 export const DEMO_WALLET_ADDRESS = "0x3fA8D62c5E9b4F7a1C20E456B8dA7e3F90c12bD4";
 
+// Starting balance: $4.00 USDT.
+// The QUAI equivalent is computed at runtime from the live price
+// (see WalletContext demo init). This object is only the seed fallback.
 export const DEMO_BALANCE = {
-  quai: 9326.45,
-  usd:  14.00,
+  quai: 0,     // overwritten by WalletContext using live price
+  usd:  4.00,
 };
 
 const _now  = Date.now();
@@ -138,7 +141,7 @@ export const DEMO_MARKETS = [
 ];
 
 /* ── Positions ───────────────────────────────────────────────── */
-const _pos = (id, q, cat, side, amount, pool, status, closesLabel) => ({
+const _pos = (id, q, cat, side, amount, pool, status, closesLabel, won = null) => ({
   id,
   question:        q,
   category:        cat,
@@ -150,7 +153,7 @@ const _pos = (id, q, cat, side, amount, pool, status, closesLabel) => ({
   stakeTxHash:     null,
   refundTxHash:    null,
   contractAddress: null,
-  won: status === "resolved" ? side === "YES" : null,
+  won: status === "resolved" ? (won !== null ? won : side === "YES") : null,
 });
 
 export const DEMO_POSITIONS = [
@@ -158,11 +161,20 @@ export const DEMO_POSITIONS = [
   _pos("pos-002", "Will ETH price exceed $2,400 by market close?",    "Crypto", "NO",  15.00, 5000, "active",   "5h 12m"),
   _pos("pos-003", "Will QUAI rise more than 3% in the next 6 hours?", "Crypto", "YES", 10.00, 3300, "active",   "6h 00m"),
   _pos("pos-004", "Will BTC dominance stay above 52% today?",         "Crypto", "YES", 20.00, 4000, "closed",   "Closes soon"),
-  _pos("pos-005", "Will SOL trade above $145 before midnight UTC?",    "Crypto", "NO",  12.00, 4000, "resolved", "Aug 19, 18:00"),
-  _pos("pos-006", "Will ETH gas fees drop below 10 Gwei tonight?",    "Crypto", "YES",  8.00, 2400, "resolved", "Aug 18, 22:00"),
+  // ── this one matches res-001 and rwd-001 ──────────────────────────────
+  // side=NO, outcome=NO → user picked the winning side → won=true
+  _pos("pos-005", "Will SOL trade above $145 before midnight UTC?",   "Crypto", "NO",  12.00, 4000, "resolved", "Aug 19, 18:00", true),
+  // side=YES, outcome=NO → user picked the losing side → won=false
+  _pos("pos-006", "Will ETH gas fees drop below 10 Gwei tonight?",    "Crypto", "YES",  8.00, 2400, "resolved", "Aug 18, 22:00", false),
 ];
 
 /* ── Results ─────────────────────────────────────────────────── */
+// res-001 matches pos-005 and rwd-001:
+//   question  = "Will SOL trade above $145 before midnight UTC?"
+//   outcome   = NO  (market resolved NO)
+//   yourSide  = NO  (user picked NO → won)
+//   yourStake = 12.00 (matches pos-005 amount)
+//   reward    = 8.74  (matches rwd-001 reward)
 export const DEMO_RESULTS = [
   {
     id:        "res-001",
@@ -219,6 +231,11 @@ export const DEMO_RESULTS = [
 ];
 
 /* ── Rewards ─────────────────────────────────────────────────── */
+// rwd-001 matches pos-005 and res-001:
+//   question  = "Will SOL trade above $145 before midnight UTC?"
+//   outcome   = NO
+//   reward    = 8.74
+//   settledAt = "Aug 19, 18:00"
 export const DEMO_REWARDS = [
   {
     id:        "rwd-001",
@@ -258,7 +275,7 @@ export const DEMO_NOTIFICATIONS = [
     id:    "notif-001",
     type:  "reward",
     title: "🎉 You won! Claim your reward",
-    body:  "SOL stayed below $145. Your NO position earned 8.74 QUAI.",
+    body:  "SOL stayed below $145. Your NO position earned 8.74 QUAI.",  // matches pos-005 / res-001 / rwd-001
     time:  "2h ago",
     read:  false,
   },

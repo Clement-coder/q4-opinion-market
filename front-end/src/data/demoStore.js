@@ -23,7 +23,7 @@ import {
 } from "./demoData";
 
 const NS = "q4_demo_";          // localStorage namespace
-const VERSION = "v1";           // bump to force re-seed
+const VERSION = "v2";           // bump to force re-seed
 const VER_KEY = NS + "version";
 
 // ── seed defaults ─────────────────────────────────────────────
@@ -68,11 +68,21 @@ export const demoStore = {
   },
 };
 
-// ── helpers used by hooks ─────────────────────────────────────
+// ── live price cache ──────────────────────────────────────────
+// Written by WalletContext when it fetches the real QUAI price.
+// Falls back to the last known demo price if unavailable.
+const FALLBACK_QUAI_PRICE = 0.001501;
+let _cachedQuaiPrice = FALLBACK_QUAI_PRICE;
 
-/** Called when user stakes on a market in demo mode */
+export function setCachedQuaiPrice(price) {
+  if (price && price > 0) _cachedQuaiPrice = price;
+}
+
+export function getCachedQuaiPrice() {
+  return _cachedQuaiPrice;
+}
 export function demoStake({ market, side, amtNum }) {
-  const QUAI_PRICE = 0.001501;
+  const QUAI_PRICE = getCachedQuaiPrice();
   const quaiAmt    = parseFloat((amtNum / QUAI_PRICE).toFixed(4));
 
   // 1. Add position
@@ -131,7 +141,7 @@ export function demoStake({ market, side, amtNum }) {
 
 /** Called when user claims a reward in demo mode */
 export function demoClaim(rewardId) {
-  const QUAI_PRICE = 0.001501;
+  const QUAI_PRICE = getCachedQuaiPrice();
   const rewards  = demoStore.get("rewards");
   const reward   = rewards.find(r => r.id === rewardId);
   if (!reward) return;

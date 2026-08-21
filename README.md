@@ -23,7 +23,7 @@ Generate → Predict → Wait → Verify → Resolve → Payout
 
 | Rule | Detail |
 |---|---|
-| Minimum stake | $2 USDT per position |
+| Minimum stake | $1 USDT per position |
 | Multiple positions | Allowed — stake as many times as you like |
 | Side locking | Your YES/NO answer locks permanently after the first confirmed stake |
 | Balance check | USDT balance is verified before every stake |
