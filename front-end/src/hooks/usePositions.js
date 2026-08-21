@@ -2,14 +2,27 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { onChainWithdrawRefund } from "../lib/contractService";
+import { DEMO_MODE } from "./useDemoMode";
+import { demoStore } from "../data/demoStore";
 
 export function usePositions() {
   const { profile, user, loading: authLoading } = useAuth();
   const [positions,       setPositions]       = useState([]);
   const [loading,         setLoading]         = useState(true);
   const [error,           setError]           = useState(null);
-  const [withdrawing,     setWithdrawing]     = useState(null); // position id being refunded
+  const [withdrawing,     setWithdrawing]     = useState(null);
   const channelRef = useRef(null);
+
+  // ── Demo mode ──
+  useEffect(() => {
+    if (!DEMO_MODE) return;
+    setPositions(demoStore.get("positions"));
+    setLoading(false);
+    // Re-read on focus so staking immediately reflects in My Positions
+    const sync = () => setPositions(demoStore.get("positions"));
+    window.addEventListener("focus", sync);
+    return () => window.removeEventListener("focus", sync);
+  }, []);
 
   const fetchPositions = useCallback(async (userId) => {
     if (!userId) { setPositions([]); setLoading(false); return; }
@@ -33,12 +46,14 @@ export function usePositions() {
 
   // Fetch when auth settles
   useEffect(() => {
+    if (DEMO_MODE) return; // demo data already set above
     if (authLoading) return;
     fetchPositions(profile?.id ?? null);
   }, [authLoading, profile?.id, fetchPositions]);
 
   // Real-time — create channel only once per userId, tear down on change
   useEffect(() => {
+    if (DEMO_MODE) return;
     if (!profile?.id) return;
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);

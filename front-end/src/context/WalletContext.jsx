@@ -6,6 +6,13 @@
 
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { useAuth } from "./AuthContext";
+import { DEMO_MODE } from "../hooks/useDemoMode";
+import {
+  DEMO_WALLET_ADDRESS,
+  DEMO_PRICE_DATA,
+  DEMO_QI_CODE,
+} from "../data/demoData";
+import { demoStore } from "../data/demoStore";
 import {
   getOrCreateWallet,
   getWalletBalance,
@@ -98,6 +105,22 @@ export function WalletProvider({ children }) {
   }, []);
 
   useEffect(() => {
+    // ── Demo mode: skip all network calls, inject store data ──
+    if (DEMO_MODE) {
+      const load = () => {
+        setWalletAddress(DEMO_WALLET_ADDRESS);
+        setQiCode(DEMO_QI_CODE);
+        setBalance(demoStore.get("balance"));
+        setPriceData(DEMO_PRICE_DATA);
+        setTransactions(demoStore.get("transactions"));
+        setLoading(false);
+      };
+      load();
+      // Refresh when the tab regains focus (e.g. after staking navigates back)
+      window.addEventListener("focus", load);
+      return () => window.removeEventListener("focus", load);
+    }
+
     if (user?.uid) {
       loadWallet(user.uid);
     } else {
@@ -111,6 +134,12 @@ export function WalletProvider({ children }) {
   }, [user?.uid, loadWallet]);
 
   const refresh = useCallback(() => {
+    if (DEMO_MODE) {
+      setBalance(demoStore.get("balance"));
+      setTransactions(demoStore.get("transactions"));
+      setRefreshing(false);
+      return;
+    }
     if (user?.uid) loadWallet(user.uid, true);
   }, [user?.uid, loadWallet]);
 

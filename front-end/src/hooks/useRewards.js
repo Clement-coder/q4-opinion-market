@@ -2,6 +2,8 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { onChainClaimReward } from "../lib/contractService";
+import { DEMO_MODE } from "./useDemoMode";
+import { demoStore, demoClaim } from "../data/demoStore";
 
 export function useRewards() {
   const { profile, user, loading: authLoading } = useAuth();
@@ -10,6 +12,16 @@ export function useRewards() {
   const [claiming, setClaiming] = useState(null);
   const [error,    setError]    = useState(null);
   const channelRef = useRef(null);
+
+  // ── Demo mode ──
+  useEffect(() => {
+    if (!DEMO_MODE) return;
+    setRewards(demoStore.get("rewards"));
+    setLoading(false);
+    const sync = () => setRewards(demoStore.get("rewards"));
+    window.addEventListener("focus", sync);
+    return () => window.removeEventListener("focus", sync);
+  }, []);
 
   const fetchRewards = useCallback(async (userId) => {
     if (!userId) { setRewards([]); setLoading(false); return; }
@@ -47,12 +59,14 @@ export function useRewards() {
   }, []);
 
   useEffect(() => {
+    if (DEMO_MODE) return;
     if (authLoading) return;
     fetchRewards(profile?.id ?? null);
   }, [authLoading, profile?.id, fetchRewards]);
 
   // Real-time with safe channel management
   useEffect(() => {
+    if (DEMO_MODE) return;
     if (!profile?.id) return;
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
@@ -86,6 +100,16 @@ export function useRewards() {
    * we fall back to Supabase-only claiming.
    */
   const claimReward = useCallback(async (rewardId) => {
+    // ── Demo mode: persist claim to store ──
+    if (DEMO_MODE) {
+      setClaiming(rewardId);
+      await new Promise(r => setTimeout(r, 900));
+      demoClaim(rewardId);
+      setRewards(demoStore.get("rewards"));
+      setClaiming(null);
+      return;
+    }
+
     if (!profile?.id || !user?.uid) return;
 
     const reward = rewards.find(r => r.id === rewardId);

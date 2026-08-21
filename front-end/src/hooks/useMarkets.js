@@ -5,13 +5,27 @@
  */
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "../lib/supabase";
+import { DEMO_MODE } from "./useDemoMode";
+import { DEMO_MARKETS } from "../data/demoData";
 
 export function useMarkets({ category = null, status = "active", limit = 100 } = {}) {
   const [markets,  setMarkets]  = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState(null);
 
+  // ── Demo mode ──
+  useEffect(() => {
+    if (!DEMO_MODE) return;
+    let filtered = DEMO_MARKETS;
+    if (category && category !== "all") {
+      filtered = filtered.filter(m => m.category.toLowerCase() === category.toLowerCase());
+    }
+    setMarkets(filtered.slice(0, limit));
+    setLoading(false);
+  }, [category, limit]);
+
   const fetchMarkets = useCallback(async () => {
+    if (DEMO_MODE) return; // no-op in demo mode
     setLoading(true);
     setError(null);
 
@@ -107,6 +121,14 @@ export function useMarket(id) {
 
   useEffect(() => {
     if (!id) { setLoading(false); return; }
+
+    // ── Demo mode ──
+    if (DEMO_MODE) {
+      const found = DEMO_MARKETS.find(m => m.id === id) ?? DEMO_MARKETS[0];
+      setMarket(found);
+      setLoading(false);
+      return;
+    }
 
     const fetch = async () => {
       setLoading(true);

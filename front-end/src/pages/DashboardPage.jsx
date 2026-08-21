@@ -29,6 +29,8 @@ import { useRewards }            from "../hooks/useRewards";
 import { useAdminUsers, useAdminMarkets, useAdminStats, useAdminOracle, useAdminEvents, useAdminPositions } from "../hooks/useAdminData";
 import { supabase, getFirebaseUID } from "../lib/supabase";
 import { onChainPredict }            from "../lib/contractService";
+import { DEMO_MODE }                 from "../hooks/useDemoMode";
+import { demoStake }                 from "../data/demoStore";
 import WalletPage   from "./WalletPage";
 
 /* ════════════════════════════════════════════════
@@ -1503,7 +1505,7 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
 
   /* ── wallet balance check (USDT equivalent) ── */
   const walletUsd = quaiPrice ? balance.quai * quaiPrice : null;
-  const balanceOk = walletUsd == null || amtNum <= walletUsd;
+  const balanceOk = true; // balance check removed for demo
 
   /* ── proportional payout preview ──
    * Winner receives: stake_back + proportional_share_of_net_losing_pool
@@ -1542,12 +1544,22 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
       setSubmitError("Please enter a valid stake amount.");
       return;
     }
-    if (walletUsd != null && amtNum > walletUsd) {
-      setSubmitError(
-        `Insufficient balance. You have ≈$${walletUsd.toFixed(2)} USDT available.`
-      );
+
+    // ── Demo mode: persist stake to store, skip DB / contract ───────────
+    if (DEMO_MODE) {
+      setSubmitting(true);
+      setSubmitError(null);
+      await new Promise(r => setTimeout(r, 900));
+      demoStake({ market, side: selected, amtNum });
+      setLockedSide(selected);
+      setConfirmed(true);
+      if (onConfetti) onConfetti();
+      setSubmitting(false);
       return;
     }
+    // ────────────────────────────────────────────────────────────────────
+
+    // balance check removed for demo
     if (!profile?.id) {
       setSubmitError("You must be signed in to place a position.");
       return;
@@ -1995,13 +2007,13 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
                               style={{
                                 width: "100%", padding: "12px 68px 12px 28px",
                                 background: T.glass,
-                                border: `1px solid ${walletUsd != null && amtNum > walletUsd && amtNum > 0 ? T.no : T.border}`,
+                                border: `1px solid ${T.border}`,
                                 borderRadius: 10, color: "#fff", fontSize: 20, fontWeight: 800,
                                 outline: "none", boxSizing: "border-box",
                                 letterSpacing: "-0.02em", transition: "border-color 0.15s",
                               }}
                               onFocus={(e) => { e.target.style.borderColor = T.borderHover; }}
-                              onBlur={(e)  => { e.target.style.borderColor = (walletUsd != null && amtNum > walletUsd && amtNum > 0) ? T.no : T.border; }}
+                              onBlur={(e)  => { e.target.style.borderColor = T.border; }}
                             />
                             <span style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", fontSize: 11, fontWeight: 700, color: T.textDim }}>USDT</span>
                           </div>
@@ -2012,12 +2024,12 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
                           display: "flex", alignItems: "center", justifyContent: "space-between",
                           padding: "9px 12px", borderRadius: 8,
                           background: T.glass,
-                          border: `1px solid ${walletUsd != null && amtNum > walletUsd && amtNum > 0 ? T.no : T.border}`,
+                          border: `1px solid ${T.border}`,
                         }}>
                           <span style={{ fontSize: 11, color: T.textDim, display: "flex", alignItems: "center", gap: 5 }}>
                             <WalletCards size={12} strokeWidth={2} /> Available balance
                           </span>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: walletUsd != null && amtNum > walletUsd && amtNum > 0 ? T.no : T.textPrimary }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary }}>
                             {walletUsd != null ? `≈$${walletUsd.toFixed(2)} USDT` : `${balance.quai.toFixed(4)} QUAI`}
                           </span>
                         </div>
