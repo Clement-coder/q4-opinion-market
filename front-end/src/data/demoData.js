@@ -52,39 +52,46 @@ export const DEMO_PRICE_DATA = {
 
 export const DEMO_TRANSACTIONS = [
   {
-    // Topped up via BlipPay — received 5 USDT worth of QUAI
     id:        "tx-001",
     type:      "received",
     status:    "confirmed",
     label:     "Top-up via BlipPay",
     from:      "0xBlipPay0000000000000000000000000000001",
     to:        DEMO_WALLET_ADDRESS,
-    amount:    3331.1126,   // ~$5 at 0.001501/QUAI
-    timestamp: new Date(_now - 4 * 3_600_000).toISOString(),
+    amount:    666.2225,   // ~$1 USDT at live price
+    timestamp: new Date(_now - 5 * 3_600_000).toISOString(),
   },
   {
-    // Staked $2 on BTC market
     id:        "tx-002",
+    type:      "received",
+    status:    "confirmed",
+    label:     "Top-up via BlipPay",
+    from:      "0xBlipPay0000000000000000000000000000001",
+    to:        DEMO_WALLET_ADDRESS,
+    amount:    666.2225,   // ~$1 USDT at live price
+    timestamp: new Date(_now - 3 * 3_600_000).toISOString(),
+  },
+  {
+    id:        "tx-003",
+    type:      "received",
+    status:    "confirmed",
+    label:     "Top-up via BlipPay",
+    from:      "0xBlipPay0000000000000000000000000000001",
+    to:        DEMO_WALLET_ADDRESS,
+    amount:    666.2225,   // ~$1 USDT at live price
+    timestamp: new Date(_now - 90 * 60_000).toISOString(),
+  },
+  {
+    id:        "tx-004",
     type:      "sent",
     status:    "confirmed",
     label:     "Staked — BTC above $62K",
     from:      DEMO_WALLET_ADDRESS,
     to:        "0xQ4Market0000000000000000000000000000001",
-    amount:    1332.4450,   // ~$2 at 0.001501/QUAI
-    timestamp: new Date(_now - 2 * 3_600_000).toISOString(),
-  },
-  {
-    // Staked $1 on ETH market
-    id:        "tx-003",
-    type:      "sent",
-    status:    "confirmed",
-    label:     "Staked — ETH above $2,400",
-    from:      DEMO_WALLET_ADDRESS,
-    to:        "0xQ4Market0000000000000000000000000000002",
-    amount:    666.2225,    // ~$1 at 0.001501/QUAI
+    amount:    666.2225,   // ~$1 USDT at live price
     timestamp: new Date(_now - 45 * 60_000).toISOString(),
   },
-  // Net: +3331.11 − 1332.44 − 666.22 = 1332.45 QUAI ≈ $2.00 USDT ✓
+  // Net: 3 × 666.22 − 666.22 = 1,332.44 QUAI ≈ $2.00 USDT ✓
 ];
 
 export const DEMO_QI_CODE = "qicode_q4demo_0x3fA8D6_zone00_2026";
