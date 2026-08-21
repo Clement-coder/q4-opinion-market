@@ -111,32 +111,32 @@ export function WalletProvider({ children }) {
         setWalletAddress(DEMO_WALLET_ADDRESS);
         setQiCode(DEMO_QI_CODE);
 
-        // Fetch real QUAI price; fall back to DEMO_PRICE_DATA on failure
-        let priceResult = DEMO_PRICE_DATA;
-        try {
-          priceResult = await getQuaiPriceFull(7);
-        } catch {
-          /* network unavailable — keep the demo fallback */
-        }
-        const livePrice = priceResult?.current?.price ?? DEMO_PRICE_DATA.current.price;
-
-        // Cache the live price so demoStake / demoClaim use it for QUAI conversions
-        setCachedQuaiPrice(livePrice);
-
-        // Always present exactly $2.00 USDT, converted to QUAI at the live rate
-        const USDT_AMOUNT = 2.00;
-        const storedBal   = demoStore.get("balance");
-        // Only reset to $4 if the stored balance is still at the seed usd value
-        // (avoids resetting after the user has staked some away)
-        const currentUsd  = storedBal.usd;
-        const quaiEquiv   = parseFloat((currentUsd / livePrice).toFixed(4));
-        const newBalance  = { quai: quaiEquiv, usd: currentUsd };
-        demoStore.set("balance", newBalance);
-
-        setPriceData(priceResult);
-        setBalance(newBalance);
+        // Show stored data immediately so the UI is never blank
+        const storedBal = demoStore.get("balance");
+        setBalance(storedBal);
         setTransactions(demoStore.get("transactions"));
+        setPriceData(DEMO_PRICE_DATA);
         setLoading(false);
+
+        // Fetch real QUAI price in the background; update display if it arrives
+        try {
+          const priceResult = await getQuaiPriceFull(7);
+          const livePrice   = priceResult?.current?.price ?? DEMO_PRICE_DATA.current.price;
+
+          // Cache the live price so demoStake / demoClaim use it for QUAI conversions
+          setCachedQuaiPrice(livePrice);
+
+          // Recompute QUAI equivalent at live rate, keep current USD amount
+          const currentUsd = demoStore.get("balance").usd;
+          const quaiEquiv  = parseFloat((currentUsd / livePrice).toFixed(4));
+          const newBalance = { quai: quaiEquiv, usd: currentUsd };
+          demoStore.set("balance", newBalance);
+
+          setPriceData(priceResult);
+          setBalance(newBalance);
+        } catch {
+          /* network unavailable — keep the demo fallback already shown */
+        }
       };
       load();
       // Refresh balance display when user returns to the tab
@@ -159,20 +159,22 @@ export function WalletProvider({ children }) {
   const refresh = useCallback(async () => {
     if (DEMO_MODE) {
       setRefreshing(true);
-      // Re-fetch live price on manual refresh too
-      let priceResult = DEMO_PRICE_DATA;
-      try {
-        priceResult = await getQuaiPriceFull(7);
-      } catch { /* keep fallback */ }
-      const livePrice = priceResult?.current?.price ?? DEMO_PRICE_DATA.current.price;
-      setCachedQuaiPrice(livePrice);
+      // Show stored data immediately
       const storedBal = demoStore.get("balance");
-      const quaiEquiv = parseFloat((storedBal.usd / livePrice).toFixed(4));
-      const newBalance = { quai: quaiEquiv, usd: storedBal.usd };
-      demoStore.set("balance", newBalance);
-      setBalance(newBalance);
-      setPriceData(priceResult);
+      setBalance(storedBal);
       setTransactions(demoStore.get("transactions"));
+      // Re-fetch live price in background
+      try {
+        const priceResult = await getQuaiPriceFull(7);
+        const livePrice   = priceResult?.current?.price ?? DEMO_PRICE_DATA.current.price;
+        setCachedQuaiPrice(livePrice);
+        const currentUsd = demoStore.get("balance").usd;
+        const quaiEquiv  = parseFloat((currentUsd / livePrice).toFixed(4));
+        const newBalance = { quai: quaiEquiv, usd: currentUsd };
+        demoStore.set("balance", newBalance);
+        setBalance(newBalance);
+        setPriceData(priceResult);
+      } catch { /* keep fallback */ }
       setRefreshing(false);
       return;
     }
