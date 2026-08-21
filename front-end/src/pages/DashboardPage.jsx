@@ -701,7 +701,7 @@ function PageDashboard({ onNavigate }) {
             {balance.quai.toFixed(4)}<QuaiLogo size={20} style={{ marginLeft: 4, opacity: 0.9 }} />
           </p>
           <p style={{ fontSize: 12, color: T.textDim, margin: "5px 0 0" }}>
-            {balance.usd > 0 ? `≈ $${balance.usd.toFixed(2)} USD` : quaiPrice ? "—" : "Loading…"}
+            {balance.usd > 0 ? `≈ $${balance.usd.toFixed(2)} USDT` : quaiPrice ? "—" : "Loading…"}
           </p>
         </GCard>
 
@@ -857,7 +857,7 @@ function InteractivePriceChart({ history, priceChange, quaiPrice }) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0, display: "flex", alignItems: "center", gap: 5 }}>
-            <QuaiLogo size={14} /> QUAI / USD — 7 Day
+            <QuaiLogo size={14} /> QUAI / USDT — 7 Day
           </p>
           {hovered && (
             <span style={{ fontSize: 12, color: "#ffffff", fontWeight: 700 }}>${hovered.price.toFixed(6)}</span>
@@ -1526,11 +1526,9 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
   const myShare         = newWinPool > 0 ? (amtNum / newWinPool) * netLosing : 0;
   const estimatedPayout = amtNum + myShare;
 
-  /* ── YES / NO selection
-   * Free to toggle before first stake; locked to one side after. ── */
+  /* ── YES / NO selection — always free to toggle ── */
   const handleSelect = (side) => {
     if (!isOpen) return;
-    if (lockedSide && side !== lockedSide) return; // answer is locked
     setSelected(side);
     setAmount("");
     setConfirmed(false);
@@ -1784,12 +1782,12 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
                     {
                       n: "1",
                       title: "Pick YES or NO",
-                      body: "Choose YES if you think the event will happen, NO if it won't. You can freely switch before your first stake. Once you confirm your first stake your answer is permanently locked.",
+                      body: "Choose YES if you think the event will happen, NO if it won't. You can switch sides any time before confirming your stake.",
                     },
                     {
                       n: "2",
                       title: "Enter your stake",
-                      body: `Minimum $${MIN_STAKE} USDT per position. Your available USDT balance is shown and checked before every stake. You can open as many new positions as you like on your locked side while the market is open.`,
+                      body: `Minimum $${MIN_STAKE} USDT per position. Your available USDT balance is shown and checked before every stake. You can open as many positions as you like while the market is open.`,
                     },
                     {
                       n: "3",
@@ -1869,9 +1867,7 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
                     {[
                       `Minimum stake per position: $${MIN_STAKE} USDT.`,
                       "You must have enough USDT balance to stake — checked on every position.",
-                      "You can freely choose YES or NO before your first confirmed stake.",
-                      "Once you confirm a stake your answer is permanently locked — you cannot switch sides.",
-                      "You can open additional positions on your locked side as many times as you like before the market closes.",
+                      "You can freely choose or switch YES or NO before confirming each stake.",
                       "Each confirmed position is final and cannot be cancelled or withdrawn.",
                     ].map((rule, i) => (
                       <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 6 }}>
@@ -1942,8 +1938,6 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
                           </div>
                         );
                         const isActive  = selected === side;
-                        const isLocked  = lockedSide !== null;
-                        const isBlocked = isLocked && side !== lockedSide;
                         const isYes     = side === "YES";
                         const col  = isYes ? "#22c55e" : "#ef4444";
                         const colB = isYes ? "rgba(34,197,94,0.18)" : "rgba(239,68,68,0.18)";
@@ -1951,46 +1945,27 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
                         return (
                           <button key={side} type="button"
                             onClick={() => handleSelect(side)}
-                            disabled={isBlocked}
-                            title={isBlocked ? `Your answer is locked to ${lockedSide}.` : undefined}
                             style={{
                               padding: "20px 8px", borderRadius: 12,
                               border: isActive
                                 ? `2px solid ${col}`
-                                : isBlocked
-                                  ? "1px solid rgba(255,255,255,0.05)"
-                                  : `1px solid ${isYes ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)"}`,
+                                : `1px solid ${isYes ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)"}`,
                               background: isActive
                                 ? colB
-                                : isBlocked
-                                  ? "rgba(255,255,255,0.02)"
-                                  : isYes ? "rgba(34,197,94,0.04)" : "rgba(239,68,68,0.04)",
-                              cursor: isBlocked ? "not-allowed" : "pointer",
-                              opacity: isBlocked ? 0.25 : 1,
+                                : isYes ? "rgba(34,197,94,0.04)" : "rgba(239,68,68,0.04)",
+                              cursor: "pointer",
+                              opacity: 1,
                               transition: "all 0.2s cubic-bezier(0.34,1.56,0.64,1)",
                               boxShadow: isActive ? `0 0 24px ${glow}` : "none",
                               transform: isActive ? "translateY(-2px) scale(1.03)" : "scale(1)",
                               display: "flex", flexDirection: "column", alignItems: "center", gap: 5,
                             }}>
-                            <span style={{ fontFamily: "'YapariTrial','Yapari Trial','Yapari',sans-serif", fontSize: 22, fontWeight: 900, color: isBlocked ? T.textDim : col, lineHeight: 1 }}>{side}</span>
-                            {isLocked && !isBlocked
-                              ? <span style={{ fontSize: 9, fontWeight: 800, color: col, letterSpacing: "0.06em" }}>LOCKED ✓</span>
-                              : <span style={{ fontSize: 11, color: isBlocked ? T.textDim : T.textMuted, fontWeight: 500 }}>{isYes ? "It will" : "It won't"}</span>
-                            }
+                            <span style={{ fontFamily: "'YapariTrial','Yapari Trial','Yapari',sans-serif", fontSize: 22, fontWeight: 900, color: col, lineHeight: 1 }}>{side}</span>
+                            <span style={{ fontSize: 11, color: T.textMuted, fontWeight: 500 }}>{isYes ? "It will" : "It won't"}</span>
                           </button>
                         );
                       })}
                     </div>
-
-                    {/* Lock notice — shown once user has staked */}
-                    {lockedSide && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 8, background: lockedSide === "YES" ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)", border: `1px solid ${lockedSide === "YES" ? T.yesBorder : T.noBorder}`, marginBottom: 12 }}>
-                        <Lock2 size={12} strokeWidth={2} style={{ color: lockedSide === "YES" ? T.yes : T.no, flexShrink: 0 }} />
-                        <p style={{ fontSize: 11, color: lockedSide === "YES" ? T.yes : T.no, margin: 0, lineHeight: 1.4 }}>
-                          Answer locked to <strong>{lockedSide}</strong>. You can keep adding more positions.
-                        </p>
-                      </div>
-                    )}
 
                     {/* Stake input — slides in after a side is selected */}
                     <div style={{ overflow: "hidden", maxHeight: selected ? 500 : 0, opacity: selected ? 1 : 0, transition: "max-height 0.35s ease, opacity 0.25s ease" }}>
@@ -2130,7 +2105,7 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
                   </p>
                   {quaiEquiv && (
                     <p style={{ fontSize: 11, color: T.textDim, margin: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 3 }}>
-                      {quaiEquiv} <QuaiLogo size={12} /> QUAI locked in
+                      {quaiEquiv} <QuaiLogo size={12} /> QUAI
                     </p>
                   )}
                 </div>
@@ -2140,14 +2115,6 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
                   <p style={{ fontSize: 11, color: T.textDim, margin: "0 0 6px", fontWeight: 600 }}>Est. payout if {selected} wins</p>
                   <p style={{ fontSize: 18, fontWeight: 800, color: selected === "YES" ? T.yes : T.no, margin: 0 }}>${estimatedPayout.toFixed(2)}</p>
                   <p style={{ fontSize: 10, color: T.textDim, margin: "3px 0 0" }}>Based on current pool. Final payout may vary.</p>
-                </div>
-
-                {/* Lock notice */}
-                <div style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 8, background: selected === "YES" ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)", border: `1px solid ${selected === "YES" ? T.yesBorder : T.noBorder}` }}>
-                  <Lock2 size={12} strokeWidth={2} style={{ color: selected === "YES" ? T.yes : T.no, flexShrink: 0 }} />
-                  <p style={{ fontSize: 11, color: selected === "YES" ? T.yes : T.no, margin: 0, lineHeight: 1.4 }}>
-                    Your answer is locked to <strong>{selected}</strong>. You can add more positions on this side.
-                  </p>
                 </div>
 
                 <button type="button" onClick={handleStakeAnother}
