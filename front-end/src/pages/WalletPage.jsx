@@ -333,7 +333,7 @@ function SendModal({ open, onClose, balance, quaiPrice }) {
                 style={{...fieldStyle,paddingRight:72,fontSize:20,fontWeight:800,letterSpacing:"-0.02em"}} onFocus={e=>e.target.style.borderColor=T.borderHi} onBlur={e=>e.target.style.borderColor=T.border}/>
               <span style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",fontSize:12,fontWeight:700,color:T.dim}}>QUAI</span>
             </div>
-            {usd && num>0 && <p style={{fontSize:11,color:T.muted,margin:"4px 0 0"}}>≈ ${usd} USD</p>}
+            {usd && num>0 && <p style={{fontSize:11,color:T.muted,margin:"4px 0 0"}}>≈ ${usd} USDT</p>}
             <button type="button" onClick={()=>setAmount(Math.max(0,balance.quai-FEE).toFixed(4))}
               style={{marginTop:6,fontSize:11,color:T.violet,background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:600}}>
               Use max ({Math.max(0,balance.quai-FEE).toFixed(4)} QUAI)
@@ -342,7 +342,7 @@ function SendModal({ open, onClose, balance, quaiPrice }) {
           <div style={{padding:"10px 14px",borderRadius:10,background:T.glass,border:`1px solid ${T.border}`}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
               <span style={{fontSize:11,color:T.dim}}>Network Fee</span>
-              <span style={{fontSize:12,fontWeight:700,color:T.muted}}>{FEE} QUAI{feeUsd?` (~$${feeUsd})`:""}</span>
+              <span style={{fontSize:12,fontWeight:700,color:T.muted}}>{FEE} QUAI{feeUsd?` (~$${feeUsd} USDT)`:""}</span>
             </div>
             <div style={{display:"flex",justifyContent:"space-between"}}>
               <span style={{fontSize:11,color:T.dim}}>Total</span>
@@ -439,30 +439,28 @@ function ReceiveModal({ open, onClose, walletAddress }) {
    TRANSACTION ROW
 ════════════════════════════════════════════════ */
 function TxRow({ tx, quaiPrice, last }) {
-  const isIn   = tx.type==="received";
-  const isPend = tx.status==="pending";
-  const isFail = tx.status==="failed";
-  const color  = isFail?T.no:isPend?T.muted:isIn?T.yes:T.text;
-  const bg     = isFail?T.noBg:isPend?T.glass:isIn?T.yesBg:T.glass;
-  const bd     = isFail?T.noBd:isPend?T.border:isIn?T.yesBd:T.border;
-  const Icon   = isFail?XCircle:isPend?Clock:isIn?ArrowDownLeft:ArrowUpRight;
-  const usd    = quaiPrice?(tx.amount*quaiPrice).toFixed(2):null;
+  const isIn  = tx.type === "received";
+  const color = isIn ? T.yes : T.text;
+  const bg    = isIn ? T.yesBg : T.glass;
+  const bd    = isIn ? T.yesBd : T.border;
+  const Icon  = isIn ? ArrowDownLeft : ArrowUpRight;
+  const usd   = quaiPrice ? (tx.amount * quaiPrice).toFixed(2) : null;
   return (
-    <div className="wallet-tx-row" style={{borderBottom:last?`1px solid transparent`:`1px solid ${T.border}`}}>
-      <div style={{width:38,height:38,borderRadius:10,background:bg,border:`1px solid ${bd}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-        <Icon size={15} strokeWidth={1.8} style={{color}}/>
+    <div className="wallet-tx-row" style={{ borderBottom: last ? "1px solid transparent" : `1px solid ${T.border}` }}>
+      <div style={{ width: 38, height: 38, borderRadius: 10, background: bg, border: `1px solid ${bd}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <Icon size={15} strokeWidth={1.8} style={{ color }} />
       </div>
       <div className="wallet-tx-info">
-        <p style={{fontSize:13,fontWeight:600,color:T.text,margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tx.label}</p>
+        <p style={{ fontSize: 13, fontWeight: 600, color: T.text, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tx.label}</p>
         <p className="wallet-tx-addr">
-          {isIn?short(tx.from):short(tx.to)} · {ago(tx.timestamp)}
-          {isPend&&<span style={{color:"#fbbf24",fontWeight:700,marginLeft:4}}>PENDING</span>}
-          {isFail&&<span style={{color:T.no,fontWeight:700,marginLeft:4}}>FAILED</span>}
+          {isIn ? short(tx.from) : short(tx.to)} · {ago(tx.timestamp)}
         </p>
       </div>
       <div className="wallet-tx-amount">
-        <p style={{fontSize:13,fontWeight:700,color,margin:0,whiteSpace:"nowrap"}}>{isFail?"—":`${isIn?"+":"−"}${tx.amount.toFixed(4)} Q`}</p>
-        {usd&&!isFail&&<p style={{fontSize:10,color:T.dim,margin:"2px 0 0"}}>${usd}</p>}
+        <p style={{ fontSize: 13, fontWeight: 700, color, margin: 0, whiteSpace: "nowrap" }}>
+          {isIn ? "+" : "−"}{tx.amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span style={{ fontSize: 11, opacity: 0.7 }}>QUAI</span>
+        </p>
+        {usd && <p style={{ fontSize: 10, color: T.dim, margin: "2px 0 0" }}>≈ ${usd} USDT</p>}
       </div>
     </div>
   );
@@ -508,10 +506,20 @@ export default function WalletPage() {
 
   const [sendOpen,    setSendOpen]    = useState(false);
   const [receiveOpen, setReceiveOpen] = useState(false);
+  const [txFilter,    setTxFilter]    = useState("All"); // "All" | "Received" | "Sent"
 
   const price   = priceData?.current;
   const history = priceData?.history ?? [];
   const pos24h  = (price?.changePercent24h??0) >= 0;
+
+  // Filter transactions — no pending, apply type filter
+  const filteredTxs = transactions
+    .filter(tx => tx.status !== "pending")
+    .filter(tx => {
+      if (txFilter === "Received") return tx.type === "received";
+      if (txFilter === "Sent")     return tx.type === "sent";
+      return true;
+    });
 
   // user===undefined means Firebase auth is still resolving (initial page load)
   // user===null means signed out
@@ -787,28 +795,41 @@ export default function WalletPage() {
 
       {/* ══ TRANSACTIONS ══ */}
       <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:22,padding:"20px 22px"}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+        {/* Header + filter tabs */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
           <p style={{fontSize:11,fontWeight:700,letterSpacing:"0.1em",color:T.dim,textTransform:"uppercase",margin:0}}>Transaction History</p>
           {refreshing&&<span style={{fontSize:10,color:T.dim,display:"flex",alignItems:"center",gap:4}}><Loader size={10} strokeWidth={2} style={{animation:"spin 0.8s linear infinite"}}/>Updating…</span>}
         </div>
-        {transactions.length===0?(
-          <div style={{padding:"36px 0",textAlign:"center"}}>
-            <p style={{fontSize:14,color:T.muted,margin:0}}>No recent transactions found.</p>
-            <p style={{fontSize:12,color:T.dim,margin:"6px 0 8px"}}>Only the last 10 blocks are scanned. View your full history on Quaiscan.</p>
-            {walletAddress && (
-              <a
-                href={`https://quaiscan.io/address/${walletAddress}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{fontSize:12,color:"#7c6ff7",fontWeight:600,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:4}}
-              >
-                View on Quaiscan ↗
-              </a>
-            )}
+        {/* Filter pills */}
+        <div style={{display:"flex",gap:6,marginBottom:16}}>
+          {["All","Received","Sent"].map(f=>{
+            const active = txFilter===f;
+            const col = f==="Received"?"#22c55e":f==="Sent"?"#ef4444":"#7c6ff7";
+            return (
+              <button key={f} type="button" onClick={()=>setTxFilter(f)}
+                style={{
+                  padding:"5px 14px",borderRadius:999,fontSize:11,fontWeight:700,cursor:"pointer",
+                  border:`1px solid ${active?col+"60":T.border}`,
+                  background:active?`${col}18`:"transparent",
+                  color:active?col:T.muted,
+                  transition:"all 0.15s",
+                }}>
+                {f}
+              </button>
+            );
+          })}
+          <span style={{marginLeft:"auto",fontSize:11,color:T.dim,alignSelf:"center"}}>
+            {filteredTxs.length} transaction{filteredTxs.length!==1?"s":""}
+          </span>
+        </div>
+
+        {filteredTxs.length===0?(
+          <div style={{padding:"28px 0",textAlign:"center"}}>
+            <p style={{fontSize:14,color:T.muted,margin:0}}>No {txFilter!=="All"?txFilter.toLowerCase()+" ":""} transactions found.</p>
           </div>
         ):(
           <div>
-            {transactions.map((tx,i)=><TxRow key={tx.id} tx={tx} quaiPrice={price?.price} last={i===transactions.length-1}/>)}
+            {filteredTxs.map((tx,i)=><TxRow key={tx.id} tx={tx} quaiPrice={price?.price} last={i===filteredTxs.length-1}/>)}
             {walletAddress && (
               <div style={{paddingTop:12,textAlign:"center"}}>
                 <a

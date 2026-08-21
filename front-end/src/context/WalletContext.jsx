@@ -123,8 +123,8 @@ export function WalletProvider({ children }) {
         // Cache the live price so demoStake / demoClaim use it for QUAI conversions
         setCachedQuaiPrice(livePrice);
 
-        // Always present exactly $4.00 USDT, converted to QUAI at the live rate
-        const USDT_AMOUNT = 4.00;
+        // Always present exactly $2.00 USDT, converted to QUAI at the live rate
+        const USDT_AMOUNT = 2.00;
         const storedBal   = demoStore.get("balance");
         // Only reset to $4 if the stored balance is still at the seed usd value
         // (avoids resetting after the user has staked some away)

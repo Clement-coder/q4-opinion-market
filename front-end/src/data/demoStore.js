@@ -23,7 +23,7 @@ import {
 } from "./demoData";
 
 const NS = "q4_demo_";          // localStorage namespace
-const VERSION = "v2";           // bump to force re-seed
+const VERSION = "v3";           // bump to force re-seed
 const VER_KEY = NS + "version";
 
 // ── seed defaults ─────────────────────────────────────────────

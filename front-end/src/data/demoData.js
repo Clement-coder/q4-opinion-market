@@ -10,12 +10,12 @@
 /* ── Wallet ──────────────────────────────────────────────────── */
 export const DEMO_WALLET_ADDRESS = "0x3fA8D62c5E9b4F7a1C20E456B8dA7e3F90c12bD4";
 
-// Starting balance: $4.00 USDT.
+// Starting balance: $2.00 USDT.
 // The QUAI equivalent is computed at runtime from the live price
 // (see WalletContext demo init). This object is only the seed fallback.
 export const DEMO_BALANCE = {
   quai: 0,     // overwritten by WalletContext using live price
-  usd:  4.00,
+  usd:  2.00,
 };
 
 const _now  = Date.now();
@@ -52,55 +52,39 @@ export const DEMO_PRICE_DATA = {
 
 export const DEMO_TRANSACTIONS = [
   {
+    // Topped up via BlipPay — received 5 USDT worth of QUAI
     id:        "tx-001",
     type:      "received",
     status:    "confirmed",
-    label:     "Received QUAI",
-    from:      "0xA1b2C3d4E5f6A1b2C3d4E5f6A1b2C3d4E5f6A1b2",
+    label:     "Top-up via BlipPay",
+    from:      "0xBlipPay0000000000000000000000000000001",
     to:        DEMO_WALLET_ADDRESS,
-    amount:    50.0000,
-    timestamp: new Date(_now - 2 * 3_600_000).toISOString(),
+    amount:    3331.1126,   // ~$5 at 0.001501/QUAI
+    timestamp: new Date(_now - 4 * 3_600_000).toISOString(),
   },
   {
+    // Staked $2 on BTC market
     id:        "tx-002",
     type:      "sent",
     status:    "confirmed",
-    label:     "Staked on market",
+    label:     "Staked — BTC above $62K",
     from:      DEMO_WALLET_ADDRESS,
-    to:        "0xQ4MarketContract000000000000000000000001",
-    amount:    10.0000,
-    timestamp: new Date(_now - 5 * 3_600_000).toISOString(),
+    to:        "0xQ4Market0000000000000000000000000000001",
+    amount:    1332.4450,   // ~$2 at 0.001501/QUAI
+    timestamp: new Date(_now - 2 * 3_600_000).toISOString(),
   },
   {
+    // Staked $1 on ETH market
     id:        "tx-003",
-    type:      "received",
-    status:    "confirmed",
-    label:     "Reward claimed",
-    from:      "0xQ4MarketContract000000000000000000000002",
-    to:        DEMO_WALLET_ADDRESS,
-    amount:    18.4200,
-    timestamp: new Date(_now - _day).toISOString(),
-  },
-  {
-    id:        "tx-004",
     type:      "sent",
     status:    "confirmed",
-    label:     "Staked on market",
+    label:     "Staked — ETH above $2,400",
     from:      DEMO_WALLET_ADDRESS,
-    to:        "0xQ4MarketContract000000000000000000000003",
-    amount:    15.0000,
-    timestamp: new Date(_now - 1.5 * _day).toISOString(),
+    to:        "0xQ4Market0000000000000000000000000000002",
+    amount:    666.2225,    // ~$1 at 0.001501/QUAI
+    timestamp: new Date(_now - 45 * 60_000).toISOString(),
   },
-  {
-    id:        "tx-005",
-    type:      "received",
-    status:    "pending",
-    label:     "Incoming transfer",
-    from:      "0xF9e8D7c6B5a4F9e8D7c6B5a4F9e8D7c6B5a4F9e8",
-    to:        DEMO_WALLET_ADDRESS,
-    amount:    25.0000,
-    timestamp: new Date(_now - 20 * 60_000).toISOString(),
-  },
+  // Net: +3331.11 − 1332.44 − 666.22 = 1332.45 QUAI ≈ $2.00 USDT ✓
 ];
 
 export const DEMO_QI_CODE = "qicode_q4demo_0x3fA8D6_zone00_2026";
