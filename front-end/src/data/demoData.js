@@ -52,36 +52,7 @@ export const DEMO_PRICE_DATA = {
 
 export const DEMO_TRANSACTIONS = [
   {
-    id:        "tx-001",
-    type:      "received",
-    status:    "confirmed",
-    label:     "Top-up via BlipPay",
-    from:      "0xBlipPay0000000000000000000000000000001",
-    to:        DEMO_WALLET_ADDRESS,
-    amount:    666.2225,   // ~$1 USDT at live price
-    timestamp: new Date(_now - 5 * 3_600_000).toISOString(),
-  },
-  {
-    id:        "tx-002",
-    type:      "received",
-    status:    "confirmed",
-    label:     "Top-up via BlipPay",
-    from:      "0xBlipPay0000000000000000000000000000001",
-    to:        DEMO_WALLET_ADDRESS,
-    amount:    666.2225,   // ~$1 USDT at live price
-    timestamp: new Date(_now - 3 * 3_600_000).toISOString(),
-  },
-  {
-    id:        "tx-003",
-    type:      "received",
-    status:    "confirmed",
-    label:     "Top-up via BlipPay",
-    from:      "0xBlipPay0000000000000000000000000000001",
-    to:        DEMO_WALLET_ADDRESS,
-    amount:    666.2225,   // ~$1 USDT at live price
-    timestamp: new Date(_now - 90 * 60_000).toISOString(),
-  },
-  {
+    // Most recent — staked $1 (shown at top)
     id:        "tx-004",
     type:      "sent",
     status:    "confirmed",
@@ -89,9 +60,42 @@ export const DEMO_TRANSACTIONS = [
     from:      DEMO_WALLET_ADDRESS,
     to:        "0xQ4Market0000000000000000000000000000001",
     amount:    666.2225,   // ~$1 USDT at live price
-    timestamp: new Date(_now - 45 * 60_000).toISOString(),
+    timestamp: new Date(_now - 30 * 60_000).toISOString(),
   },
-  // Net: 3 × 666.22 − 666.22 = 1,332.44 QUAI ≈ $2.00 USDT ✓
+  {
+    // Third top-up — $1 received
+    id:        "tx-003",
+    type:      "received",
+    status:    "confirmed",
+    label:     "Top-up via BlipPay",
+    from:      "0xBlipPay0000000000000000000000000000001",
+    to:        DEMO_WALLET_ADDRESS,
+    amount:    666.2225,   // ~$1 USDT at live price
+    timestamp: new Date(_now - 2 * 3_600_000).toISOString(),
+  },
+  {
+    // Second top-up — $1 received
+    id:        "tx-002",
+    type:      "received",
+    status:    "confirmed",
+    label:     "Top-up via BlipPay",
+    from:      "0xBlipPay0000000000000000000000000000001",
+    to:        DEMO_WALLET_ADDRESS,
+    amount:    666.2225,   // ~$1 USDT at live price
+    timestamp: new Date(_now - 4 * 3_600_000).toISOString(),
+  },
+  {
+    // First top-up — $1 received (oldest)
+    id:        "tx-001",
+    type:      "received",
+    status:    "confirmed",
+    label:     "Top-up via BlipPay",
+    from:      "0xBlipPay0000000000000000000000000000001",
+    to:        DEMO_WALLET_ADDRESS,
+    amount:    666.2225,   // ~$1 USDT at live price
+    timestamp: new Date(_now - 6 * 3_600_000).toISOString(),
+  },
+  // Net: 3 × +666.22 − 666.22 = 1,332.44 QUAI ≈ $2.00 USDT ✓
 ];
 
 export const DEMO_QI_CODE = "qicode_q4demo_0x3fA8D6_zone00_2026";
