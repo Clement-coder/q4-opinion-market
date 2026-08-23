@@ -1,13 +1,12 @@
 /**
  * useDemoMode.js
  * ─────────────────────────────────────────────────────────────
- * Single switch to enable/disable demo mode across the whole app.
+ * Provides the demo-mode flag as a callable function getDemoMode()
+ * and re-exports the context hook for reactive React usage.
  *
- *   DEMO_MODE = true   →  all hooks return hardcoded demo data
- *   DEMO_MODE = false  →  all hooks hit the real DB / APIs
- *
- * Nothing in the database is touched either way.
+ * In hooks / non-React code:  getDemoMode()  → boolean
+ * In React components:        useDemoModeContext() → { isDemoMode, toggleMode, setMode }
  * ─────────────────────────────────────────────────────────────
  */
 
-export const DEMO_MODE = true;
+export { getDemoMode, useDemoModeContext } from "../context/DemoModeContext";

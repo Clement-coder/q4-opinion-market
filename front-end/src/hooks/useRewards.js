@@ -2,11 +2,12 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { onChainClaimReward } from "../lib/contractService";
-import { DEMO_MODE } from "./useDemoMode";
+import { useDemoModeContext } from "./useDemoMode";
 import { demoStore, demoClaim } from "../data/demoStore";
 
 export function useRewards() {
   const { profile, user, loading: authLoading } = useAuth();
+  const { isDemoMode, refreshKey } = useDemoModeContext();
   const [rewards,  setRewards]  = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [claiming, setClaiming] = useState(null);
@@ -15,13 +16,14 @@ export function useRewards() {
 
   // ── Demo mode ──
   useEffect(() => {
-    if (!DEMO_MODE) return;
+    if (!isDemoMode) return;
+    setLoading(true);
     setRewards(demoStore.get("rewards"));
     setLoading(false);
     const sync = () => setRewards(demoStore.get("rewards"));
     window.addEventListener("focus", sync);
     return () => window.removeEventListener("focus", sync);
-  }, []);
+  }, [isDemoMode, refreshKey]);
 
   const fetchRewards = useCallback(async (userId) => {
     if (!userId) { setRewards([]); setLoading(false); return; }
@@ -59,14 +61,14 @@ export function useRewards() {
   }, []);
 
   useEffect(() => {
-    if (DEMO_MODE) return;
+    if (isDemoMode) return;
     if (authLoading) return;
     fetchRewards(profile?.id ?? null);
-  }, [authLoading, profile?.id, fetchRewards]);
+  }, [isDemoMode, authLoading, profile?.id, fetchRewards]);
 
-  // Real-time with safe channel management
+  // Real-time with safe channel management (live mode only)
   useEffect(() => {
-    if (DEMO_MODE) return;
+    if (isDemoMode) return;
     if (!profile?.id) return;
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
@@ -86,7 +88,7 @@ export function useRewards() {
         channelRef.current = null;
       }
     };
-  }, [profile?.id, fetchRewards]);
+  }, [isDemoMode, profile?.id, fetchRewards]);
 
   /**
    * Claim a reward.
@@ -101,7 +103,7 @@ export function useRewards() {
    */
   const claimReward = useCallback(async (rewardId) => {
     // ── Demo mode: persist claim to store ──
-    if (DEMO_MODE) {
+    if (isDemoMode) {
       setClaiming(rewardId);
       await new Promise(r => setTimeout(r, 900));
       demoClaim(rewardId);
@@ -167,7 +169,7 @@ export function useRewards() {
     } finally {
       setClaiming(null);
     }
-  }, [profile?.id, user?.uid, rewards]);
+  }, [isDemoMode, profile?.id, user?.uid, rewards]);
 
   return {
     rewards,

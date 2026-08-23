@@ -13,8 +13,10 @@ import {
 } from "../components/icons";
 import { useWallet } from "../context/WalletContext";
 import { useAuth }   from "../context/AuthContext";
+import { useDemoModeContext } from "../context/DemoModeContext";
 import { QuaiLogo }  from "../components/icons";
 import q4LogoSrc     from "../assets/Q4_logo.jpeg";
+import { Sk }        from "../components/Skeleton";
 
 /* ════════════════════════════════════════════════
    DESIGN TOKENS
@@ -277,7 +279,7 @@ function Modal({ open, onClose, title, children, maxWidth=460 }) {
 /* ════════════════════════════════════════════════
    SEND MODAL
 ════════════════════════════════════════════════ */
-function SendModal({ open, onClose, balance, quaiPrice }) {
+function SendModal({ open, onClose, balance, quaiPrice, isDemo }) {
   const [step,      setStep]      = useState("form");
   const [recipient, setRecipient] = useState("");
   const [amount,    setAmount]    = useState("");
@@ -316,6 +318,11 @@ function SendModal({ open, onClose, balance, quaiPrice }) {
 
   return (
     <Modal open={open} onClose={close} title="Send QUAI">
+      {isDemo && (
+        <div style={{ display:"flex", gap:8, padding:"10px 14px", borderRadius:10, background:"rgba(234,179,8,0.08)", border:"1px solid rgba(234,179,8,0.25)", color:"#eab308", fontSize:12, marginBottom:4, lineHeight:1.5 }}>
+          🧪 <span><strong>Demo mode:</strong> This transaction is simulated. No real QUAI will be sent.</span>
+        </div>
+      )}
       {step==="form" && (
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
           <div style={{display:"flex",alignItems:"center",gap:6,padding:"7px 12px",borderRadius:8,background:T.yesBg,border:`1px solid ${T.yesBd}`}}>
@@ -495,10 +502,55 @@ function DetailRow({ label, value, mono, copy: copyVal, divider, icon }) {
 }
 
 /* ════════════════════════════════════════════════
+   DEMO BANNER
+════════════════════════════════════════════════ */
+function DemoBanner({ onSwitch }) {
+  return (
+    <div style={{
+      display: "flex",
+      alignItems: "flex-start",
+      gap: 14,
+      padding: "14px 18px",
+      borderRadius: 14,
+      background: "rgba(234,179,8,0.08)",
+      border: "1px solid rgba(234,179,8,0.25)",
+    }}>
+      <span style={{
+        fontSize: 20, flexShrink: 0, marginTop: 1,
+        filter: "drop-shadow(0 0 6px rgba(234,179,8,0.5))",
+      }}>🧪</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ fontSize: 13, fontWeight: 700, color: "#eab308", margin: "0 0 4px" }}>
+          Demo Wallet — No Real Funds
+        </p>
+        <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", margin: 0, lineHeight: 1.6 }}>
+          You're viewing a simulated wallet with <strong style={{ color: "rgba(255,255,255,0.7)" }}>hardcoded demo data</strong>.
+          Sending, receiving, and all transactions shown here are <strong style={{ color: "rgba(255,255,255,0.7)" }}>completely fake</strong> — nothing is sent to any blockchain.
+          Switch to <strong style={{ color: "#eab308" }}>Live mode</strong> in the sidebar to connect your real wallet.
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onSwitch}
+        style={{
+          flexShrink: 0, padding: "6px 14px", borderRadius: 8,
+          background: "rgba(234,179,8,0.15)", border: "1px solid rgba(234,179,8,0.4)",
+          color: "#eab308", fontSize: 11, fontWeight: 700, cursor: "pointer",
+          whiteSpace: "nowrap",
+        }}
+      >
+        Go Live →
+      </button>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════
    MAIN WALLET PAGE
 ════════════════════════════════════════════════ */
 export default function WalletPage() {
   const { user }                              = useAuth();
+  const { isDemoMode, toggleMode }            = useDemoModeContext();
   const { walletAddress, balance, priceData,
           transactions, balanceVisible, toggleBalanceVisibility,
           loading, refreshing, error, refresh,
@@ -521,19 +573,34 @@ export default function WalletPage() {
       return true;
     });
 
-  // user===undefined means Firebase auth is still resolving (initial page load)
-  // user===null means signed out
-  // loading===true means WalletContext is fetching data
   const authResolving = user === undefined;
 
-  /* ─── loading: show spinner only while auth is resolving OR wallet is genuinely loading ─── */
-  if (authResolving || (loading && !walletAddress)) return (
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"60vh",gap:16}}>
-      <Loader size={28} strokeWidth={1.5} style={{color:T.dim,animation:"spin 0.9s linear infinite"}}/>
-      <p style={{fontSize:13,color:T.muted,margin:0}}>
-        {authResolving ? "Checking sign-in…" : "Setting up your wallet…"}
-      </p>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+  /* ─── skeleton: show while auth resolving OR wallet loading ─── */
+  if (authResolving || loading) return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+      {/* page header skeleton */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <Sk.Box w={100} h={26} r={6} />
+          <Sk.Box w={260} h={13} r={4} />
+        </div>
+        <Sk.Box w={100} h={36} r={8} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <Sk.WalletBalance />
+        <Sk.WalletPriceCard />
+      </div>
+      <Sk.WalletTxList count={5} />
+      {/* wallet details */}
+      <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 22, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 14 }}>
+        <Sk.Box w={120} h={11} r={4} />
+        {[0,1,2,3].map(i => (
+          <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: i < 3 ? "1px solid rgba(255,255,255,0.06)" : "none" }}>
+            <Sk.Box w={100} h={11} r={4} />
+            <Sk.Box w={180} h={13} r={4} />
+          </div>
+        ))}
+      </div>
     </div>
   );
 
@@ -617,7 +684,9 @@ export default function WalletPage() {
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
         <div>
           <h1 style={{fontSize:22,fontWeight:800,color:"#fff",margin:0,letterSpacing:"-0.03em"}}>Wallet</h1>
-          <p style={{fontSize:13,color:T.muted,margin:"4px 0 0"}}>Your embedded Quai wallet — powered by BlipPay.</p>
+          <p style={{fontSize:13,color:T.muted,margin:"4px 0 0"}}>
+            {isDemoMode ? "Demo wallet — simulated data only." : "Your embedded Quai wallet — powered by BlipPay."}
+          </p>
         </div>
         <button type="button" onClick={refresh} disabled={refreshing}
           style={{display:"flex",alignItems:"center",gap:6,padding:"9px 16px",borderRadius:8,background:T.glass,border:`1px solid ${T.border}`,color:refreshing?T.dim:T.muted,fontSize:13,fontWeight:600,cursor:refreshing?"not-allowed":"pointer",transition:"all 0.15s"}}
@@ -626,6 +695,9 @@ export default function WalletPage() {
           <RefreshCw size={14} strokeWidth={2} style={{animation:refreshing?"spin 0.8s linear infinite":"none"}}/> {refreshing?"Refreshing…":"Refresh"}
         </button>
       </div>
+
+      {/* ── DEMO BANNER ── */}
+      {isDemoMode && <DemoBanner onSwitch={toggleMode} />}
 
       {/* ── ERROR BANNER ── */}
       {error&&(
@@ -861,7 +933,7 @@ export default function WalletPage() {
       </div>
 
       {/* ── MODALS ── */}
-      <SendModal    open={sendOpen}    onClose={()=>setSendOpen(false)}    balance={balance} quaiPrice={price?.price}/>
+      <SendModal    open={sendOpen}    onClose={()=>setSendOpen(false)}    balance={balance} quaiPrice={price?.price} isDemo={isDemoMode}/>
       <ReceiveModal open={receiveOpen} onClose={()=>setReceiveOpen(false)} walletAddress={walletAddress}/>
     </div>
   );

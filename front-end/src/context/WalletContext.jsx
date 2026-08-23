@@ -6,7 +6,7 @@
 
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { useAuth } from "./AuthContext";
-import { DEMO_MODE } from "../hooks/useDemoMode";
+import { getDemoMode, useDemoModeContext } from "../hooks/useDemoMode";
 import {
   DEMO_WALLET_ADDRESS,
   DEMO_PRICE_DATA,
@@ -25,6 +25,7 @@ const WalletContext = createContext(null);
 
 export function WalletProvider({ children }) {
   const { user } = useAuth();
+  const { isDemoMode, refreshKey } = useDemoModeContext();
 
   const [walletAddress,  setWalletAddress]  = useState(null);
   const [qiCode,         setQiCode]         = useState(null);
@@ -105,8 +106,11 @@ export function WalletProvider({ children }) {
   }, []);
 
   useEffect(() => {
+    // Reset loading state so skeleton shows on every mode switch
+    setLoading(true);
+
     // ── Demo mode: fetch live QUAI price, then inject store data ──
-    if (DEMO_MODE) {
+    if (getDemoMode()) {
       const load = async () => {
         setWalletAddress(DEMO_WALLET_ADDRESS);
         setQiCode(DEMO_QI_CODE);
@@ -154,10 +158,10 @@ export function WalletProvider({ children }) {
       setTransactions([]);
       setLoading(false);
     }
-  }, [user?.uid, loadWallet]);
+  }, [user?.uid, loadWallet, isDemoMode, refreshKey]);
 
   const refresh = useCallback(async () => {
-    if (DEMO_MODE) {
+    if (getDemoMode()) {
       setRefreshing(true);
       // Show stored data immediately
       const storedBal = demoStore.get("balance");

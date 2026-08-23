@@ -1,19 +1,21 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
-import { DEMO_MODE } from "./useDemoMode";
+import { useDemoModeContext } from "./useDemoMode";
 import { DEMO_RESULTS } from "../data/demoData";
 import { demoStore } from "../data/demoStore";
 
 export function useResults() {
   const { profile, loading: authLoading } = useAuth();
+  const { isDemoMode, refreshKey } = useDemoModeContext();
   const [results,  setResults]  = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState(null);
 
   // ── Demo mode ──
   useEffect(() => {
-    if (!DEMO_MODE) return;
+    if (!isDemoMode) return;
+    setLoading(true);
     // Combine seed results with any resolved positions from the store
     const positions = demoStore.get("positions");
     const resolvedFromPositions = positions
@@ -53,10 +55,9 @@ export function useResults() {
     };
     window.addEventListener("focus", sync);
     return () => window.removeEventListener("focus", sync);
-  }, []);
+  }, [isDemoMode, refreshKey]);
 
   const fetchResults = useCallback(async (userId) => {
-    if (DEMO_MODE) return;
     if (!userId) { setResults([]); setLoading(false); return; }
     setLoading(true);
     setError(null);
@@ -93,10 +94,10 @@ export function useResults() {
   }, []);
 
   useEffect(() => {
-    if (DEMO_MODE) return;
+    if (isDemoMode) return;
     if (authLoading) return;
     fetchResults(profile?.id ?? null);
-  }, [authLoading, profile?.id, fetchResults]);
+  }, [isDemoMode, authLoading, profile?.id, fetchResults]);
 
   return { results, loading, error, refresh: () => fetchResults(profile?.id ?? null) };
 }

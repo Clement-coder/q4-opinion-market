@@ -2,30 +2,33 @@
  * src/hooks/useMarkets.js
  * Fetches prediction markets from Supabase.
  * Returns live markets ordered by created_at desc.
+ * Reacts to demo/live mode switches at runtime.
  */
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "../lib/supabase";
-import { DEMO_MODE } from "./useDemoMode";
+import { useDemoModeContext } from "./useDemoMode";
 import { DEMO_MARKETS } from "../data/demoData";
 
 export function useMarkets({ category = null, status = "active", limit = 100 } = {}) {
+  const { isDemoMode, refreshKey } = useDemoModeContext();
   const [markets,  setMarkets]  = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState(null);
 
   // ── Demo mode ──
   useEffect(() => {
-    if (!DEMO_MODE) return;
+    if (!isDemoMode) return;
+    setLoading(true);
     let filtered = DEMO_MARKETS;
     if (category && category !== "all") {
       filtered = filtered.filter(m => m.category.toLowerCase() === category.toLowerCase());
     }
     setMarkets(filtered.slice(0, limit));
     setLoading(false);
-  }, [category, limit]);
+  }, [isDemoMode, refreshKey, category, limit]);
 
   const fetchMarkets = useCallback(async () => {
-    if (DEMO_MODE) return; // no-op in demo mode
+    if (isDemoMode) return; // no-op in demo mode
     setLoading(true);
     setError(null);
 
@@ -95,12 +98,13 @@ export function useMarkets({ category = null, status = "active", limit = 100 } =
     } finally {
       setLoading(false);
     }
-  }, [category, status, limit]);
+  }, [isDemoMode, refreshKey, category, status, limit]);
 
   useEffect(() => { fetchMarkets(); }, [fetchMarkets]);
 
-  // Real-time subscription — update when any market changes
+  // Real-time subscription — update when any market changes (live mode only)
   useEffect(() => {
+    if (isDemoMode) return;
     const channel = supabase
       .channel("markets-changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "markets" }, fetchMarkets)
@@ -108,13 +112,14 @@ export function useMarkets({ category = null, status = "active", limit = 100 } =
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [fetchMarkets]);
+  }, [isDemoMode, fetchMarkets]);
 
   return { markets, loading, error, refresh: fetchMarkets };
 }
 
 /** Single market by ID */
 export function useMarket(id) {
+  const { isDemoMode } = useDemoModeContext();
   const [market,  setMarket]  = useState(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState(null);
@@ -123,7 +128,7 @@ export function useMarket(id) {
     if (!id) { setLoading(false); return; }
 
     // ── Demo mode ──
-    if (DEMO_MODE) {
+    if (isDemoMode) {
       const found = DEMO_MARKETS.find(m => m.id === id) ?? DEMO_MARKETS[0];
       setMarket(found);
       setLoading(false);
@@ -152,7 +157,7 @@ export function useMarket(id) {
     };
 
     fetch();
-  }, [id]);
+  }, [id, isDemoMode]);
 
   return { market, loading, error };
 }

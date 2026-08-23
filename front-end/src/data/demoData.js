@@ -14,8 +14,8 @@ export const DEMO_WALLET_ADDRESS = "0x3fA8D62c5E9b4F7a1C20E456B8dA7e3F90c12bD4";
 // The QUAI equivalent is computed at runtime from the live price
 // (see WalletContext demo init). This object is only the seed fallback.
 export const DEMO_BALANCE = {
-  quai: 0,     // overwritten by WalletContext using live price
-  usd:  2.00,
+  quai: 66666,  // ~$100 USD at typical QUAI price
+  usd:  100.00,
 };
 
 const _now  = Date.now();

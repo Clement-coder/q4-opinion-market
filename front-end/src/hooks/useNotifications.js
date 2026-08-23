@@ -1,27 +1,28 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
-import { DEMO_MODE } from "./useDemoMode";
+import { useDemoModeContext } from "./useDemoMode";
 import { demoStore } from "../data/demoStore";
 
 export function useNotifications() {
   const { profile, loading: authLoading } = useAuth();
+  const { isDemoMode, refreshKey } = useDemoModeContext();
   const [notifications, setNotifications] = useState([]);
   const [loading,       setLoading]       = useState(true);
   const channelRef = useRef(null);
 
   // ── Demo mode ──
   useEffect(() => {
-    if (!DEMO_MODE) return;
+    if (!isDemoMode) return;
+    setLoading(true);
     setNotifications(demoStore.get("notifications"));
     setLoading(false);
     const sync = () => setNotifications(demoStore.get("notifications"));
     window.addEventListener("focus", sync);
     return () => window.removeEventListener("focus", sync);
-  }, []);
+  }, [isDemoMode, refreshKey]);
 
   const fetchNotifications = useCallback(async (userId) => {
-    if (DEMO_MODE) return;
     if (!userId) { setNotifications([]); setLoading(false); return; }
     const { data, error } = await supabase
       .from("notifications")
@@ -39,14 +40,14 @@ export function useNotifications() {
   }, []);
 
   useEffect(() => {
-    if (DEMO_MODE) return;
+    if (isDemoMode) return;
     if (authLoading) return;
     fetchNotifications(profile?.id ?? null);
-  }, [authLoading, profile?.id, fetchNotifications]);
+  }, [isDemoMode, authLoading, profile?.id, fetchNotifications]);
 
-  // Real-time with safe channel management
+  // Real-time with safe channel management (live mode only)
   useEffect(() => {
-    if (DEMO_MODE) return;
+    if (isDemoMode) return;
     if (!profile?.id) return;
 
     if (channelRef.current) {
@@ -70,10 +71,10 @@ export function useNotifications() {
         channelRef.current = null;
       }
     };
-  }, [profile?.id, fetchNotifications]);
+  }, [isDemoMode, profile?.id, fetchNotifications]);
 
   const markAllRead = useCallback(async () => {
-    if (DEMO_MODE) {
+    if (isDemoMode) {
       const updated = demoStore.get("notifications").map(n => ({ ...n, read: true }));
       demoStore.set("notifications", updated);
       setNotifications(updated);
@@ -82,10 +83,10 @@ export function useNotifications() {
     if (!profile?.id) return;
     await supabase.from("notifications").update({ read: true }).eq("user_id", profile.id).eq("read", false);
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-  }, [profile?.id]);
+  }, [isDemoMode, profile?.id]);
 
   const markRead = useCallback(async (id) => {
-    if (DEMO_MODE) {
+    if (isDemoMode) {
       const updated = demoStore.get("notifications").map(n => n.id === id ? { ...n, read: true } : n);
       demoStore.set("notifications", updated);
       setNotifications(updated);
@@ -93,7 +94,7 @@ export function useNotifications() {
     }
     await supabase.from("notifications").update({ read: true }).eq("id", id);
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-  }, []);
+  }, [isDemoMode, refreshKey]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
   return { notifications, loading, unreadCount, markAllRead, markRead };

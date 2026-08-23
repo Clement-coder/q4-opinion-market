@@ -29,9 +29,10 @@ import { useRewards }            from "../hooks/useRewards";
 import { useAdminUsers, useAdminMarkets, useAdminStats, useAdminOracle, useAdminEvents, useAdminPositions } from "../hooks/useAdminData";
 import { supabase, getFirebaseUID } from "../lib/supabase";
 import { onChainPredict }            from "../lib/contractService";
-import { DEMO_MODE }                 from "../hooks/useDemoMode";
+import { getDemoMode, useDemoModeContext } from "../hooks/useDemoMode";
 import { demoStake }                 from "../data/demoStore";
 import WalletPage   from "./WalletPage";
+import { Sk }       from "../components/Skeleton";
 
 /* ════════════════════════════════════════════════
    DESIGN TOKENS  (mirror landing page palette)
@@ -407,6 +408,7 @@ const ADMIN_NAV_ITEM = { key: "admin", label: "Admin", icon: ShieldCheck, desc: 
 function Sidebar({ active, onNavigate, onLogout }) {
   // Read isAdmin directly so it always reflects the current auth state
   const { isAdmin } = useAuth();
+  const { isDemoMode, toggleMode } = useDemoModeContext();
   return (
     <aside style={{
       width: 240,
@@ -527,6 +529,39 @@ function Sidebar({ active, onNavigate, onLogout }) {
 
       {/* Bottom */}
       <div style={{ padding: "12px 10px 20px", borderTop: `1px solid ${T.border}`, flexShrink: 0 }}>
+        {/* ── Demo / Live mode switcher ── */}
+        <div style={{ marginBottom: 8, padding: "10px 10px 10px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}` }}>
+          <p style={{ margin: "0 0 8px", fontSize: 10, color: T.textDim, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>Account Mode</p>
+          <div style={{ display: "flex", background: "rgba(255,255,255,0.05)", borderRadius: 8, padding: 3, gap: 3 }}>
+            <button
+              type="button"
+              onClick={() => { if (!isDemoMode) toggleMode(); }}
+              style={{
+                flex: 1, padding: "6px 0", borderRadius: 6, fontSize: 12, fontWeight: 600, border: "none", cursor: isDemoMode ? "default" : "pointer",
+                background: isDemoMode ? "rgba(255,255,255,0.12)" : "transparent",
+                color: isDemoMode ? "#ffffff" : T.textMuted,
+                transition: "all 0.18s",
+              }}
+            >
+              Demo
+            </button>
+            <button
+              type="button"
+              onClick={() => { if (isDemoMode) toggleMode(); }}
+              style={{
+                flex: 1, padding: "6px 0", borderRadius: 6, fontSize: 12, fontWeight: 600, border: "none", cursor: isDemoMode ? "pointer" : "default",
+                background: !isDemoMode ? "rgba(34,197,94,0.18)" : "transparent",
+                color: !isDemoMode ? "#22c55e" : T.textMuted,
+                transition: "all 0.18s",
+              }}
+            >
+              Live
+            </button>
+          </div>
+          <p style={{ margin: "6px 0 0", fontSize: 10, color: T.textDim, lineHeight: 1.4 }}>
+            {isDemoMode ? "Using local demo data — no real funds." : "Connected to blockchain & real data."}
+          </p>
+        </div>
         <Link
           to="/"
           style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 8, color: T.textMuted, textDecoration: "none", fontSize: 13, fontWeight: 500, transition: "background 0.15s, color 0.15s" }}
@@ -561,6 +596,7 @@ function TopHeader({ pageLabel, onOpenMobileSidebar, onNavigate, user, onOpenNot
   const initials  = user?.displayName
     ? user.displayName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase()
     : "Q4";
+  const { isDemoMode, toggleMode } = useDemoModeContext();
 
   return (
     <header style={{
@@ -604,6 +640,24 @@ function TopHeader({ pageLabel, onOpenMobileSidebar, onNavigate, user, onOpenNot
 
       {/* Right — notifications + avatar only */}
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+
+        {/* Demo / Live mode badge */}
+        <button
+          type="button"
+          onClick={toggleMode}
+          title={isDemoMode ? "Switch to Live mode" : "Switch to Demo mode"}
+          style={{
+            display: "flex", alignItems: "center", gap: 5,
+            padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+            border: "none", cursor: "pointer", letterSpacing: "0.04em",
+            background: isDemoMode ? "rgba(234,179,8,0.15)" : "rgba(34,197,94,0.15)",
+            color: isDemoMode ? "#eab308" : "#22c55e",
+            transition: "all 0.18s",
+          }}
+        >
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: isDemoMode ? "#eab308" : "#22c55e", flexShrink: 0 }} />
+          {isDemoMode ? "DEMO" : "LIVE"}
+        </button>
 
         {/* Notification bell */}
         <button
@@ -667,7 +721,7 @@ function EmptyState({ icon: Icon, title, body, action }) {
 ════════════════════════════════════════════════ */
 
 function PageDashboard({ onNavigate }) {
-  const { balance, priceData } = useWallet();
+  const { balance, priceData, loading: walletLoading } = useWallet();
   const quaiPrice   = priceData?.current?.price ?? null;
   const priceChange = priceData?.current?.changePercent24h ?? null;
   const high24h     = priceData?.current?.high24h ?? null;
@@ -675,9 +729,11 @@ function PageDashboard({ onNavigate }) {
   const history     = priceData?.history ?? [];
 
   // Live markets + positions + rewards for breakdown charts
-  const { markets }                     = useMarkets({});
-  const { positions }                   = usePositions();
-  const { rewards }                     = useRewards();
+  const { markets, loading: mktsLoading }   = useMarkets({});
+  const { positions, loading: posLoading }  = usePositions();
+  const { rewards }                         = useRewards();
+
+  const dataLoading = walletLoading || mktsLoading || posLoading;
 
   // Derived stats from demo data
   const openPositions    = positions.filter(p => p.status === "active" || p.status === "closed").length;
@@ -687,6 +743,8 @@ function PageDashboard({ onNavigate }) {
   const totalStakedUsdt  = positions.reduce((s, p) => s + p.amount, 0);
   const winRate          = resolvedPos.length > 0 ? Math.round((wins / resolvedPos.length) * 100) : null;
   const pendingRewards   = rewards.filter(r => !r.claimed).reduce((s, r) => s + r.reward, 0);
+
+  if (dataLoading) return <Sk.DashboardHome />;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -966,9 +1024,7 @@ function ActivityFeed({ onNavigate }) {
 
       {loading && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {[1, 2, 3].map(i => (
-            <div key={i} style={{ height: 44, borderRadius: 8, background: T.glass, border: `1px solid ${T.border}`, animation: "pulse 1.5s ease-in-out infinite" }} />
-          ))}
+          {[1, 2, 3].map(i => <Sk.Box key={i} w="100%" h={44} r={8} />)}
         </div>
       )}
 
@@ -1113,13 +1169,7 @@ function PageQuestions({ onOpenQuestion }) {
       )}
 
       {/* ── Loading skeleton ── */}
-      {loading && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 14 }}>
-          {[1, 2, 3].map(i => (
-            <div key={i} style={{ height: 200, borderRadius: 18, background: T.surface, border: `1px solid ${T.border}`, animation: "pulse 1.5s ease-in-out infinite" }} />
-          ))}
-        </div>
-      )}
+      {loading && <Sk.MarketsGrid count={6} />}
 
       {/* ── Market grid ── */}
       {!loading && markets.length > 0 && (
@@ -1451,7 +1501,7 @@ function ShareModal({ open, onClose, question }) {
 ════════════════════════════════════════════════ */
 
 const PROTOCOL_FEE_PCT = 5;   // 5% platform fee
-const MIN_STAKE        = 1;   // $1 minimum
+const MIN_STAKE        = 2;   // $2 minimum
 
 /** Live countdown — re-renders every second */
 function Countdown({ deadline }) {
@@ -1493,6 +1543,7 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
   const { profile, user }               = useAuth();
   const { balance, priceData }          = useWallet();
   const { market, loading: mktLoading } = useMarket(questionId);
+  const { isDemoMode }                  = useDemoModeContext();
 
   /* ── derived market values ── */
   const totalPool        = market?.totalPool ?? 0;
@@ -1509,7 +1560,9 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
 
   /* ── wallet balance check (USDT equivalent) ── */
   const walletUsd = quaiPrice ? balance.quai * quaiPrice : null;
-  const balanceOk = true; // balance check removed for demo
+  // In demo mode the balance is always sufficient (seeded at $100).
+  // In live mode we check the real wallet USD value.
+  const balanceOk = isDemoMode ? true : (walletUsd !== null ? walletUsd >= amtNum : true);
 
   /* ── proportional payout preview ──
    * Winner receives: stake_back + proportional_share_of_net_losing_pool
@@ -1548,7 +1601,7 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
     }
 
     // ── Demo mode: persist stake to store, skip DB / contract ───────────
-    if (DEMO_MODE) {
+    if (isDemoMode) {
       setSubmitting(true);
       setSubmitError(null);
       await new Promise(r => setTimeout(r, 900));
@@ -1561,9 +1614,14 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
     }
     // ────────────────────────────────────────────────────────────────────
 
-    // balance check removed for demo
     if (!profile?.id) {
       setSubmitError("You must be signed in to place a position.");
+      return;
+    }
+    // Live mode: enforce real wallet balance
+    if (!balanceOk) {
+      const have = walletUsd !== null ? `$${walletUsd.toFixed(2)}` : "unknown";
+      setSubmitError(`Insufficient balance. You need $${amtNum.toFixed(2)} USDT but your wallet has ${have}.`);
       return;
     }
     // Guard: ensure the Firebase UID header is set before hitting Supabase RLS
@@ -1673,9 +1731,8 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
   if (mktLoading) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {[1, 2].map(i => (
-          <div key={i} style={{ height: 200, borderRadius: 16, background: T.surface, border: `1px solid ${T.border}`, animation: "pulse 1.5s ease-in-out infinite" }} />
-        ))}
+        <Sk.MarketCard />
+        <Sk.MarketCard />
       </div>
     );
   }
@@ -2329,7 +2386,7 @@ function PageMyConvictions() {
 
       {loading && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {[1,2].map(i => <div key={i} style={{ height: 180, borderRadius: 16, background: T.surface, border: `1px solid ${T.border}`, animation: "pulse 1.5s ease-in-out infinite" }} />)}
+          {[1,2,3,4].map(i => <Sk.PositionCard key={i} />)}
         </div>
       )}
 
@@ -2543,7 +2600,7 @@ function PageResults() {
 
       {loading && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {[1,2].map(i => <div key={i} style={{ height: 200, borderRadius: 16, background: T.surface, border: `1px solid ${T.border}`, animation: "pulse 1.5s ease-in-out infinite" }} />)}
+          {[1,2,3,4].map(i => <Sk.ResultCard key={i} />)}
         </div>
       )}
 
@@ -2697,10 +2754,8 @@ function PageLeaderboard() {
       )}
 
       {lbLoading && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {[1,2,3,4,5].map(i => (
-            <div key={i} style={{ height: 66, borderRadius: 12, background: T.surface, border: `1px solid ${T.border}`, animation: "pulse 1.5s ease-in-out infinite" }} />
-          ))}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {[1,2,3,4,5].map(i => <Sk.LeaderboardRow key={i} last={i===5} />)}
         </div>
       )}
 
@@ -2912,7 +2967,7 @@ function PageRewards() {
 
       {loading && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {[1,2].map(i => <div key={i} style={{ height: 200, borderRadius: 16, background: T.surface, border: `1px solid ${T.border}`, animation: "pulse 1.5s ease-in-out infinite" }} />)}
+          {[1,2,3,4].map(i => <Sk.RewardRow key={i} last={i===3} />)}
         </div>
       )}
 
@@ -3800,7 +3855,7 @@ function PageAdmin() {
 
           {marketsLoading && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {[1,2,3].map(i => <div key={i} style={{ height: 80, borderRadius: 12, background: T.surface, border: `1px solid ${T.border}`, animation: "pulse 1.5s ease-in-out infinite" }} />)}
+              {[1,2,3].map(i => <Sk.Box key={i} w="100%" h={80} r={12} style={{marginBottom:8}} />)}
             </div>
           )}
 
@@ -3889,7 +3944,7 @@ function PageAdmin() {
 
           {usersLoading && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {[1,2,3,4].map(i => <div key={i} style={{ height: 72, borderRadius: 12, background: T.surface, border: `1px solid ${T.border}`, animation: "pulse 1.5s ease-in-out infinite" }} />)}
+              {[1,2,3,4].map(i => <Sk.Box key={i} w="100%" h={72} r={12} style={{marginBottom:8}} />)}
             </div>
           )}
 
@@ -3980,7 +4035,7 @@ function PageAdmin() {
               style={{ width: "100%", padding: "10px 14px 10px 34px", background: T.glass, border: `1px solid ${T.border}`, borderRadius: 10, color: T.textPrimary, fontSize: 13, outline: "none", boxSizing: "border-box" }}
               onFocus={e => { e.target.style.borderColor = T.borderHover; }} onBlur={e => { e.target.style.borderColor = T.border; }} />
           </div>
-          {positionsLoading && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{[1,2,3].map(i=><div key={i} style={{ height: 60, borderRadius: 10, background: T.surface, border: `1px solid ${T.border}`, animation: "pulse 1.5s ease-in-out infinite" }}/>)}</div>}
+          {positionsLoading && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{[1,2,3].map(i=><Sk.Box key={i} w="100%" h={60} r={10} />)}</div>}
           {positionsError && <div style={{ padding: "12px 16px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", fontSize: 12, color: "#ef4444" }}>{positionsError}</div>}
           {!positionsLoading && visiblePositions.length === 0 && <GCard style={{ padding: 0 }}><EmptyState icon={BookMarked} title="No positions" body="No user positions found." /></GCard>}
           {!positionsLoading && visiblePositions.length > 0 && (
@@ -4013,7 +4068,7 @@ function PageAdmin() {
       {/* ════ ORACLE TAB ════ */}
       {tab === "oracle" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {oracleLoading && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{[1,2,3].map(i=><div key={i} style={{ height: 64, borderRadius: 10, background: T.surface, border: `1px solid ${T.border}`, animation: "pulse 1.5s ease-in-out infinite" }}/>)}</div>}
+          {oracleLoading && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{[1,2,3].map(i=><Sk.Box key={i} w="100%" h={64} r={10} />)}</div>}
           {!oracleLoading && oracleResults.length === 0 && <GCard style={{ padding: 0 }}><EmptyState icon={ShieldCheck} title="No oracle results" body="Oracle resolution records will appear here after markets resolve." /></GCard>}
           {!oracleLoading && oracleResults.length > 0 && (
             <GCard style={{ padding: 0, overflow: "hidden" }}>
@@ -4044,7 +4099,7 @@ function PageAdmin() {
       {/* ════ EVENTS TAB ════ */}
       {tab === "events" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {eventsLoading && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{[1,2,3].map(i=><div key={i} style={{ height: 56, borderRadius: 10, background: T.surface, border: `1px solid ${T.border}`, animation: "pulse 1.5s ease-in-out infinite" }}/>)}</div>}
+          {eventsLoading && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{[1,2,3].map(i=><Sk.Box key={i} w="100%" h={56} r={10} />)}</div>}
           {!eventsLoading && events.length === 0 && <GCard style={{ padding: 0 }}><EmptyState icon={Zap} title="No events" body="Market events will appear here as activity happens." /></GCard>}
           {!eventsLoading && events.length > 0 && (
             <GCard style={{ padding: 0, overflow: "hidden" }}>

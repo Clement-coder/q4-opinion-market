@@ -2,11 +2,12 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { onChainWithdrawRefund } from "../lib/contractService";
-import { DEMO_MODE } from "./useDemoMode";
+import { useDemoModeContext } from "./useDemoMode";
 import { demoStore } from "../data/demoStore";
 
 export function usePositions() {
   const { profile, user, loading: authLoading } = useAuth();
+  const { isDemoMode, refreshKey } = useDemoModeContext();
   const [positions,       setPositions]       = useState([]);
   const [loading,         setLoading]         = useState(true);
   const [error,           setError]           = useState(null);
@@ -15,14 +16,15 @@ export function usePositions() {
 
   // ── Demo mode ──
   useEffect(() => {
-    if (!DEMO_MODE) return;
+    if (!isDemoMode) return;
+    setLoading(true);
     setPositions(demoStore.get("positions"));
     setLoading(false);
     // Re-read on focus so staking immediately reflects in My Positions
     const sync = () => setPositions(demoStore.get("positions"));
     window.addEventListener("focus", sync);
     return () => window.removeEventListener("focus", sync);
-  }, []);
+  }, [isDemoMode, refreshKey]);
 
   const fetchPositions = useCallback(async (userId) => {
     if (!userId) { setPositions([]); setLoading(false); return; }
@@ -44,16 +46,16 @@ export function usePositions() {
     setLoading(false);
   }, []);
 
-  // Fetch when auth settles
+  // Fetch when auth settles or mode changes
   useEffect(() => {
-    if (DEMO_MODE) return; // demo data already set above
+    if (isDemoMode) return; // demo data already set above
     if (authLoading) return;
     fetchPositions(profile?.id ?? null);
-  }, [authLoading, profile?.id, fetchPositions]);
+  }, [isDemoMode, authLoading, profile?.id, fetchPositions]);
 
   // Real-time — create channel only once per userId, tear down on change
   useEffect(() => {
-    if (DEMO_MODE) return;
+    if (isDemoMode) return;
     if (!profile?.id) return;
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
@@ -73,7 +75,7 @@ export function usePositions() {
         channelRef.current = null;
       }
     };
-  }, [profile?.id, fetchPositions]);
+  }, [isDemoMode, profile?.id, fetchPositions]);
 
   /**
    * Withdraw refund for a cancelled market.
