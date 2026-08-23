@@ -1111,7 +1111,7 @@ function PageQuestions({ onOpenQuestion }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
 
       {/* ── Header ── */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+      <div className="dash-page-header">
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>Markets</h1>
           <p style={{ fontSize: 13, color: T.textMuted, margin: "4px 0 0" }}>
@@ -1119,7 +1119,7 @@ function PageQuestions({ onOpenQuestion }) {
           </p>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div className="dash-page-actions">
           {/* Refresh */}
           <button type="button" onClick={refresh}
             style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, color: T.textMuted, fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "border-color 0.15s, color 0.15s" }}
@@ -1132,7 +1132,7 @@ function PageQuestions({ onOpenQuestion }) {
           {/* ── Category dropdown ── */}
           <div style={{ position: "relative" }}>
             <button type="button" onClick={() => setDropOpen(v => !v)}
-              style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 10, background: dropOpen ? T.glassHover : T.glass, border: `1px solid ${dropOpen ? T.borderHover : T.border}`, color: "#ffffff", fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all 0.15s", whiteSpace: "nowrap", minWidth: 170 }}>
+              style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 10, background: dropOpen ? T.glassHover : T.glass, border: `1px solid ${dropOpen ? T.borderHover : T.border}`, color: "#ffffff", fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all 0.15s", whiteSpace: "nowrap", minWidth: 0, maxWidth: "100%" }}>
               <span style={{ fontSize: 15, lineHeight: 1, flexShrink: 0 }}>{activeEmoji}</span>
               <span style={{ flex: 1, textAlign: "left" }}>{activeLabel}</span>
               <ChevronDown size={14} strokeWidth={2.5} style={{ color: T.textDim, flexShrink: 0, transform: dropOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
@@ -2348,12 +2348,12 @@ function PageMyConvictions() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+      <div className="dash-page-header">
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>My Positions</h1>
           <p style={{ fontSize: 13, color: T.textMuted, margin: "4px 0 0" }}>Track your open predictions, switches, and performance.</p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div className="dash-page-actions">
           <button type="button" onClick={refresh}
             style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 8, background: T.glass, border: `1px solid ${T.border}`, color: T.textMuted, fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "border-color 0.15s, color 0.15s" }}
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.color = T.textPrimary; }}
@@ -2568,12 +2568,12 @@ function PageResults() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+      <div className="dash-page-header">
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>Results</h1>
           <p style={{ fontSize: 13, color: T.textMuted, margin: "4px 0 0" }}>Settled market outcomes and your performance history.</p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div className="dash-page-actions">
           <button type="button" onClick={refresh}
             style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 8, background: T.glass, border: `1px solid ${T.border}`, color: T.textMuted, fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "border-color 0.15s, color 0.15s" }}
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.color = T.textPrimary; }}
@@ -2908,12 +2908,12 @@ function PageRewards() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+      <div className="dash-page-header">
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>Rewards</h1>
           <p style={{ fontSize: 13, color: T.textMuted, margin: "4px 0 0" }}>Claim your earnings from settled markets.</p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div className="dash-page-actions">
           <button type="button" onClick={refresh}
             style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 8, background: T.glass, border: `1px solid ${T.border}`, color: T.textMuted, fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "border-color 0.15s, color 0.15s" }}
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.color = T.textPrimary; }}
@@ -2933,7 +2933,7 @@ function PageRewards() {
       </div>
 
       {/* Summary cards — live totals */}
-      <div style={{ display: "grid", gap: 12 }} className="dash-kpi-grid">
+      <div className="dash-kpi-grid-3" style={{ gap: 12 }}>
         {[
           { label: "Pending",  icon: Gift,         color: pendingTotal > 0 ? T.yes : T.textMuted, bg: pendingTotal > 0 ? T.yesBg : T.glass, border: pendingTotal > 0 ? T.yesBorder : T.border, value: pendingTotal },
           { label: "Claimed",  icon: CheckCircle2, color: T.textMuted, bg: T.glass,  border: T.border, value: claimedTotal },
@@ -3080,7 +3080,7 @@ function PageHowItWorks({ onNavigate }) {
         <div style={{ width: 52, height: 52, borderRadius: 14, background: "rgba(124,111,247,0.15)", border: "1px solid rgba(124,111,247,0.3)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
           <Sparkles size={22} strokeWidth={1.8} style={{ color: T.violet }} />
         </div>
-        <div style={{ flex: 1, minWidth: 200 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ fontSize: 15, fontWeight: 800, color: "#ffffff", margin: "0 0 4px", letterSpacing: "-0.02em" }}>Short-term. Verifiable. Automatic.</p>
           <p style={{ fontSize: 13, color: T.textMuted, margin: 0, lineHeight: 1.6 }}>
             Q4 markets open today, close at the deadline, and resolve automatically using <strong style={{ color: T.textPrimary }}>verified real-world data</strong>. No admin decides the outcome — the oracle does.
@@ -3236,7 +3236,7 @@ function AdminDonutChart({ slices, total, centerLabel = "Total" }) {
         )}
       </svg>
       {/* Legend */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, minWidth: 120 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, minWidth: 0 }}>
         {paths.map((p, i) => (
           <div
             key={p.label}
@@ -4311,13 +4311,13 @@ export default function DashboardPage() {
       {/* ── Global mobile responsive styles ── */}
       <style>{`
         /* ── Dashboard Responsive Layout ── */
+        *, *::before, *::after { box-sizing: border-box; }
+
         .dash-sidebar-desktop {
           width: 240px;
           flex-shrink: 0;
           position: fixed;
-          top: 0;
-          left: 0;
-          bottom: 0;
+          top: 0; left: 0; bottom: 0;
           z-index: 40;
         }
 
@@ -4327,68 +4327,75 @@ export default function DashboardPage() {
           flex-direction: column;
           margin-left: 240px;
           min-height: 100vh;
+          min-width: 0;
+          overflow-x: hidden;
         }
 
         .dash-mobile-only { display: none; }
         .dash-mobile-left { display: none; align-items: center; gap: 10px; }
 
+        /* ── page header action rows ── */
+        .dash-page-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 12px;
+        }
+        .dash-page-actions {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
         /* ── KPI grids — default desktop ── */
-        /* top 3-col row */
         .dash-kpi-grid-3 {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
           gap: 14px;
         }
-        /* stats 5-col row */
         .dash-kpi-grid-5 {
           display: grid;
           grid-template-columns: repeat(5, 1fr);
           gap: 12px;
         }
-        /* platform info 3-col row */
         .dash-sec-grid {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
           gap: 14px;
         }
-        /* charts 2-col row */
         .dash-kpi-grid {
           display: grid;
           grid-template-columns: 1fr 1fr;
           gap: 14px;
         }
-        /* market detail: info + staking card */
         .dash-detail-grid {
           display: grid;
           grid-template-columns: 1fr 400px;
           gap: 16px;
           align-items: start;
         }
-        /* rewards / positions card grid */
         .q-grid {
           display: grid;
           grid-template-columns: repeat(2, 1fr);
           gap: 12px;
         }
-        /* how it works steps */
         .dash-how-grid {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
           gap: 10px;
         }
-        /* reward explainer 3-col */
         .reward-how-grid {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
           gap: 12px;
         }
-        /* results stats 4-col */
         .results-stats-grid {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
           gap: 8px;
         }
-        /* positions stats 3-col */
         .positions-stats-grid {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
@@ -4404,12 +4411,13 @@ export default function DashboardPage() {
           border: 1px solid rgba(255,255,255,0.08);
           border-radius: 10px;
           flex-wrap: wrap;
-          width: fit-content;
+          width: 100%;
           overflow-x: auto;
           scrollbar-width: none;
           -ms-overflow-style: none;
         }
         .admin-tab-bar::-webkit-scrollbar { display: none; }
+        .admin-tab-bar button { flex-shrink: 0; white-space: nowrap; }
         .admin-header {
           display: flex;
           align-items: flex-start;
@@ -4420,7 +4428,7 @@ export default function DashboardPage() {
         }
         .admin-stats-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
           gap: 16px;
           margin-bottom: 24px;
         }
@@ -4429,8 +4437,9 @@ export default function DashboardPage() {
           -webkit-overflow-scrolling: touch;
           border-radius: 12px;
           border: 1px solid rgba(255,255,255,0.08);
+          width: 100%;
         }
-        .admin-table { width: 100%; min-width: 600px; border-collapse: collapse; }
+        .admin-table { width: 100%; min-width: 560px; border-collapse: collapse; }
         .admin-table th, .admin-table td {
           text-align: left;
           padding: 12px 16px;
@@ -4438,7 +4447,7 @@ export default function DashboardPage() {
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-          max-width: 200px;
+          max-width: 180px;
         }
         .admin-table th {
           background: rgba(255,255,255,0.02);
@@ -4464,28 +4473,18 @@ export default function DashboardPage() {
 
           main { padding: 20px 16px 32px !important; }
 
-          /* 3-col → 2-col */
           .dash-kpi-grid-3  { grid-template-columns: repeat(2, 1fr); gap: 12px; }
-          /* 5-col → 2-col */
           .dash-kpi-grid-5  { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-          /* sec 3-col → 1-col */
           .dash-sec-grid    { grid-template-columns: 1fr; gap: 10px; }
-          /* charts 2-col stays */
-          /* detail grid → stack */
+          .dash-kpi-grid    { grid-template-columns: 1fr; gap: 10px; }
           .dash-detail-grid { grid-template-columns: 1fr; }
-          /* rewards/positions cards → 1-col */
           .q-grid           { grid-template-columns: 1fr; }
-          /* how grid 4-col → 2-col */
           .dash-how-grid    { grid-template-columns: repeat(2, 1fr); }
-          /* reward how → 1-col */
           .reward-how-grid  { grid-template-columns: 1fr; gap: 10px; }
-          /* results stats → 2-col */
           .results-stats-grid   { grid-template-columns: repeat(2, 1fr); }
-          /* positions stats → 2-col */
           .positions-stats-grid { grid-template-columns: repeat(2, 1fr); }
 
           .admin-header     { flex-direction: column; align-items: stretch; }
-          .admin-tab-bar    { width: 100%; justify-content: flex-start; }
           .admin-stats-grid { grid-template-columns: repeat(2, 1fr); }
           .admin-form-grid  { grid-template-columns: 1fr; }
         }
@@ -4496,7 +4495,6 @@ export default function DashboardPage() {
         @media (max-width: 640px) {
           main { padding: 16px 12px 28px !important; }
 
-          /* all multi-col grids → 1-col */
           .dash-kpi-grid-3  { grid-template-columns: 1fr; gap: 10px; }
           .dash-kpi-grid-5  { grid-template-columns: repeat(2, 1fr); gap: 8px; }
           .dash-kpi-grid    { grid-template-columns: 1fr; gap: 10px; }
@@ -4505,23 +4503,18 @@ export default function DashboardPage() {
           .reward-how-grid  { grid-template-columns: 1fr; gap: 10px; }
           .results-stats-grid   { grid-template-columns: repeat(2, 1fr); gap: 8px; }
           .positions-stats-grid { grid-template-columns: 1fr; gap: 8px; }
+          .q-grid           { grid-template-columns: 1fr; gap: 10px; }
 
-          /* reward / position cards full width */
-          .q-grid { grid-template-columns: 1fr; gap: 10px; }
-
-          /* market question text smaller on mobile */
-          .market-question { font-size: 13px !important; }
+          .market-question  { font-size: 13px !important; }
 
           .admin-stats-grid { grid-template-columns: 1fr; gap: 10px; }
           .admin-table th, .admin-table td {
-            padding: 8px 12px;
-            font-size: 12px;
-            max-width: 150px;
+            padding: 8px 10px;
+            font-size: 11px;
+            max-width: 130px;
           }
           .admin-tab-bar { gap: 1px; padding: 3px; }
-          .admin-tab-bar button { padding: 6px 12px !important; font-size: 11px !important; white-space: nowrap; }
-
-          /* admin table full-bleed on small screens */
+          .admin-tab-bar button { padding: 6px 10px !important; font-size: 11px !important; }
           .admin-table-container {
             margin: 0 -12px;
             border-radius: 0;
@@ -4535,11 +4528,12 @@ export default function DashboardPage() {
         ════════════════════════ */
         @media (max-width: 400px) {
           main { padding: 12px 10px 24px !important; }
-          .dash-kpi-grid-5 { grid-template-columns: 1fr; gap: 8px; }
+          .dash-kpi-grid-5  { grid-template-columns: 1fr; gap: 8px; }
+          .results-stats-grid { grid-template-columns: 1fr; gap: 6px; }
         }
       `}</style>
       
-      <div style={{ display: "flex", minHeight: "100vh", background: T.bg, color: T.textPrimary }}>
+      <div style={{ display: "flex", minHeight: "100vh", background: T.bg, color: T.textPrimary, overflowX: "hidden", position: "relative" }}>
 
         {/* ── Fixed sidebar desktop ── */}
         <div className="dash-sidebar-desktop">
@@ -4561,7 +4555,7 @@ export default function DashboardPage() {
         )}
 
         {/* ── Main area ── */}
-        <div className="dash-main-area">
+        <div className="dash-main-area" style={{ overflowX: "hidden" }}>
           <TopHeader pageLabel={pageLabelMap[page] || page} onOpenMobileSidebar={() => setMobileSidebarOpen(true)} onNavigate={handleNavigate} user={user} onOpenNotifications={() => setNotifOpen(true)} unreadCount={unreadCount} />
 
           <main style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "28px 28px 48px", position: "relative" }}>
