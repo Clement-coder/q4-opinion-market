@@ -170,31 +170,75 @@ Deno.serve(async (req) => {
         const winners = (positions as Position[]).filter(p => p.side === outcome);
         const losers  = (positions as Position[]).filter(p => p.side !== outcome);
 
-        if (winners.length > 0 && winPool > 0) {
-          await db.from("rewards").insert(
-            winners.map(p => ({
-              user_id: p.user_id, market_id: market.id, position_id: p.id,
-              amount: parseFloat((Number(p.amount) + (Number(p.amount) / winPool) * netLose).toFixed(6)),
-              claimed: false,
-            }))
-          );
+        // ── Aggregate multiple positions per user into one reward row ────────
+        // The on-chain Q4Market.claimReward() pays once per address using the
+        // aggregated totalAmount stored in the contract. The Supabase rewards table
+        // must mirror this: one row per user per market, with the summed payout.
+        // Multiple user_positions rows for the same user on the same market
+        // (allowed since the multiple-positions migration) would otherwise create
+        // multiple reward rows that all try to call claimReward() — only the first
+        // would succeed on-chain.
+        const winnersByUser = new Map<string, { totalStake: number; positionIds: string[] }>();
+        for (const p of winners) {
+          const existing = winnersByUser.get(p.user_id);
+          if (existing) {
+            existing.totalStake += Number(p.amount);
+            existing.positionIds.push(p.id);
+          } else {
+            winnersByUser.set(p.user_id, { totalStake: Number(p.amount), positionIds: [p.id] });
+          }
         }
 
-        const notifRows = [
-          ...winners.map(p => ({
-            user_id: p.user_id, type: "reward" as const, read: false,
+        const losersByUser = new Map<string, { totalStake: number }>();
+        for (const p of losers) {
+          const existing = losersByUser.get(p.user_id);
+          if (existing) existing.totalStake += Number(p.amount);
+          else losersByUser.set(p.user_id, { totalStake: Number(p.amount) });
+        }
+
+        const uniqueWinnerCount = winnersByUser.size;
+        const uniqueLoserCount  = losersByUser.size;
+
+        if (winnersByUser.size > 0 && winPool > 0) {
+          const rewardRows = Array.from(winnersByUser.entries()).map(([userId, { totalStake, positionIds }]) => ({
+            user_id:    userId,
+            market_id:  market.id,
+            // Use the first position_id for the FK — unique index on position_id
+            // prevents duplicate reward rows if the function runs twice.
+            position_id: positionIds[0],
+            // Full payout: original stake + proportional share of net losing pool
+            amount:  parseFloat((totalStake + (totalStake / winPool) * netLose).toFixed(6)),
+            claimed: false,
+          }));
+          // upsert (ignore duplicates) so re-runs don't double-insert
+          await db.from("rewards").upsert(rewardRows, { onConflict: "position_id", ignoreDuplicates: true });
+        }
+
+        // Deduplicated notifications — one per unique user
+        const notifiedUsers = new Set<string>();
+        const notifRows: Array<{ user_id: string; type: "reward" | "market"; read: boolean; title: string; body: string }> = [];
+
+        for (const [userId] of winnersByUser) {
+          if (notifiedUsers.has(userId)) continue;
+          notifiedUsers.add(userId);
+          notifRows.push({
+            user_id: userId, type: "reward", read: false,
             title: "You won! 🎉",
             body: `Your ${outcome} prediction was correct. Check your rewards.`,
-          })),
-          ...losers.map(p => ({
-            user_id: p.user_id, type: "market" as const, read: false,
+          });
+        }
+        for (const [userId, { totalStake }] of losersByUser) {
+          if (notifiedUsers.has(userId)) continue;
+          notifiedUsers.add(userId);
+          notifRows.push({
+            user_id: userId, type: "market", read: false,
             title: "Market resolved",
-            body: `Market resolved ${outcome}. Your $${Number(p.amount).toFixed(2)} ${p.side} stake was forfeited.`,
-          })),
-        ];
+            body: `Market resolved ${outcome}. Your $${totalStake.toFixed(2)} ${outcome === "YES" ? "NO" : "YES"} stake was forfeited.`,
+          });
+        }
         if (notifRows.length > 0) await db.from("notifications").insert(notifRows);
 
-        processed.push(`${market.id}: ${outcome} — ${winners.length} winners, ${losers.length} losers`);
+        processed.push(`${market.id}: ${outcome} — ${uniqueWinnerCount} winners, ${uniqueLoserCount} losers`);
       } catch (err) {
         errors.push(`${market.id}: ${(err as Error).message}`);
       }

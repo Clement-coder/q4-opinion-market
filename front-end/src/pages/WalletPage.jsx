@@ -19,6 +19,7 @@ import { QuaiLogo }  from "../components/icons";
 import q4LogoSrc     from "../assets/Q4_logo.jpeg";
 import { Sk }        from "../components/Skeleton";
 import { sendQuai, createCheckout } from "../services/blippay";
+import { useBlipPayRegistration } from "../services/useBlipPay";
 import { supabase } from "../lib/supabase";
 import CustomSelect from "../components/CustomSelect";
 import QRCode from "qrcode";
@@ -1362,6 +1363,11 @@ export default function WalletPage() {
           loading, refreshing, error, refresh,
           qiCode } = useWallet();
 
+  // BlipPay registration — links the Q4 embedded wallet to a BlipPay profile
+  const { profile: blipProfile, registering: blipRegistering,
+          error: blipError, register: blipRegister,
+          refresh: blipRefresh } = useBlipPayRegistration(walletAddress);
+
   const [sendOpen,    setSendOpen]    = useState(false);
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [topUpOpen,   setTopUpOpen]   = useState(false);
@@ -1741,6 +1747,121 @@ export default function WalletPage() {
           </div>
         )}
       </div>
+
+      {/* ══ BLIPPAY CONNECT ══ */}
+      {!isDemoMode && walletAddress && (() => {
+        const isRegistered = blipProfile != null;
+        const isPending    = blipProfile === undefined; // still fetching
+
+        if (isPending) return null; // don't flash UI while loading
+
+        return (
+          <div style={{
+            background: T.surface, border: `1px solid ${T.border}`,
+            borderRadius: 22, padding: "20px 22px",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                {/* BlipPay logo placeholder */}
+                <div style={{
+                  width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+                  background: isRegistered ? "rgba(34,197,94,0.12)" : "rgba(255,255,255,0.06)",
+                  border: `1px solid ${isRegistered ? "rgba(34,197,94,0.3)" : T.border}`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 18,
+                }}>
+                  {isRegistered ? "✓" : "⚡"}
+                </div>
+                <div>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: "#ffffff", margin: 0 }}>
+                    {isRegistered ? "Connected to BlipPay" : "Connect to BlipPay"}
+                  </p>
+                  <p style={{ fontSize: 11, color: T.muted, margin: "2px 0 0" }}>
+                    {isRegistered
+                      ? `@${blipProfile.shortCode ?? blipProfile.displayName ?? "profile"} · wallet identified on Quai network`
+                      : "Register your wallet so BlipPay recognises it as a Quai address"}
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {isRegistered && blipProfile.shortUrl && (
+                  <a href={blipProfile.shortUrl} target="_blank" rel="noopener noreferrer"
+                    style={{
+                      padding: "7px 14px", borderRadius: 8, fontSize: 11, fontWeight: 700,
+                      background: "transparent", border: `1px solid ${T.border}`,
+                      color: T.muted, textDecoration: "none", cursor: "pointer",
+                      transition: "border-color 0.15s, color 0.15s",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.yes; e.currentTarget.style.color = T.yes; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.muted; }}
+                  >
+                    View Profile
+                  </a>
+                )}
+                <button
+                  type="button"
+                  disabled={blipRegistering}
+                  onClick={async () => {
+                    try {
+                      await blipRegister(user.uid, user.displayName ?? user.email ?? "Q4 Predictor");
+                      // Refresh WalletContext qiCode now that address is registered
+                      refresh();
+                    } catch { /* error already set in hook */ }
+                  }}
+                  style={{
+                    padding: "7px 18px", borderRadius: 8, fontSize: 12, fontWeight: 700,
+                    cursor: blipRegistering ? "not-allowed" : "pointer", border: "none",
+                    background: isRegistered ? "rgba(34,197,94,0.12)" : "rgba(34,197,94,0.9)",
+                    color: isRegistered ? "rgba(34,197,94,0.8)" : "#000000",
+                    opacity: blipRegistering ? 0.6 : 1,
+                    transition: "opacity 0.15s, background 0.15s",
+                  }}
+                >
+                  {blipRegistering ? "Connecting…" : isRegistered ? "Re-sync" : "Connect"}
+                </button>
+              </div>
+            </div>
+
+            {/* QI payment code row — shown once registered */}
+            {isRegistered && blipProfile.contactQiPaymentCode && (
+              <div style={{
+                marginTop: 14, paddingTop: 14, borderTop: `1px solid ${T.border}`,
+                display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+              }}>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontSize: 9, fontWeight: 700, color: T.dim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 3px" }}>
+                    QI Payment Code
+                  </p>
+                  <p style={{ fontSize: 11, color: "#f0f0f0", fontFamily: "monospace", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {blipProfile.contactQiPaymentCode}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard.writeText(blipProfile.contactQiPaymentCode)}
+                  style={{
+                    flexShrink: 0, padding: "5px 12px", borderRadius: 6, fontSize: 11,
+                    fontWeight: 600, cursor: "pointer", background: "transparent",
+                    border: `1px solid ${T.border}`, color: T.muted, transition: "border-color 0.15s, color 0.15s",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.yes; e.currentTarget.style.color = T.yes; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.muted; }}
+                >
+                  Copy
+                </button>
+              </div>
+            )}
+
+            {/* Error */}
+            {blipError && (
+              <p style={{ fontSize: 11, color: "#ef4444", margin: "10px 0 0" }}>
+                {blipError}
+              </p>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ══ WALLET DETAILS ══ */}
       <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:22,padding:"20px 22px"}}>

@@ -30,6 +30,19 @@ async function post(path, body) {
   return res.json();
 }
 
+async function put(path, body) {
+  const res = await fetch(`${BASE}${path}`, {
+    method:  "PUT",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.message ?? `BlipPay PUT ${path} → ${res.status}`);
+  }
+  return res.json();
+}
+
 // ─── price ───────────────────────────────────────────────────────────────────
 
 /**
@@ -185,7 +198,61 @@ export async function getWalletQiCode(address) {
   }
 }
 
-// ─── wallet key derivation ────────────────────────────────────────────────────
+/**
+ * Register (or update) this wallet address on the BlipPay referral leaderboard.
+ *
+ * Flow:
+ *   1. POST /api/referrals/challenge  → get a message + challengeId
+ *   2. Sign the message with the wallet's private key (EIP-191 personal_sign)
+ *   3. PUT  /api/referrals/profile    → submit address + challengeId + signature
+ *
+ * This links the Q4 embedded wallet address to a BlipPay profile so that
+ * `getWalletQiCode` can look it up by contactQuaiAddress.
+ *
+ * @param {string} uid          Firebase user UID (used to derive the wallet key)
+ * @param {string} displayName  Display name to set on the BlipPay profile
+ * @returns {Promise<{ shortCode: string, shortUrl: string, contactQiPaymentCode: string|null }>}
+ */
+export async function registerWalletWithBlipPay(uid, displayName) {
+  const { wallet, address } = await getOrCreateWallet(uid);
+
+  // Step 1: Get challenge
+  const challenge = await post("/api/referrals/challenge", {
+    referralAddress: address,
+  });
+
+  // Step 2: Sign the challenge message with the wallet's private key
+  const signature = await wallet.signMessage(challenge.message);
+
+  // Step 3: Register profile
+  const profile = await put("/api/referrals/profile", {
+    referralAddress: address,
+    challengeId:     challenge.challengeId,
+    signature,
+    displayName:     displayName || "Q4 Predictor",
+  });
+
+  return profile;
+}
+
+/**
+ * Fetch the current BlipPay profile for this wallet (public, no auth needed).
+ * Returns null if not registered yet.
+ *
+ * @param {string} address  Quai wallet address (0x…)
+ * @returns {Promise<object|null>}
+ */
+export async function getBlipPayProfile(address) {
+  if (!address) return null;
+  try {
+    const data = await get(`/api/referrals/status?referralAddress=${encodeURIComponent(address)}`);
+    return data?.profile ?? null;
+  } catch {
+    return null;
+  }
+}
+
+
 
 /**
  * App-level wallet secret — combined with the user's Firebase UID via HKDF
@@ -461,8 +528,8 @@ export async function sendQuai({ uid, to, amountQuai }) {
   const gasPrice = BigInt(gasPriceHex);
   const gasLimit = BigInt(21_000);
 
-  // Convert QUAI amount to Wei (18 decimals)
-  const valueWei = BigInt(Math.round(amountQuai * 1e18));
+  // Convert QUAI amount to Wei (18 decimals) — Math.floor avoids rounding up past balance
+  const valueWei = BigInt(Math.floor(amountQuai * 1e18));
 
   const tx = {
     to,

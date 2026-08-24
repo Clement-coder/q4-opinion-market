@@ -2,35 +2,36 @@
  * contractService.js
  * High-level contract interaction layer for Q4.
  *
- * Architecture
- * ────────────
- * The frontend uses a deterministic "embedded wallet" derived from the user's
- * Firebase UID (see blippay.js → deriveWalletAddress).  That derivation only
- * produces an address; the corresponding private key lives in the browser
- * memory via the same deterministic derivation so we can sign txs.
+ * Key design decisions:
+ * ─────────────────────
+ * • Wallet derivation is handled exclusively by blippay.js (getOrCreateWallet).
+ *   This guarantees the on-chain signing address always matches the address
+ *   shown in the UI and stored in the wallet balance display.
  *
- * All on-chain writes follow this pattern:
- *   1. Build calldata (ABI-encoded).
- *   2. Get nonce + gas price from the Quai RPC.
- *   3. Sign the transaction locally with the user's derived key.
- *   4. Broadcast via eth_sendRawTransaction.
- *   5. Poll for receipt (waitForReceipt).
+ * • contractService never derives its own keys — doing so with a different
+ *   algorithm (the old v1/SHA-256 path) produced a different address from
+ *   blippay's v2/HKDF path, causing staked funds to arrive from an unknown
+ *   address that the user could never recover from.
  *
- * The quais.js SDK is used for signing because it handles Quai's custom
- * transaction serialisation (protobuf-encoded, with address grinding for
- * zone-correct contract addresses).
+ * • All on-chain writes use quais.js Wallet.sendTransaction() which handles
+ *   Quai's protobuf transaction encoding and zone-aware signing automatically.
  *
- * Read-only calls use the tiny hand-rolled ABI encoder in contracts.js to
- * avoid pulling the full quais bundle into hot paths.
+ * • Read-only calls use the hand-rolled ABI encoder/decoder in contracts.js
+ *   via quai_call (Quai-specific RPC method, not eth_call).
+ *
+ * Flow for every write:
+ *   1. Retrieve the user's wallet (derived + cached by blippay.getOrCreateWallet).
+ *   2. Connect it to a JsonRpcProvider for Cyprus-1.
+ *   3. Call signer.sendTransaction({ to, data, value }) — quais auto-populates
+ *      nonce, gasPrice, chainId, and serialises with protobuf.
+ *   4. Await tx.wait(1) for one confirmation.
  */
 
-import { quais } from "quais";
+import { quais }          from "quais";
+import { getOrCreateWallet } from "../services/blippay";
 import {
-  FACTORY_ADDRESS,
   QUAI_RPC,
   ethCall,
-  quaiCall,
-  waitForReceipt,
   encodePredict,
   encodeClaimReward,
   encodeWithdrawRefund,
@@ -50,56 +51,19 @@ function getProvider() {
   return _provider;
 }
 
-// ─── Signer cache ─────────────────────────────────────────────────────────────
-// One Wallet instance per private key (keyed by lowercase address).
-
-const _signers = new Map();
+// ─── Signer ───────────────────────────────────────────────────────────────────
 
 /**
- * Derive the private key from a Firebase UID (same algorithm as deriveWalletAddress
- * in blippay.js, but returning the raw key bytes as a hex string).
- *
- * We iterate SHA-256 with a nonce suffix until the DERIVED ADDRESS (not the key
- * bytes) has its first byte in the Cyprus-1 range (0x00–0x1F). This exactly
- * matches the address derivation in blippay.js → deriveWalletAddress().
- *
- * Note: blippay.js checks the SHA-256 hash bytes[0] <= 0x1f and uses the first
- * 20 bytes of the hash directly as an address (not as a private key). Here we
- * do the same: use the hash bytes as the private key, then verify the resulting
- * EC address is also in Cyprus-1 zone.
+ * Get a quais Wallet connected to the Cyprus-1 provider for a given Firebase UID.
+ * Uses blippay.getOrCreateWallet so the signing address is ALWAYS the same
+ * address shown in the wallet UI and stored on-chain.
  *
  * @param {string} uid  Firebase UID
- * @returns {Promise<{privateKey: string, address: string}>}
+ * @returns {Promise<quais.Wallet>}
  */
-export async function deriveKeyFromUID(uid) {
-  const encoder = new TextEncoder();
-  for (let nonce = 0; nonce < 10000; nonce++) {
-    const data       = encoder.encode(`q4-wallet-v1:${uid}:${nonce}`);
-    const hash       = await crypto.subtle.digest("SHA-256", data);
-    const bytes      = Array.from(new Uint8Array(hash));
-    const privateKey = "0x" + bytes.map(b => b.toString(16).padStart(2, "0")).join("");
-    const wallet     = new quais.Wallet(privateKey);
-    const address    = wallet.address;
-    // Check the ECDSA-derived address is in Cyprus-1 zone (first byte 0x00–0x1F)
-    // so the user can transact with contracts on Cyprus-1 shard.
-    const firstByte  = parseInt(address.slice(2, 4), 16);
-    if (firstByte <= 0x1f) {
-      return { privateKey, address };
-    }
-  }
-  throw new Error("deriveKeyFromUID: could not find Cyprus-1 address in 10000 nonces");
-}
-
-/**
- * Get (or create) a quais Wallet signer for the given Firebase UID.
- * The wallet is connected to the Quai Cyprus-1 provider.
- */
-export async function getSigner(uid) {
-  if (_signers.has(uid)) return _signers.get(uid);
-  const { privateKey } = await deriveKeyFromUID(uid);
-  const signer = new quais.Wallet(privateKey, getProvider());
-  _signers.set(uid, signer);
-  return signer;
+async function getSigner(uid) {
+  const { wallet } = await getOrCreateWallet(uid);
+  return wallet.connect(getProvider());
 }
 
 // ─── Read helpers ─────────────────────────────────────────────────────────────
@@ -107,9 +71,9 @@ export async function getSigner(uid) {
 /**
  * Fetch the on-chain position for a user on a specific Q4Market contract.
  *
- * @param {string} marketContractAddress  Q4Market contract address (from markets.contract_address).
+ * @param {string} marketContractAddress  Q4Market contract address.
  * @param {string} userWalletAddress      User's Quai wallet address.
- * @returns {Promise<{hasPosition: boolean, side: boolean, totalAmount: bigint, claimed: boolean}>}
+ * @returns {Promise<{hasPosition:boolean, side:boolean, totalAmount:bigint, claimed:boolean}>}
  */
 export async function getOnChainPosition(marketContractAddress, userWalletAddress) {
   try {
@@ -164,22 +128,22 @@ export async function getOnChainPendingRefund(marketContractAddress, userWalletA
 // ─── Write helpers ────────────────────────────────────────────────────────────
 
 /**
- * Send a signed transaction using quais.js (handles Quai's protobuf encoding).
+ * Send a signed transaction via quais.js.
+ * quais.Wallet.sendTransaction handles:
+ *   • auto-populating nonce, gasPrice, chainId
+ *   • Quai's protobuf (QuaiTransaction) serialisation
+ *   • zone-aware address validation
  *
- * @param {quais.Wallet} signer        Connected quais Wallet.
- * @param {string}       to            Contract address (Quai-checksummed or lowercase).
- * @param {string}       calldata      Hex calldata string with 0x prefix.
- * @param {bigint}       [value=0n]    QUAI value in wei to send.
- * @returns {Promise<{hash: string, receipt: object}>}
+ * @param {quais.Wallet} signer   Connected quais Wallet (must have provider).
+ * @param {string}       to       Contract address.
+ * @param {string}       data     Hex calldata string with 0x prefix.
+ * @param {bigint}       [value]  QUAI value in wei to send with the call.
+ * @returns {Promise<{hash:string, receipt:object}>}
  */
-async function sendTx(signer, to, calldata, value = 0n) {
-  // Use quais.js sendTransaction which handles Quai's protobuf tx format
-  const tx = await signer.sendTransaction({
-    to,
-    data:  calldata,
-    value,
-  });
-
+async function sendTx(signer, to, data, value = 0n) {
+  const txReq = { to, data, value };
+  // sendTransaction auto-populates: nonce, gasPrice, chainId, type
+  const tx      = await signer.sendTransaction(txReq);
   console.log(`[contractService] tx sent: ${tx.hash}`);
   const receipt = await tx.wait(1);
   return { hash: tx.hash, receipt };
@@ -189,28 +153,34 @@ async function sendTx(signer, to, calldata, value = 0n) {
 
 /**
  * Call predict(isYes) on a Q4Market contract.
- * Sends the QUAI stake value along with the transaction.
+ *
+ * IMPORTANT: The contract uses QUAI as the staking token (msg.value).
+ * amountQuai must be the QUAI equivalent of the user's intended USDT stake.
+ * The DashboardPage converts USDT → QUAI using the live QUAI/USD price before
+ * calling this function.
  *
  * @param {object} params
- * @param {string}  params.uid                  Firebase UID of the user.
- * @param {string}  params.marketContractAddress Address of the specific Q4Market contract.
- * @param {boolean} params.isYes                true = YES, false = NO.
- * @param {number}  params.amountQuai           Stake amount in QUAI (float, e.g. 2.5).
- * @returns {Promise<{hash: string, receipt: object}>}
+ * @param {string}  params.uid                   Firebase UID.
+ * @param {string}  params.marketContractAddress  Q4Market contract address.
+ * @param {boolean} params.isYes                  true = YES, false = NO.
+ * @param {number}  params.amountQuai             Stake in QUAI (float, e.g. 12.5).
+ * @returns {Promise<{hash:string, receipt:object}>}
  */
 export async function onChainPredict({ uid, marketContractAddress, isYes, amountQuai }) {
-  if (!marketContractAddress) throw new Error("Market contract address is required");
-  if (!uid)                   throw new Error("User UID is required");
+  if (!marketContractAddress) throw new Error("Market has no on-chain contract address.");
+  if (!uid)                   throw new Error("User UID is required.");
+  if (!amountQuai || amountQuai <= 0) throw new Error("Stake amount must be greater than zero.");
 
   const signer   = await getSigner(uid);
   const calldata = encodePredict(isYes);
 
   // Convert QUAI float → wei BigInt (18 decimals)
-  const weiValue = BigInt(Math.round(amountQuai * 1e18));
+  // Use Math.floor to avoid floating-point precision issues
+  const weiValue = BigInt(Math.floor(amountQuai * 1e18));
 
   console.log(
-    `[contractService] predict(${isYes}) on ${marketContractAddress}` +
-    ` — ${amountQuai} QUAI (${weiValue} wei)`
+    `[contractService] predict(${isYes}) — ${amountQuai} QUAI (${weiValue} wei)` +
+    ` on ${marketContractAddress} from ${signer.address}`
   );
 
   return sendTx(signer, marketContractAddress, calldata, weiValue);
@@ -221,18 +191,18 @@ export async function onChainPredict({ uid, marketContractAddress, isYes, amount
  * Only callable after the market is resolved and the user is on the winning side.
  *
  * @param {object} params
- * @param {string}  params.uid                  Firebase UID of the user.
- * @param {string}  params.marketContractAddress Address of the Q4Market contract.
- * @returns {Promise<{hash: string, receipt: object}>}
+ * @param {string}  params.uid                   Firebase UID.
+ * @param {string}  params.marketContractAddress  Q4Market contract address.
+ * @returns {Promise<{hash:string, receipt:object}>}
  */
 export async function onChainClaimReward({ uid, marketContractAddress }) {
-  if (!marketContractAddress) throw new Error("Market contract address is required");
-  if (!uid)                   throw new Error("User UID is required");
+  if (!marketContractAddress) throw new Error("Market has no on-chain contract address.");
+  if (!uid)                   throw new Error("User UID is required.");
 
   const signer   = await getSigner(uid);
   const calldata = encodeClaimReward();
 
-  console.log(`[contractService] claimReward() on ${marketContractAddress}`);
+  console.log(`[contractService] claimReward() on ${marketContractAddress} from ${signer.address}`);
 
   return sendTx(signer, marketContractAddress, calldata);
 }
@@ -242,18 +212,18 @@ export async function onChainClaimReward({ uid, marketContractAddress }) {
  * Only callable after the market has been cancelled.
  *
  * @param {object} params
- * @param {string}  params.uid                  Firebase UID of the user.
- * @param {string}  params.marketContractAddress Address of the Q4Market contract.
- * @returns {Promise<{hash: string, receipt: object}>}
+ * @param {string}  params.uid                   Firebase UID.
+ * @param {string}  params.marketContractAddress  Q4Market contract address.
+ * @returns {Promise<{hash:string, receipt:object}>}
  */
 export async function onChainWithdrawRefund({ uid, marketContractAddress }) {
-  if (!marketContractAddress) throw new Error("Market contract address is required");
-  if (!uid)                   throw new Error("User UID is required");
+  if (!marketContractAddress) throw new Error("Market has no on-chain contract address.");
+  if (!uid)                   throw new Error("User UID is required.");
 
   const signer   = await getSigner(uid);
   const calldata = encodeWithdrawRefund();
 
-  console.log(`[contractService] withdrawRefund() on ${marketContractAddress}`);
+  console.log(`[contractService] withdrawRefund() on ${marketContractAddress} from ${signer.address}`);
 
   return sendTx(signer, marketContractAddress, calldata);
 }

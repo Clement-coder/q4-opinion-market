@@ -9,6 +9,8 @@ import {
   getQuaiPriceFull,
   getFeedNews,
   getBlipLeaderboard,
+  registerWalletWithBlipPay,
+  getBlipPayProfile,
 } from "./blippay";
 
 /**
@@ -94,4 +96,48 @@ export function useBlipLeaderboard(limit = 50) {
   useEffect(() => { fetch_(); }, [fetch_]);
 
   return { entries, loading, error, refresh: fetch_ };
+}
+
+/**
+ * Hook for registering/refreshing the user's BlipPay profile.
+ *
+ * Returns:
+ *   profile        — current BlipPay profile object or null (not registered yet)
+ *   registering    — true while the sign + PUT is in-flight
+ *   error          — error message string or null
+ *   register(uid, displayName) — trigger registration / re-registration
+ *   refresh(address)           — re-fetch current profile status
+ */
+export function useBlipPayRegistration(address) {
+  const [profile,     setProfile]     = useState(undefined); // undefined = not yet fetched
+  const [registering, setRegistering] = useState(false);
+  const [error,       setError]       = useState(null);
+
+  const refresh = useCallback(async (addr) => {
+    const a = addr ?? address;
+    if (!a) return;
+    const p = await getBlipPayProfile(a);
+    setProfile(p ?? null);
+  }, [address]);
+
+  useEffect(() => {
+    if (address) refresh(address);
+  }, [address, refresh]);
+
+  const register = useCallback(async (uid, displayName) => {
+    setRegistering(true);
+    setError(null);
+    try {
+      const result = await registerWalletWithBlipPay(uid, displayName);
+      setProfile(result);
+      return result;
+    } catch (e) {
+      setError(e.message);
+      throw e;
+    } finally {
+      setRegistering(false);
+    }
+  }, []);
+
+  return { profile, registering, error, register, refresh };
 }

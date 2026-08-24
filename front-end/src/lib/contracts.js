@@ -36,18 +36,7 @@ function pad32(hex) {
   return hex.replace(/^0x/, "").padStart(64, "0");
 }
 
-/** Keccak-256 of a UTF-8 string → 4-byte selector hex (no 0x). */
-async function selector(sig) {
-  const data   = new TextEncoder().encode(sig);
-  const hash   = await crypto.subtle.digest("SHA-256", data);
-  // Note: SHA-256 ≠ keccak256. We pre-compute selectors below statically.
-  return Array.from(new Uint8Array(hash))
-    .map(b => b.toString(16).padStart(2, "0"))
-    .join("")
-    .slice(0, 8);
-}
-
-// Pre-computed keccak256 4-byte selectors (verified with `cast sig`).
+/** Keccak-256 4-byte selectors, pre-computed with `cast sig` and verified against the deployed ABI. */
 export const SELECTORS = {
   // Q4Market
   "predict(bool)":        "0x0a990f54",
@@ -145,12 +134,23 @@ export async function quaiCall(method, params) {
 
 /**
  * eth_call — read-only contract call.
+ * Uses quai_call (Quai-specific RPC method) which is zone-aware.
+ * Falls back to eth_call if quai_call is not available on the node.
+ *
  * @param {string} to        Contract address (will be lowercased).
  * @param {string} calldata  Hex calldata with 0x prefix.
  * @returns {string}  Raw 0x-prefixed hex result.
  */
 export async function ethCall(to, calldata) {
-  return quaiCall("eth_call", [{ to: to.toLowerCase(), data: calldata }, "latest"]);
+  try {
+    return await quaiCall("quai_call", [{ to: to.toLowerCase(), data: calldata }, "latest"]);
+  } catch (e) {
+    // Some nodes may not support quai_call — fall back to eth_call
+    if (e.message?.includes("quai_call") || e.message?.includes("method not found")) {
+      return quaiCall("eth_call", [{ to: to.toLowerCase(), data: calldata }, "latest"]);
+    }
+    throw e;
+  }
 }
 
 /**

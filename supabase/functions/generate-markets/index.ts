@@ -130,16 +130,16 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Secondary dedup: exact question match today (belt-and-suspenders)
-      const { data: existing } = await db
+      // Secondary dedup: use dedup_key (question + params hash) — faster than full text match
+      const { data: existingKey } = await db
         .from("markets")
         .select("id")
-        .eq("question", t.question)
+        .eq("dedup_key", t.dedup_key)
         .gte("created_at", cutoff)
         .limit(1);
 
-      if (existing && existing.length > 0) {
-        skipped.push(t.question);
+      if (existingKey && existingKey.length > 0) {
+        skipped.push(`${t.question} (duplicate key)`);
         continue;
       }
 
@@ -167,6 +167,8 @@ Deno.serve(async (req) => {
           target_time:      t.target_time.toISOString(),
           // store the deployed contract address (null if on-chain deploy was skipped)
           contract_address: contractAddress,
+          // dedup_key prevents duplicate markets across cron runs
+          dedup_key:        t.dedup_key,
         })
         .select("id").single();
 

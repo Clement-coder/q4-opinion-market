@@ -1508,7 +1508,7 @@ function ShareModal({ open, onClose, question }) {
 ════════════════════════════════════════════════ */
 
 const PROTOCOL_FEE_PCT = 5;   // 5% platform fee
-const MIN_STAKE        = 2;   // $2 minimum
+const MIN_STAKE        = 1;   // $1 USDT minimum (matches platform rules)
 
 /** Live countdown — re-renders every second */
 function Countdown({ deadline }) {
@@ -1541,12 +1541,33 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
   const [shareOpen, setShareOpen]   = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
+  const [lastTxHash, setLastTxHash] = useState(null); // on-chain tx hash after confirmed stake
 
   const { profile, user }               = useAuth();
   const { balance, priceData }          = useWallet();
   const { market, loading: mktLoading } = useMarket(questionId);
   const { isDemoMode }                  = useDemoModeContext();
   const { toast }                       = useToast();
+
+  /* ── Preload lockedSide from existing positions for this market ──
+   * Queries user_positions once so returning users see their locked side
+   * without needing to submit another stake.
+   */
+  useEffect(() => {
+    if (isDemoMode || !profile?.id || !questionId) return;
+    supabase
+      .from("user_positions")
+      .select("side")
+      .eq("user_id", profile.id)
+      .eq("market_id", questionId)
+      .limit(1)
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          setLockedSide(data[0].side);
+          setSelected(data[0].side);
+        }
+      });
+  }, [isDemoMode, profile?.id, questionId]);
 
   /* ── derived market values ── */
   const totalPool        = market?.totalPool ?? 0;
@@ -1557,7 +1578,8 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
 
   /* ── USDT balance — using QUAI price to derive USD equivalent ── */
   const quaiPrice = priceData?.current?.price ?? null;
-  const rate      = quaiPrice && quaiPrice > 0 ? parseFloat((1 / quaiPrice).toFixed(6)) : null;
+  // Compute rate without toFixed() truncation — direct division preserves full precision
+  const rate      = quaiPrice && quaiPrice > 0 ? (1 / quaiPrice) : null;
   const amtNum    = parseFloat(amount) || 0;
   const quaiEquiv = amtNum > 0 && rate ? (amtNum * rate).toFixed(4) : null;
 
@@ -1654,34 +1676,78 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
     let stakeTxHash = null;
 
     try {
+      // ── On-chain stake (only if this market has a deployed contract) ──────
       if (market.contractAddress) {
-        const quaiAmount = rate ? amtNum * rate : 0;
-        if (quaiAmount <= 0) throw new Error("Could not determine QUAI equivalent. Try again.");
+        // rate = QUAI per 1 USDT (full precision — no toFixed truncation)
+        if (!rate) throw new Error("QUAI price not available. Please refresh and try again.");
+        const quaiAmount = amtNum * rate; // USDT → QUAI
+        if (!Number.isFinite(quaiAmount) || quaiAmount <= 0) {
+          throw new Error("Could not calculate QUAI equivalent. Please try again.");
+        }
         try {
           const result = await onChainPredict({
-            uid: user.uid, marketContractAddress: market.contractAddress,
-            isYes: selected === "YES", amountQuai: quaiAmount,
+            uid:                   user.uid,
+            marketContractAddress: market.contractAddress,
+            isYes:                 selected === "YES",
+            amountQuai:            quaiAmount,
           });
           stakeTxHash = result.hash;
         } catch (chainErr) {
-          throw new Error(`On-chain stake failed: ${chainErr.message ?? chainErr}`);
+          // Unwrap quais error messages which can be deeply nested
+          const raw = chainErr?.message ?? chainErr?.reason ?? String(chainErr);
+          // Common revert reasons from Q4Market
+          if (raw.includes("side locked"))        throw new Error("Your side is locked — you already staked the other side on this market.");
+          if (raw.includes("deadline passed"))    throw new Error("This market's deadline has passed — no more predictions accepted.");
+          if (raw.includes("not active"))         throw new Error("This market is no longer active.");
+          if (raw.includes("zero amount"))        throw new Error("Stake amount too small to register on-chain.");
+          if (raw.includes("insufficient funds")) throw new Error("Insufficient QUAI balance. Please top up your wallet.");
+          throw new Error(`On-chain stake failed: ${raw}`);
         }
       }
+      // ── No contract address: off-chain / pending deployment market ────────
+      // Position still recorded in Supabase — user stakes intent, QUAI transfer
+      // happens when the market is deployed and the position is migrated on-chain.
 
-      const positionRow = { user_id: profile.id, market_id: market.id, side: selected, amount: amtNum, switched: false };
+      // ── Record in Supabase ────────────────────────────────────────────────
+      const positionRow = {
+        user_id:  profile.id,
+        market_id: market.id,
+        side:     selected,
+        amount:   amtNum,
+        switched: false,
+      };
       if (stakeTxHash) positionRow.stake_tx_hash = stakeTxHash;
+
       const { error: insertErr } = await supabase.from("user_positions").insert(positionRow);
       if (insertErr) throw insertErr;
 
-      const { error: poolErr } = await supabase.rpc("increment_pool", { p_market_id: market.id, p_outcome: selected, p_amount: amtNum });
+      const { error: poolErr } = await supabase.rpc("increment_pool", {
+        p_market_id: market.id,
+        p_outcome:   selected,
+        p_amount:    amtNum,
+      });
       if (poolErr) throw poolErr;
 
-      supabase.from("market_events").insert({ market_id: market.id, event_type: "position_placed", user_id: profile.id, transaction_hash: stakeTxHash ?? null, metadata: { side: selected, amount: amtNum, txHash: stakeTxHash } }).then(() => {});
+      // Fire-and-forget audit event
+      supabase.from("market_events").insert({
+        market_id:        market.id,
+        event_type:       "position_placed",
+        user_id:          profile.id,
+        transaction_hash: stakeTxHash ?? null,
+        metadata:         { side: selected, amount: amtNum, txHash: stakeTxHash ?? null, on_chain: Boolean(stakeTxHash) },
+      }).then(() => {});
 
       setLockedSide(selected);
       setConfirmed(true);
+      setLastTxHash(stakeTxHash);
       if (onConfetti) onConfetti();
-      toast.update(tid, { type: "success", msg: "Position confirmed! 🎉", sub: `$${amtNum} USDT on ${selected}` });
+      toast.update(tid, {
+        type: "success",
+        msg:  "Position confirmed! 🎉",
+        sub:  stakeTxHash
+          ? `$${amtNum} USDT on ${selected} · tx: ${stakeTxHash.slice(0,10)}…`
+          : `$${amtNum} USDT on ${selected}`,
+      });
     } catch (err) {
       console.error("[PageQuestionDetail] stake error:", err);
       const msg = err.message ?? "Failed to save your position. Please try again.";
@@ -1697,6 +1763,7 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
     setAmount("");
     setConfirmed(false);
     setSubmitError(null);
+    setLastTxHash(null);
   };
 
   if (mktLoading) {
@@ -1747,11 +1814,24 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
             </h1>
 
             {/* Market status badge */}
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 999, background: isOpen ? "rgba(34,197,94,0.1)" : "rgba(255,255,255,0.06)", border: `1px solid ${isOpen ? "rgba(34,197,94,0.3)" : T.border}`, marginBottom: 20 }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: isOpen ? T.yes : T.textDim, flexShrink: 0 }} />
-              <span style={{ fontSize: 11, fontWeight: 700, color: isOpen ? T.yes : T.textMuted, letterSpacing: "0.05em" }}>
-                {isOpen ? "MARKET OPEN" : market.status === "resolved" ? `RESOLVED: ${market.resolved_outcome}` : "MARKET CLOSED"}
-              </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 20 }}>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 999, background: isOpen ? "rgba(34,197,94,0.1)" : "rgba(255,255,255,0.06)", border: `1px solid ${isOpen ? "rgba(34,197,94,0.3)" : T.border}` }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: isOpen ? T.yes : T.textDim, flexShrink: 0 }} />
+                <span style={{ fontSize: 11, fontWeight: 700, color: isOpen ? T.yes : T.textMuted, letterSpacing: "0.05em" }}>
+                  {isOpen ? "MARKET OPEN" : market.status === "resolved" ? `RESOLVED: ${market.resolvedOutcome ?? market.resolved_outcome}` : "MARKET CLOSED"}
+                </span>
+              </div>
+              {/* On-chain badge — shows whether contract is deployed */}
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 999,
+                background: market.contractAddress ? "rgba(124,111,247,0.1)" : "rgba(255,255,255,0.04)",
+                border: `1px solid ${market.contractAddress ? "rgba(124,111,247,0.3)" : T.border}` }}>
+                <span style={{ fontSize: 10 }}>{market.contractAddress ? "⛓" : "📋"}</span>
+                <span style={{ fontSize: 11, fontWeight: 700,
+                  color: market.contractAddress ? "#7c6ff7" : T.textDim,
+                  letterSpacing: "0.05em" }}>
+                  {market.contractAddress ? "ON-CHAIN" : "OFF-CHAIN"}
+                </span>
+              </div>
             </div>
 
             {/* ── 4 stat cards — TOTAL only, no YES/NO split ── */}
@@ -2144,6 +2224,41 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
                   <p style={{ fontSize: 18, fontWeight: 800, color: selected === "YES" ? T.yes : T.no, margin: 0 }}>${estimatedPayout.toFixed(2)}</p>
                   <p style={{ fontSize: 10, color: T.textDim, margin: "3px 0 0" }}>Based on current pool. Final payout may vary.</p>
                 </div>
+
+                {/* On-chain tx link (shown only when tx was broadcast) */}
+                {lockedSide && market?.contractAddress && (
+                  <div style={{ width:"100%", padding:"10px 14px", borderRadius:10,
+                    background:"rgba(124,111,247,0.07)", border:"1px solid rgba(124,111,247,0.22)",
+                    display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
+                    <div>
+                      <p style={{ fontSize:10, fontWeight:700, color:"rgba(124,111,247,0.7)",
+                        textTransform:"uppercase", letterSpacing:"0.07em", margin:"0 0 2px" }}>
+                        On-Chain Settlement ⛓
+                      </p>
+                      <p style={{ fontSize:11, color:T.textMuted, margin:0 }}>
+                        Your position is recorded on Quai Network · Cyprus-1
+                      </p>
+                    </div>
+                    <a href={`https://quaiscan.io/address/${market.contractAddress}`}
+                      target="_blank" rel="noopener noreferrer"
+                      style={{ fontSize:11, color:"#7c6ff7", fontWeight:600,
+                        textDecoration:"none", whiteSpace:"nowrap", flexShrink:0 }}>
+                      View ↗
+                    </a>
+                  </div>
+                )}
+
+                {/* Off-chain notice (no contract yet) */}
+                {lockedSide && !market?.contractAddress && (
+                  <div style={{ width:"100%", padding:"10px 14px", borderRadius:10,
+                    background:"rgba(251,191,36,0.07)", border:"1px solid rgba(251,191,36,0.22)" }}>
+                    <p style={{ fontSize:11, color:"#fbbf24", margin:0, lineHeight:1.6 }}>
+                      📋 <strong>Off-chain position</strong> — this market doesn't have a deployed
+                      contract yet. Your position is saved and will be settled on-chain when the
+                      market resolves.
+                    </p>
+                  </div>
+                )}
 
                 <button type="button" onClick={handleStakeAnother}
                   style={{ width: "100%", padding: "11px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, color: T.textMuted, fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "border-color 0.15s, color 0.15s" }}
@@ -2556,9 +2671,9 @@ function ResultCard({ r }) {
       <div style={{ display: "grid", gap: 8 }} className="results-stats-grid">
         {[
           { label: "Your Side",   value: r.yourSide,                  color: r.yourSide === "YES" ? T.yes : T.no },
-          { label: "Staked",      value: `${r.yourStake.toFixed(2)} QUAI`, color: T.textPrimary },
-          { label: "Pool",        value: `$${(r.totalPool/1000).toFixed(1)}K`, color: T.textPrimary },
-          { label: "Reward",      value: r.won ? `+${r.reward.toFixed(2)} QUAI` : "—", color: r.won ? T.yes : T.textDim },
+          { label: "Staked",      value: `$${r.yourStake.toFixed(2)} USDT`, color: T.textPrimary },
+          { label: "Pool",        value: r.totalPool >= 1000 ? `$${(r.totalPool/1000).toFixed(1)}K` : `$${r.totalPool.toFixed(0)}`, color: T.textPrimary },
+          { label: "Payout",      value: r.won ? `+${r.reward.toFixed(4)} QUAI` : "—", color: r.won ? T.yes : T.textDim },
         ].map(({ label, value, color }) => (
           <div key={label} style={{ padding: "8px 10px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, textAlign: "center" }}>
             <p style={{ fontSize: 9, color: T.textDim, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 3px" }}>{label}</p>
@@ -2641,8 +2756,9 @@ function PageResults() {
    PAGE: LEADERBOARD
 ════════════════════════════════════════════════ */
 
-const LB_TABS = ["All Time", "This Week", "This Month"];
+const LB_TABS = ["Predictors", "Referrals"];
 
+/* Q4 prediction leaderboard row */
 function LeaderboardRow({ entry }) {
   const isTop3 = entry.rank <= 3;
   const rankColors = { 1: "#fbbf24", 2: "#94a3b8", 3: "#fb923c" };
@@ -2654,7 +2770,6 @@ function LeaderboardRow({ entry }) {
       padding: "14px 20px",
       background: "transparent",
       borderBottom: `1px solid ${T.border}`,
-      borderLeft: "3px solid transparent",
       transition: "background 0.15s",
     }}
       onMouseEnter={(e) => { e.currentTarget.style.background = T.glassHover; }}
@@ -2679,11 +2794,19 @@ function LeaderboardRow({ entry }) {
           {entry.name}
         </p>
         <p style={{ fontSize: 10, color: T.textDim, margin: "2px 0 0" }}>
-          {entry.country && `${entry.country} · `}{entry.activatedReferrals} referrals
+          {entry.subtitle}
         </p>
       </div>
 
       <div style={{ display: "flex", gap: 20, flexShrink: 0, alignItems: "center" }}>
+        {entry.winRate != null && (
+          <div style={{ textAlign: "right" }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: entry.winRate >= 50 ? T.yes : T.no, margin: 0 }}>
+              {entry.winRate.toFixed(0)}%
+            </p>
+            <p style={{ fontSize: 10, color: T.textDim, margin: 0 }}>Win rate</p>
+          </div>
+        )}
         <div style={{ textAlign: "right" }}>
           <p style={{ fontSize: 13, fontWeight: 700, color: T.yes, margin: 0, display: "flex", alignItems: "center", gap: 3 }}>
             {entry.rewardsQuai != null ? <>{entry.rewardsQuai.toFixed(2)} <QuaiLogo size={13} /></> : "—"}
@@ -2705,25 +2828,57 @@ function LeaderboardRow({ entry }) {
 }
 
 function PageLeaderboard() {
-  const [tab, setTab] = useState("All Time");
+  const [tab, setTab] = useState("Predictors");
+
+  // ── Q4 prediction leaderboard (real data from get_leaderboard RPC) ──
+  const [q4Board, setQ4Board] = useState([]);
+  const [q4Loading, setQ4Loading] = useState(true);
+  const [q4Error, setQ4Error] = useState(null);
+
+  const fetchQ4Board = useCallback(async () => {
+    setQ4Loading(true); setQ4Error(null);
+    const { data, error } = await supabase.rpc("get_leaderboard", { p_limit: 50 });
+    if (error) { setQ4Error(error.message); setQ4Loading(false); return; }
+    setQ4Board((data ?? []).map((row, i) => ({
+      rank:      i + 1,
+      name:      row.display_name || "Anonymous",
+      initials:  (row.display_name || "??").split(/\s+/).map(w => w[0] || "").join("").slice(0, 2).toUpperCase(),
+      avatarDataUrl: row.avatar_url ?? null,
+      badge:     i === 0 ? "👑" : i === 1 ? "🥈" : i === 2 ? "🥉" : null,
+      rewardsQuai: row.total_won != null ? Number(row.total_won) : null,
+      winRate:   row.win_rate != null ? Number(row.win_rate) : null,
+      subtitle:  `${row.total_positions} positions · $${Number(row.total_staked).toFixed(0)} staked`,
+      netProfit: Number(row.net_profit ?? 0),
+      profileUrl: null,
+    })));
+    setQ4Loading(false);
+  }, []);
+
+  useEffect(() => { fetchQ4Board(); }, [fetchQ4Board]);
+
+  // ── BlipPay referral leaderboard ──
   const { entries: liveEntries, loading: lbLoading, error: lbError, refresh: lbRefresh } = useBlipLeaderboard(50);
 
-  // Map BlipPay leaderboard entries to display shape
-  const board = liveEntries.map((e, i) => ({
-    rank:              i + 1,
-    name:              e.displayName || `${(e.shortCode ?? "unknown")}`,
-    initials:          (e.displayName || e.shortCode || "??").split(/[\s-_]+/).map(w => w[0] || "").join("").slice(0, 2).toUpperCase(),
-    activatedReferrals: e.activatedReferrals ?? 0,
-    rewardsQuai:       e.totalRewardsWei
-                         ? parseFloat((BigInt(e.totalRewardsWei) * BigInt(1000000) / BigInt("1000000000000000000")).toString()) / 1000000
-                         : null,
-    badge:             i === 0 ? "👑" : i === 1 ? "🥈" : i === 2 ? "🥉" : null,
-    avatarDataUrl:     e.avatarDataUrl ?? null,
-    profileUrl:        e.shortUrl ?? null,
-    country:           e.countryName ?? null,
+  const blipBoard = liveEntries.map((e, i) => ({
+    rank:               i + 1,
+    name:               e.displayName || `${(e.shortCode ?? "unknown")}`,
+    initials:           (e.displayName || e.shortCode || "??").split(/[\s-_]+/).map(w => w[0] || "").join("").slice(0, 2).toUpperCase(),
+    subtitle:           `${e.activatedReferrals ?? 0} referrals${e.countryName ? ` · ${e.countryName}` : ""}`,
+    rewardsQuai:        e.totalRewardsWei
+                          ? parseFloat((BigInt(e.totalRewardsWei) * BigInt(1000000) / BigInt("1000000000000000000")).toString()) / 1000000
+                          : null,
+    badge:              i === 0 ? "👑" : i === 1 ? "🥈" : i === 2 ? "🥉" : null,
+    avatarDataUrl:      e.avatarDataUrl ?? null,
+    profileUrl:         e.shortUrl ?? null,
+    winRate:            null,
   }));
 
-  const top3 = board.slice(0, 3);
+  const isQ4Tab    = tab === "Predictors";
+  const board      = isQ4Tab ? q4Board : blipBoard;
+  const loading    = isQ4Tab ? q4Loading : lbLoading;
+  const error      = isQ4Tab ? q4Error : lbError;
+  const doRefresh  = isQ4Tab ? fetchQ4Board : lbRefresh;
+  const top3       = board.slice(0, 3);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -2733,11 +2888,11 @@ function PageLeaderboard() {
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.03em" }}>Leaderboard</h1>
           <p style={{ fontSize: 13, color: T.textMuted, margin: "4px 0 0" }}>
-            Top BlipPay referral network participants · live rankings.
+            {isQ4Tab ? "Top Q4 predictors ranked by net profit." : "Top BlipPay referral network participants."}
           </p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button type="button" onClick={lbRefresh}
+          <button type="button" onClick={doRefresh}
             style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 8, background: T.glass, border: `1px solid ${T.border}`, color: T.textMuted, fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "border-color 0.15s, color 0.15s" }}
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.color = T.textPrimary; }}
             onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; }}
@@ -2759,40 +2914,47 @@ function PageLeaderboard() {
       {board.length > 0 && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 8, background: T.yesBg, border: `1px solid ${T.yesBorder}`, fontSize: 12, color: T.yes, fontWeight: 600 }}>
           <span style={{ width: 6, height: 6, borderRadius: "50%", background: T.yes, boxShadow: `0 0 6px ${T.yes}`, flexShrink: 0 }} />
-          Live · BlipPay referral network · {liveEntries.length} participants
-          <a href="https://blippay.me/leaderboard" target="_blank" rel="noopener noreferrer"
-            style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4, color: T.yes, textDecoration: "none", fontSize: 11 }}>
-            View full leaderboard <ExternalLink size={11} strokeWidth={2} />
-          </a>
+          {isQ4Tab
+            ? `${board.length} ranked predictors · updated live`
+            : <>Live · BlipPay referral network · {liveEntries.length} participants
+                <a href="https://blippay.me/leaderboard" target="_blank" rel="noopener noreferrer"
+                  style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4, color: T.yes, textDecoration: "none", fontSize: 11 }}>
+                  View full leaderboard <ExternalLink size={11} strokeWidth={2} />
+                </a>
+              </>
+          }
         </div>
       )}
 
-      {lbLoading && (
+      {loading && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {[1,2,3,4,5].map(i => <Sk.LeaderboardRow key={i} last={i===5} />)}
         </div>
       )}
 
-      {lbError && !lbLoading && (
+      {error && !loading && (
         <div style={{ padding: "12px 16px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", fontSize: 12, color: "#ef4444" }}>
-          Could not load leaderboard: {lbError}
+          Could not load leaderboard: {error}
         </div>
       )}
 
-      {!lbLoading && board.length === 0 && !lbError && (
+      {!loading && board.length === 0 && !error && (
         <GCard style={{ padding: 0 }}>
-          <EmptyState icon={Trophy} title="No rankings yet" body="Leaderboard data will appear once the referral network has participants." />
+          <EmptyState icon={Trophy} title="No rankings yet"
+            body={isQ4Tab
+              ? "Rankings will appear once users have placed and resolved positions."
+              : "Leaderboard data will appear once the referral network has participants."
+            } />
         </GCard>
       )}
 
       {/* Top 3 podium */}
-      {!lbLoading && top3.length >= 3 && (
+      {!loading && top3.length >= 3 && (
         <div style={{ display: "grid", gap: 12 }} className="dash-kpi-grid">
           {[top3[1], top3[0], top3[2]].map((entry, i) => {
             const colors = ["#94a3b8", "#fbbf24", "#fb923c"];
-            const heights = ["80px", "96px", "72px"];
             return (
-              <GCard key={entry.rank} style={{ padding: "20px 16px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 10, borderColor: i === 1 ? "rgba(251,191,36,0.3)" : T.border, paddingTop: heights[i] === "96px" ? "24px" : "20px" }}>
+              <GCard key={entry.rank} style={{ padding: "20px 16px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 10, borderColor: i === 1 ? "rgba(251,191,36,0.3)" : T.border }}>
                 <div style={{ fontSize: 28 }}>{entry.badge}</div>
                 <div style={{ width: 52, height: 52, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: `2px solid ${colors[i]}`, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
                   {entry.avatarDataUrl
@@ -2803,9 +2965,13 @@ function PageLeaderboard() {
                 <div>
                   <p style={{ fontSize: 13, fontWeight: 700, color: "#ffffff", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 120 }}>{entry.name}</p>
                   {entry.rewardsQuai != null && (
-                    <p style={{ fontSize: 11, color: colors[i], margin: "2px 0 0", fontWeight: 700, display: "flex", alignItems: "center", gap: 2 }}>{entry.rewardsQuai.toFixed(4)} <QuaiLogo size={10} /></p>
+                    <p style={{ fontSize: 11, color: colors[i], margin: "2px 0 0", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 2 }}>
+                      {entry.rewardsQuai.toFixed(4)} <QuaiLogo size={10} />
+                    </p>
                   )}
-                  <p style={{ fontSize: 10, color: T.textDim, margin: "2px 0 0" }}>{entry.activatedReferrals} referrals</p>
+                  {entry.winRate != null && (
+                    <p style={{ fontSize: 10, color: T.textDim, margin: "2px 0 0" }}>{entry.winRate.toFixed(0)}% win rate</p>
+                  )}
                 </div>
               </GCard>
             );
@@ -2814,12 +2980,15 @@ function PageLeaderboard() {
       )}
 
       {/* Full table */}
-      {!lbLoading && board.length > 0 && (
+      {!loading && board.length > 0 && (
         <GCard style={{ padding: 0, overflow: "hidden" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "10px 20px", borderBottom: `1px solid ${T.border}`, background: T.glass }}>
             <div style={{ width: 32 }}><span style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase" }}>#</span></div>
             <div style={{ width: 38 }} />
-            <div style={{ flex: 1 }}><span style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase" }}>Participant</span></div>
+            <div style={{ flex: 1 }}><span style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+              {isQ4Tab ? "Predictor" : "Participant"}
+            </span></div>
+            {isQ4Tab && <div style={{ textAlign: "right", width: 60 }}><span style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase" }}>Win %</span></div>}
             <div style={{ textAlign: "right" }}><span style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase" }}>Rewards</span></div>
           </div>
           {board.map((entry) => <LeaderboardRow key={entry.rank} entry={entry} />)}
