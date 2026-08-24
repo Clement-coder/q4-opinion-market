@@ -2,21 +2,56 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="description" content="Q4 Opinion Market — A 24-hour prediction market where users predict real-world outcomes, backed by live data and automatically resolved when the outcome is verified." />
-  <meta name="theme-color" content="#080808" />
 
-  <!-- Favicon -->
+  <!-- ── Theme & status bar ── -->
+  <meta name="theme-color" content="#080808" />
+  <meta name="theme-color" content="#080808" media="(prefers-color-scheme: dark)" />
+  <meta name="background-color" content="#080808" />
+
+  <!-- ── PWA manifest ── -->
+  <link rel="manifest" href="/manifest.json" />
+
+  <!-- ── Favicon (all browsers) ── -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16x16.png" />
   <link rel="icon" type="image/jpeg" href="/favicon.jpg" />
   <link rel="shortcut icon" href="/favicon.jpg" />
 
-  <!-- Browser / PWA meta -->
+  <!-- ── iOS PWA ── -->
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Q4" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.png" />
+  <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192x192.png" />
 
-  <!-- Open Graph -->
+  <!-- Apple splash screens (portrait, common device sizes) -->
+  <!-- iPhone SE / 5 -->
+  <link rel="apple-touch-startup-image"
+    media="screen and (device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2)"
+    href="/icons/icon-512x512.png" />
+  <!-- iPhone 8 / SE 2nd -->
+  <link rel="apple-touch-startup-image"
+    media="screen and (device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)"
+    href="/icons/icon-512x512.png" />
+  <!-- iPhone X / 11 Pro -->
+  <link rel="apple-touch-startup-image"
+    media="screen and (device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3)"
+    href="/icons/icon-512x512.png" />
+  <!-- iPhone 14 Pro Max -->
+  <link rel="apple-touch-startup-image"
+    media="screen and (device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)"
+    href="/icons/icon-512x512.png" />
+
+  <!-- ── Windows / MS Tiles ── -->
+  <meta name="msapplication-TileColor" content="#080808" />
+  <meta name="msapplication-TileImage" content="/icons/icon-144x144.png" />
+  <meta name="msapplication-config" content="none" />
+
+  <!-- ── Open Graph ── -->
   <meta property="og:title"       content="Q4 Opinion Market — Predict. Wait. Resolve." />
   <meta property="og:description" content="Q4 is a 24-hour prediction market where users predict real-world outcomes, backed by live data and automatically resolved when the outcome is verified." />
   <meta property="og:type"        content="website" />
@@ -27,22 +62,21 @@
   <meta property="og:site_name"   content="Q4 Opinion Market" />
   <meta property="og:url"         content="https://q4-network.web.app" />
 
-  <!-- Twitter / X Card -->
+  <!-- ── Twitter / X Card ── -->
   <meta name="twitter:card"        content="summary_large_image" />
   <meta name="twitter:title"       content="Q4 Opinion Market — Predict. Wait. Resolve." />
   <meta name="twitter:description" content="Q4 is a 24-hour prediction market where users predict real-world outcomes, backed by live data and automatically resolved when the outcome is verified." />
   <meta name="twitter:image"       content="https://q4-network.web.app/og-image.png" />
   <meta name="twitter:image:alt"   content="Q4 Opinion Market — Short-term prediction markets." />
 
-  <!-- Fonts: Yapari (display headlines) + Monorama (body + UI labels) + Barlow Condensed (market questions) -->
+  <!-- ── Fonts ── -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <!-- Yapari Trial — display headlines (cdnfonts) -->
   <link href="https://fonts.cdnfonts.com/css/yapari-trial" rel="stylesheet" />
-  <!-- Monorama — body copy + UI labels / technical text (cdnfonts) -->
   <link href="https://fonts.cdnfonts.com/css/monorama" rel="stylesheet" />
-  <!-- Barlow Condensed — market question text: sharp, bold, condensed, readable -->
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&display=swap" rel="stylesheet" />
+
+  <title>Q4 Opinion Market</title>
 </head>
 <body>
   <div id="root"></div>

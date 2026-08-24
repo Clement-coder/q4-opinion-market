@@ -23,6 +23,8 @@
     "vite": "^7.0.0"
   },
   "devDependencies": {
-    "puppeteer": "^22.15.0"
+    "puppeteer": "^22.15.0",
+    "vite-plugin-pwa": "^0.21.1",
+    "workbox-window": "^7.3.0"
   }
 }
