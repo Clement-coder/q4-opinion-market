@@ -21,6 +21,7 @@ import { Sk }        from "../components/Skeleton";
 import { sendQuai, createCheckout } from "../services/blippay";
 import { supabase } from "../lib/supabase";
 import CustomSelect from "../components/CustomSelect";
+import QRCode from "qrcode";
 
 /* ════════════════════════════════════════════════
    DESIGN TOKENS
@@ -228,11 +229,9 @@ function PriceChart({ history, positive, height = 140 }) {
 }
 
 /* ════════════════════════════════════════════════
-   QR CODE — real scannable QR via `qrcode` lib
+   QR CODE — real scannable QR via `qrcode` lib (static import)
    Encodes:  quai:<address>
-   Uses SVG output (no canvas, no DOM injection).
-   Encoded as data:image/svg+xml so it renders in
-   a plain <img> tag — works in every browser.
+   Uses SVG output — rendered as a data URL in a plain <img> tag.
 ════════════════════════════════════════════════ */
 function WalletQR({ address, size = 200 }) {
   const [imgSrc,  setImgSrc]  = useState(null);
@@ -245,32 +244,26 @@ function WalletQR({ address, size = 200 }) {
     setQrError(false);
 
     // quai:<address> — standard Quai payment URI.
-    // BlipPay scan-to-send and any Quai-compatible wallet scanner reads this.
     const uri = `quai:${address}`;
 
-    import("qrcode")
-      .then(mod => {
-        // Vite wraps CJS modules: the real exports land on mod.default or mod.b
-        // Probe both shapes so it works in dev (mod.default) and prod (mod.b)
-        const lib = mod.default ?? (mod.b?.default) ?? mod.b ?? mod;
-        if (typeof lib?.toString !== "function") throw new Error("qrcode not ready");
-
-        // toString with type:'svg' is pure-JS — no canvas, no DOM, works everywhere
-        return lib.toString(uri, {
-          type:                 "svg",
-          errorCorrectionLevel: "M",
-          margin:               2,
-          color: { dark: "#000000", light: "#ffffff" },
-        });
-      })
+    QRCode.toString(uri, {
+      type:                 "svg",
+      errorCorrectionLevel: "M",
+      margin:               2,
+      color: { dark: "#000000", light: "#ffffff" },
+    })
       .then(svgString => {
         if (cancelled) return;
-        // Encode SVG as a data URL so a plain <img> can display it without
-        // dangerouslySetInnerHTML — clean and safe.
+        // Encode as data URL for a plain <img> — no dangerouslySetInnerHTML needed.
         const encoded = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`;
         setImgSrc(encoded);
       })
-      .catch(() => { if (!cancelled) setQrError(true); });
+      .catch(e => {
+        if (!cancelled) {
+          console.error("QR generation failed:", e);
+          setQrError(true);
+        }
+      });
 
     return () => { cancelled = true; };
   }, [address]);
