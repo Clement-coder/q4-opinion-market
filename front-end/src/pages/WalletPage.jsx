@@ -613,6 +613,15 @@ function ExportKeyModal({ open, onClose, uid, supabaseUserId, isDemo }) {
   const [copied,    setCopied]    = useState(false);
   const { toast } = useToast();
 
+  /*
+   * SECURITY GATE — this flag MUST be true before reveal() will derive
+   * the private key. It is only set to true after:
+   *   a) user successfully saves their security questions (first-time), OR
+   *   b) user correctly answers all three questions (returning).
+   * It is never set by fallback/offline paths. Resets to false on close.
+   */
+  const [securityCleared, setSecurityCleared] = useState(false);
+
   /* ── setup state (first-time) ── */
   const [setup, setSetup] = useState({
     q1: QUESTION_BANK[0], a1: "",
@@ -629,6 +638,7 @@ function ExportKeyModal({ open, onClose, uid, supabaseUserId, isDemo }) {
   function reset() {
     setStep("idle");
     setKey(""); setErr(""); setCopied(false); setLoading(false);
+    setSecurityCleared(false);
     setSetup({ q1: QUESTION_BANK[0], a1:"", q2: QUESTION_BANK[1], a2:"", q3: QUESTION_BANK[2], a3:"" });
     setAnswers({ a1:"", a2:"", a3:"" }); setVerifyErr("");
   }
@@ -637,8 +647,25 @@ function ExportKeyModal({ open, onClose, uid, supabaseUserId, isDemo }) {
   /* ── on open: check if questions already exist ── */
   useEffect(() => {
     if (!open) return;
-    if (isDemo) { setStep("warn"); return; }
-    if (!supabaseUserId) { setStep("warn"); return; } // fallback — no security gate without DB id
+
+    /* Demo mode — bypass security gate */
+    if (isDemo) { setSecurityCleared(true); setStep("warn"); return; }
+
+    /* No internet — hard block, cannot verify server-side */
+    if (!navigator.onLine) {
+      setErr("You must be online to export your private key. Security questions require a server connection.");
+      setStep("error");
+      return;
+    }
+
+    /* Supabase user ID not resolved yet — can happen if the users table
+       query also failed offline. Hard block — never skip the gate. */
+    if (!supabaseUserId) {
+      setErr("Could not verify your identity. Please ensure you are online and try again.");
+      setStep("error");
+      return;
+    }
+
     setStep("check");
     (async () => {
       try {
@@ -651,25 +678,30 @@ function ExportKeyModal({ open, onClose, uid, supabaseUserId, isDemo }) {
         if (error) throw error;
 
         if (!data) {
-          // First time — show setup
+          /* First time — show setup */
           setStep("setup");
         } else {
-          // Questions exist — shuffle order and ask user to answer
+          /* Questions exist — shuffle order and ask user to answer */
           const shuffled = [
             { q: data.q1, field: "a1" },
             { q: data.q2, field: "a2" },
             { q: data.q3, field: "a3" },
           ].sort(() => Math.random() - 0.5);
-          setQuestions({ q1: shuffled[0].q, q2: shuffled[1].q, q3: shuffled[2].q });
-          // Remember mapping so we can pass answers back in DB order
-          setQuestions(prev => ({
-            ...prev,
+          setQuestions({
+            q1: shuffled[0].q,
+            q2: shuffled[1].q,
+            q3: shuffled[2].q,
             _map: { a1: shuffled[0].field, a2: shuffled[1].field, a3: shuffled[2].field },
-          }));
+          });
           setStep("verify");
         }
       } catch (e) {
-        setErr(e.message);
+        /* Network or Supabase error — hard block */
+        setErr(
+          navigator.onLine
+            ? `Security check failed: ${e.message}`
+            : "You must be online to export your private key."
+        );
         setStep("error");
       }
     })();
@@ -684,6 +716,9 @@ function ExportKeyModal({ open, onClose, uid, supabaseUserId, isDemo }) {
     if (q1===q2||q1===q3||q2===q3) {
       setErr("Please choose three different questions."); return;
     }
+    if (!navigator.onLine) {
+      setErr("You must be online to save security questions."); return;
+    }
     setErr(""); setLoading(true);
     try {
       const { error } = await supabase.rpc("upsert_security_questions", {
@@ -694,6 +729,7 @@ function ExportKeyModal({ open, onClose, uid, supabaseUserId, isDemo }) {
       });
       if (error) throw error;
       toast.success("Security questions saved!");
+      setSecurityCleared(true);
       setStep("warn");
     } catch (e) {
       setErr(e.message);
@@ -708,9 +744,12 @@ function ExportKeyModal({ open, onClose, uid, supabaseUserId, isDemo }) {
     if (!a1.trim()||!a2.trim()||!a3.trim()) {
       setVerifyErr("Please answer all three questions."); return;
     }
+    if (!navigator.onLine) {
+      setVerifyErr("You must be online to verify your answers."); return;
+    }
     setVerifyErr(""); setLoading(true);
     try {
-      // Re-map answers back to DB order using _map
+      /* Re-map answers back to DB order using _map */
       const map = questions._map || { a1:"a1", a2:"a2", a3:"a3" };
       const ordered = { a1:"", a2:"", a3:"" };
       ordered[map.a1] = a1.trim();
@@ -730,9 +769,14 @@ function ExportKeyModal({ open, onClose, uid, supabaseUserId, isDemo }) {
         setLoading(false);
         return;
       }
+      setSecurityCleared(true);
       setStep("warn");
     } catch (e) {
-      setVerifyErr(e.message);
+      setVerifyErr(
+        navigator.onLine
+          ? e.message
+          : "You must be online to verify your answers."
+      );
     } finally {
       setLoading(false);
     }
@@ -740,6 +784,12 @@ function ExportKeyModal({ open, onClose, uid, supabaseUserId, isDemo }) {
 
   /* ── derive and show private key ── */
   async function reveal() {
+    /* Double-check the gate — this can never be bypassed */
+    if (!isDemo && !securityCleared) {
+      setErr("Security verification was not completed. Please close and try again.");
+      setStep("error");
+      return;
+    }
     if (isDemo) { setKey("0x" + "demo".repeat(16)); setStep("reveal"); return; }
     setLoading(true);
     try {
@@ -980,10 +1030,28 @@ function ExportKeyModal({ open, onClose, uid, supabaseUserId, isDemo }) {
 
       {/* ── ERROR ── */}
       {step === "error" && (
-        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:12, padding:"8px 0" }}>
-          <XCircle size={40} strokeWidth={1.5} style={{ color:T.no }}/>
-          <p style={{ fontSize:14, fontWeight:700, color:T.no, margin:0 }}>Something Went Wrong</p>
-          <p style={{ fontSize:12, color:T.muted, margin:0, textAlign:"center" }}>{err}</p>
+        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:14, padding:"8px 0" }}>
+          {/* offline vs generic error icon */}
+          {err.toLowerCase().includes("online") || err.toLowerCase().includes("offline") || err.toLowerCase().includes("connection") ? (
+            <div style={{ width:56, height:56, borderRadius:16,
+              background:"rgba(251,191,36,0.08)", border:"1px solid rgba(251,191,36,0.25)",
+              display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <span style={{ fontSize:26 }}>📡</span>
+            </div>
+          ) : (
+            <XCircle size={40} strokeWidth={1.5} style={{ color:T.no }}/>
+          )}
+          <div style={{ textAlign:"center" }}>
+            <p style={{ fontSize:14, fontWeight:700,
+              color: err.toLowerCase().includes("online") || err.toLowerCase().includes("offline") || err.toLowerCase().includes("connection")
+                ? "#fbbf24" : T.no,
+              margin:"0 0 6px" }}>
+              {err.toLowerCase().includes("online") || err.toLowerCase().includes("offline") || err.toLowerCase().includes("connection")
+                ? "You're Offline"
+                : "Cannot Export Key"}
+            </p>
+            <p style={{ fontSize:12, color:T.muted, margin:0, lineHeight:1.6, maxWidth:300 }}>{err}</p>
+          </div>
           <button type="button" onClick={close}
             style={{ padding:"9px 20px", borderRadius:8, background:T.glass,
               border:`1px solid ${T.border}`, color:T.muted, fontWeight:600, cursor:"pointer" }}>
