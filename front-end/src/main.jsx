@@ -5,6 +5,7 @@ import App from "./App";
 import { AuthProvider }      from "./context/AuthContext";
 import { DemoModeProvider }  from "./context/DemoModeContext";
 import { WalletProvider }    from "./context/WalletContext";
+import { ToastProvider }     from "./context/ToastContext";
 import { PWAPrompts }        from "./components/PWAPrompts";
 import "./index.css";
 
@@ -14,9 +15,11 @@ createRoot(document.getElementById("root")).render(
       <AuthProvider>
         <DemoModeProvider>
           <WalletProvider>
-            <App />
-            {/* PWA: offline banner, update toast, install prompt */}
-            <PWAPrompts />
+            <ToastProvider>
+              <App />
+              {/* PWA: offline banner, update toast, install prompt */}
+              <PWAPrompts />
+            </ToastProvider>
           </WalletProvider>
         </DemoModeProvider>
       </AuthProvider>

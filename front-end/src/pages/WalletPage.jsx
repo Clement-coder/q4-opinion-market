@@ -14,10 +14,13 @@ import {
 import { useWallet } from "../context/WalletContext";
 import { useAuth }   from "../context/AuthContext";
 import { useDemoModeContext } from "../context/DemoModeContext";
+import { useToast }  from "../context/ToastContext";
 import { QuaiLogo }  from "../components/icons";
 import q4LogoSrc     from "../assets/Q4_logo.jpeg";
 import { Sk }        from "../components/Skeleton";
 import { sendQuai, createCheckout } from "../services/blippay";
+import { supabase } from "../lib/supabase";
+import CustomSelect from "../components/CustomSelect";
 
 /* ════════════════════════════════════════════════
    DESIGN TOKENS
@@ -340,12 +343,13 @@ function Modal({ open, onClose, title, children, maxWidth=460 }) {
    explicitly opens "Export Key" from Wallet Details.
 ════════════════════════════════════════════════ */
 function SendModal({ open, onClose, balance, quaiPrice, walletAddress, uid, isDemo }) {
-  const [step,      setStep]      = useState("form"); // form → confirm → done | error
+  const [step,      setStep]      = useState("form");
   const [recipient, setRecipient] = useState("");
   const [amount,    setAmount]    = useState("");
   const [err,       setErr]       = useState("");
   const [sending,   setSending]   = useState(false);
   const [txHash,    setTxHash]    = useState("");
+  const { toast } = useToast();
 
   const FEE    = 0.001;
   const num    = parseFloat(amount) || 0;
@@ -368,19 +372,24 @@ function SendModal({ open, onClose, balance, quaiPrice, walletAddress, uid, isDe
 
   async function confirm() {
     setSending(true);
+    const tid = toast.loading("Sending QUAI…", { sub: `${num.toFixed(4)} QUAI → ${recipient.slice(0,8)}…` });
     try {
       if (isDemo) {
         await new Promise(r => setTimeout(r, 1400));
-        setTxHash("0x" + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join(""));
+        const hash = "0x" + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
+        setTxHash(hash);
         setStep("done");
+        toast.update(tid, { type: "success", msg: "Transaction sent! (demo)", sub: `${num.toFixed(4)} QUAI` });
         return;
       }
       const { hash } = await sendQuai({ uid, to: recipient, amountQuai: num });
       setTxHash(hash);
       setStep("done");
+      toast.update(tid, { type: "success", msg: "Transaction sent! 🚀", sub: `${num.toFixed(4)} QUAI — tx: ${hash.slice(0,10)}…` });
     } catch (e) {
       setErr(e.message);
       setStep("error");
+      toast.update(tid, { type: "error", msg: "Transaction failed", sub: e.message });
     } finally {
       setSending(false);
     }
@@ -556,26 +565,182 @@ function SendModal({ open, onClose, balance, quaiPrice, walletAddress, uid, isDe
 }
 
 /* ════════════════════════════════════════════════
-   EXPORT KEY MODAL — derives and shows the private key once
-   Intended for users who want to import their wallet into
-   MetaMask, Pelagus, or another Quai-compatible wallet.
+   SECURITY QUESTIONS — preset bank
 ════════════════════════════════════════════════ */
-function ExportKeyModal({ open, onClose, uid, isDemo }) {
-  const [step,    setStep]    = useState("warn"); // warn → reveal | error
-  const [key,     setKey]     = useState("");
-  const [loading, setLoading] = useState(false);
-  const [err,     setErr]     = useState("");
-  const [copied,  setCopied]  = useState(false);
+const QUESTION_BANK = [
+  "What was the name of your first pet?",
+  "What city were you born in?",
+  "What is your mother's maiden name?",
+  "What was the name of your primary school?",
+  "What was the make of your first car?",
+  "What is the name of the street you grew up on?",
+  "What was your childhood nickname?",
+  "What is the middle name of your oldest sibling?",
+  "In what city did your parents meet?",
+  "What was the name of your first employer?",
+];
 
-  function reset() { setStep("warn"); setKey(""); setErr(""); setCopied(false); }
+/* Tiny shared field style */
+const SQ_FIELD = {
+  width: "100%",
+  padding: "10px 13px",
+  background: "rgba(255,255,255,0.04)",
+  border: "1px solid rgba(255,255,255,0.08)",
+  borderRadius: 9,
+  color: "#f0f0f0",
+  fontSize: 13,
+  outline: "none",
+  boxSizing: "border-box",
+  transition: "border-color 0.15s",
+};
+
+/* ════════════════════════════════════════════════
+   EXPORT KEY MODAL — security-question gated
+   Flow:
+     "check"   → fetches whether questions are set
+     "setup"   → first-time: user picks 3 Q+A pairs
+     "verify"  → returning: user answers their 3 questions
+     "warn"    → final warning before key reveal
+     "reveal"  → shows the private key
+     "error"   → something went wrong
+════════════════════════════════════════════════ */
+function ExportKeyModal({ open, onClose, uid, supabaseUserId, isDemo }) {
+  /* step machine */
+  const [step,      setStep]      = useState("idle"); // idle → check → setup | verify → warn → reveal | error
+  const [key,       setKey]       = useState("");
+  const [loading,   setLoading]   = useState(false);
+  const [err,       setErr]       = useState("");
+  const [copied,    setCopied]    = useState(false);
+  const { toast } = useToast();
+
+  /* ── setup state (first-time) ── */
+  const [setup, setSetup] = useState({
+    q1: QUESTION_BANK[0], a1: "",
+    q2: QUESTION_BANK[1], a2: "",
+    q3: QUESTION_BANK[2], a3: "",
+  });
+
+  /* ── verify state (returning) ── */
+  const [questions,  setQuestions]  = useState({ q1:"", q2:"", q3:"" });
+  const [answers,    setAnswers]    = useState({ a1:"", a2:"", a3:"" });
+  const [verifyErr,  setVerifyErr]  = useState("");
+
+  /* ── reset everything when modal closes ── */
+  function reset() {
+    setStep("idle");
+    setKey(""); setErr(""); setCopied(false); setLoading(false);
+    setSetup({ q1: QUESTION_BANK[0], a1:"", q2: QUESTION_BANK[1], a2:"", q3: QUESTION_BANK[2], a3:"" });
+    setAnswers({ a1:"", a2:"", a3:"" }); setVerifyErr("");
+  }
   function close() { reset(); onClose(); }
 
-  async function reveal() {
-    if (isDemo) {
-      setKey("0x" + "demo".repeat(16));
-      setStep("reveal");
-      return;
+  /* ── on open: check if questions already exist ── */
+  useEffect(() => {
+    if (!open) return;
+    if (isDemo) { setStep("warn"); return; }
+    if (!supabaseUserId) { setStep("warn"); return; } // fallback — no security gate without DB id
+    setStep("check");
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("user_security_questions")
+          .select("q1,q2,q3")
+          .eq("user_id", supabaseUserId)
+          .maybeSingle();
+
+        if (error) throw error;
+
+        if (!data) {
+          // First time — show setup
+          setStep("setup");
+        } else {
+          // Questions exist — shuffle order and ask user to answer
+          const shuffled = [
+            { q: data.q1, field: "a1" },
+            { q: data.q2, field: "a2" },
+            { q: data.q3, field: "a3" },
+          ].sort(() => Math.random() - 0.5);
+          setQuestions({ q1: shuffled[0].q, q2: shuffled[1].q, q3: shuffled[2].q });
+          // Remember mapping so we can pass answers back in DB order
+          setQuestions(prev => ({
+            ...prev,
+            _map: { a1: shuffled[0].field, a2: shuffled[1].field, a3: shuffled[2].field },
+          }));
+          setStep("verify");
+        }
+      } catch (e) {
+        setErr(e.message);
+        setStep("error");
+      }
+    })();
+  }, [open, supabaseUserId, isDemo]);
+
+  /* ── save security questions (setup step) ── */
+  async function saveQuestions() {
+    const { q1,a1,q2,a2,q3,a3 } = setup;
+    if (!a1.trim()||!a2.trim()||!a3.trim()) {
+      setErr("Please answer all three questions."); return;
     }
+    if (q1===q2||q1===q3||q2===q3) {
+      setErr("Please choose three different questions."); return;
+    }
+    setErr(""); setLoading(true);
+    try {
+      const { error } = await supabase.rpc("upsert_security_questions", {
+        p_user_id: supabaseUserId,
+        p_q1: q1, p_a1: a1.trim(),
+        p_q2: q2, p_a2: a2.trim(),
+        p_q3: q3, p_a3: a3.trim(),
+      });
+      if (error) throw error;
+      toast.success("Security questions saved!");
+      setStep("warn");
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /* ── verify answers (returning step) ── */
+  async function verifyAnswers() {
+    const { a1, a2, a3 } = answers;
+    if (!a1.trim()||!a2.trim()||!a3.trim()) {
+      setVerifyErr("Please answer all three questions."); return;
+    }
+    setVerifyErr(""); setLoading(true);
+    try {
+      // Re-map answers back to DB order using _map
+      const map = questions._map || { a1:"a1", a2:"a2", a3:"a3" };
+      const ordered = { a1:"", a2:"", a3:"" };
+      ordered[map.a1] = a1.trim();
+      ordered[map.a2] = a2.trim();
+      ordered[map.a3] = a3.trim();
+
+      const { data, error } = await supabase.rpc("verify_security_answers", {
+        p_user_id: supabaseUserId,
+        p_a1: ordered.a1,
+        p_a2: ordered.a2,
+        p_a3: ordered.a3,
+      });
+      if (error) throw error;
+      if (!data) {
+        setVerifyErr("One or more answers are incorrect. Please try again.");
+        setAnswers({ a1:"", a2:"", a3:"" });
+        setLoading(false);
+        return;
+      }
+      setStep("warn");
+    } catch (e) {
+      setVerifyErr(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /* ── derive and show private key ── */
+  async function reveal() {
+    if (isDemo) { setKey("0x" + "demo".repeat(16)); setStep("reveal"); return; }
     setLoading(true);
     try {
       const { getOrCreateWallet } = await import("../services/blippay");
@@ -593,14 +758,156 @@ function ExportKeyModal({ open, onClose, uid, isDemo }) {
   async function copy() {
     try { await navigator.clipboard.writeText(key); }
     catch { const el=document.createElement("textarea");el.value=key;document.body.appendChild(el);el.select();document.execCommand("copy");document.body.removeChild(el); }
-    setCopied(true); setTimeout(()=>setCopied(false), 2500);
+    setCopied(true);
+    toast.info("Private key copied", { sub: "Store it somewhere safe — never share it." });
+    setTimeout(()=>setCopied(false), 2500);
   }
 
+  /* ── shared label style ── */
+  const lbl = { fontSize:11, fontWeight:700, color:T.dim, letterSpacing:"0.06em",
+                textTransform:"uppercase", display:"block", marginBottom:5 };
+
   return (
-    <Modal open={open} onClose={close} title="Export Private Key" maxWidth={480}>
-      {/* ── warning step ── */}
+    <Modal open={open} onClose={close} title="Export Private Key" maxWidth={500}>
+
+      {/* ── LOADING CHECK ── */}
+      {step === "check" && (
+        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:14, padding:"24px 0" }}>
+          <Loader size={28} strokeWidth={1.5} style={{ color:T.muted, animation:"spin 0.8s linear infinite" }}/>
+          <p style={{ fontSize:13, color:T.muted, margin:0 }}>Checking security setup…</p>
+        </div>
+      )}
+
+      {/* ── FIRST-TIME SETUP ── */}
+      {step === "setup" && (
+        <div style={{ display:"flex", flexDirection:"column", gap:18 }}>
+          <div style={{ padding:"12px 16px", borderRadius:11, background:"rgba(124,111,247,0.07)", border:"1px solid rgba(124,111,247,0.25)" }}>
+            <p style={{ fontSize:13, fontWeight:700, color:T.violet, margin:"0 0 4px" }}>🔐 Set Your Security Questions</p>
+            <p style={{ fontSize:12, color:"rgba(255,255,255,0.5)", margin:0, lineHeight:1.6 }}>
+              Before you can export your private key, you must set three security questions.
+              You'll need to answer them correctly every time you request the key.
+            </p>
+          </div>
+
+          {[1,2,3].map(n => {
+            const qKey = `q${n}`, aKey = `a${n}`;
+            /* available questions — not chosen by the other two slots */
+            const others = [1,2,3].filter(x=>x!==n).map(x=>setup[`q${x}`]);
+            const available = QUESTION_BANK.filter(q => !others.includes(q));
+            return (
+              <div key={n} style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                <label style={lbl}>Question {n}</label>
+                <CustomSelect
+                  value={setup[qKey]}
+                  onChange={val => setSetup(p => ({ ...p, [qKey]: val }))}
+                  options={available}
+                  menuMaxH={260}
+                />
+                <input
+                  type="text"
+                  placeholder="Your answer…"
+                  value={setup[aKey]}
+                  onChange={e => setSetup(p => ({ ...p, [aKey]: e.target.value }))}
+                  autoComplete="off"
+                  style={SQ_FIELD}
+                  onFocus={e => e.target.style.borderColor = T.borderHi}
+                  onBlur={e  => e.target.style.borderColor = T.border}
+                />
+              </div>
+            );
+          })}
+
+          {err && (
+            <div style={{ display:"flex", gap:8, padding:"10px 13px", borderRadius:8,
+              background:T.noBg, border:`1px solid ${T.noBd}`, color:T.no, fontSize:12 }}>
+              <AlertCircle size={14} strokeWidth={2} style={{ flexShrink:0, marginTop:1 }}/>{err}
+            </div>
+          )}
+
+          <p style={{ fontSize:11, color:T.dim, margin:0, lineHeight:1.6 }}>
+            Answers are case-insensitive and stored securely (bcrypt hash). Q4 cannot see or recover them.
+          </p>
+
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+            <button type="button" onClick={close}
+              style={{ padding:12, borderRadius:10, background:T.glass,
+                border:`1px solid ${T.border}`, color:T.muted, fontWeight:600, fontSize:13, cursor:"pointer" }}>
+              Cancel
+            </button>
+            <button type="button" onClick={saveQuestions} disabled={loading}
+              style={{ padding:12, borderRadius:10, background: loading ? "rgba(255,255,255,0.15)" : "#fff",
+                color:"#080808", fontWeight:800, fontSize:13, border:"none",
+                cursor: loading?"not-allowed":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+              {loading
+                ? <><Loader size={13} strokeWidth={2} style={{ animation:"spin 0.7s linear infinite" }}/>Saving…</>
+                : "Save & Continue →"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── VERIFY ANSWERS ── */}
+      {step === "verify" && (
+        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+          <div style={{ padding:"12px 16px", borderRadius:11, background:"rgba(239,68,68,0.07)", border:"1px solid rgba(239,68,68,0.22)" }}>
+            <p style={{ fontSize:13, fontWeight:700, color:T.no, margin:"0 0 4px" }}>🔑 Security Verification Required</p>
+            <p style={{ fontSize:12, color:"rgba(255,255,255,0.5)", margin:0, lineHeight:1.6 }}>
+              Answer your three security questions to access your private key.
+              Questions are shown in a random order each time.
+            </p>
+          </div>
+
+          {[1,2,3].map(n => (
+            <div key={n} style={{ display:"flex", flexDirection:"column", gap:6 }}>
+              <label style={lbl}>{questions[`q${n}`]}</label>
+              <input
+                type="text"
+                placeholder="Your answer…"
+                value={answers[`a${n}`]}
+                onChange={e => setAnswers(p => ({ ...p, [`a${n}`]: e.target.value }))}
+                onKeyDown={e => { if (e.key==="Enter" && n===3) verifyAnswers(); }}
+                autoComplete="off"
+                style={SQ_FIELD}
+                onFocus={e => e.target.style.borderColor = T.borderHi}
+                onBlur={e  => e.target.style.borderColor = T.border}
+              />
+            </div>
+          ))}
+
+          {verifyErr && (
+            <div style={{ display:"flex", gap:8, padding:"10px 13px", borderRadius:8,
+              background:T.noBg, border:`1px solid ${T.noBd}`, color:T.no, fontSize:12 }}>
+              <AlertCircle size={14} strokeWidth={2} style={{ flexShrink:0, marginTop:1 }}/>{verifyErr}
+            </div>
+          )}
+
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+            <button type="button" onClick={close}
+              style={{ padding:12, borderRadius:10, background:T.glass,
+                border:`1px solid ${T.border}`, color:T.muted, fontWeight:600, fontSize:13, cursor:"pointer" }}>
+              Cancel
+            </button>
+            <button type="button" onClick={verifyAnswers} disabled={loading}
+              style={{ padding:12, borderRadius:10, background: loading?"rgba(255,255,255,0.15)":"#fff",
+                color:"#080808", fontWeight:800, fontSize:13, border:"none",
+                cursor:loading?"not-allowed":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+              {loading
+                ? <><Loader size={13} strokeWidth={2} style={{ animation:"spin 0.7s linear infinite" }}/>Verifying…</>
+                : "Verify →"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── FINAL WARNING ── */}
       {step === "warn" && (
         <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+          {isDemo && (
+            <div style={{ padding:"8px 12px", borderRadius:8, background:"rgba(234,179,8,0.08)",
+              border:"1px solid rgba(234,179,8,0.25)", color:"#eab308", fontSize:11 }}>
+              🧪 Demo mode — this is a placeholder key, not real.
+            </div>
+          )}
           <div style={{ padding:"14px 16px", borderRadius:12, background:"rgba(239,68,68,0.07)", border:"1px solid rgba(239,68,68,0.25)" }}>
             <p style={{ fontSize:13, fontWeight:700, color:T.no, margin:"0 0 8px" }}>⚠ Never share your private key</p>
             <ul style={{ fontSize:12, color:"rgba(255,255,255,0.6)", margin:0, paddingLeft:18, lineHeight:1.8 }}>
@@ -611,55 +918,75 @@ function ExportKeyModal({ open, onClose, uid, isDemo }) {
             </ul>
           </div>
           <p style={{ fontSize:12, color:T.muted, margin:0, lineHeight:1.6 }}>
-            Use this to import your Q4 wallet into <strong style={{ color:T.text }}>Pelagus</strong>, <strong style={{ color:T.text }}>MetaMask</strong>, or any Quai-compatible wallet app.
+            Use this to import your wallet into <strong style={{ color:T.text }}>Pelagus</strong>,{" "}
+            <strong style={{ color:T.text }}>MetaMask</strong>, or any Quai-compatible wallet.
           </p>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
             <button type="button" onClick={close}
-              style={{ padding:12, borderRadius:10, background:T.glass, border:`1px solid ${T.border}`, color:T.muted, fontWeight:600, fontSize:13, cursor:"pointer" }}>
+              style={{ padding:12, borderRadius:10, background:T.glass,
+                border:`1px solid ${T.border}`, color:T.muted, fontWeight:600, fontSize:13, cursor:"pointer" }}>
               Cancel
             </button>
             <button type="button" onClick={reveal} disabled={loading}
-              style={{ padding:12, borderRadius:10, background:"rgba(239,68,68,0.15)", border:"1px solid rgba(239,68,68,0.4)", color:T.no, fontWeight:700, fontSize:13, cursor: loading ? "not-allowed":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
-              {loading ? <><Loader size={13} strokeWidth={2} style={{ animation:"spin 0.7s linear infinite" }}/>Deriving…</> : "Show Key →"}
+              style={{ padding:12, borderRadius:10, background:"rgba(239,68,68,0.15)",
+                border:"1px solid rgba(239,68,68,0.4)", color:T.no, fontWeight:700, fontSize:13,
+                cursor:loading?"not-allowed":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+              {loading
+                ? <><Loader size={13} strokeWidth={2} style={{ animation:"spin 0.7s linear infinite" }}/>Deriving…</>
+                : "Show Key →"}
             </button>
           </div>
         </div>
       )}
 
-      {/* ── reveal step ── */}
+      {/* ── REVEAL KEY ── */}
       {step === "reveal" && (
         <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
           {isDemo && (
-            <div style={{ padding:"8px 12px", borderRadius:8, background:"rgba(234,179,8,0.08)", border:"1px solid rgba(234,179,8,0.25)", color:"#eab308", fontSize:11 }}>
+            <div style={{ padding:"8px 12px", borderRadius:8, background:"rgba(234,179,8,0.08)",
+              border:"1px solid rgba(234,179,8,0.25)", color:"#eab308", fontSize:11 }}>
               🧪 Demo mode — this is a placeholder key, not real.
             </div>
           )}
           <div style={{ padding:"14px 16px", borderRadius:12, background:"rgba(239,68,68,0.05)", border:"1px solid rgba(239,68,68,0.2)" }}>
-            <p style={{ fontSize:10, color:"rgba(239,68,68,0.7)", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.07em", margin:"0 0 10px" }}>Private Key — Keep Secret</p>
-            <p style={{ fontSize:12, fontFamily:"monospace", color:"#f0f0f0", margin:0, wordBreak:"break-all", lineHeight:1.7 }}>{key}</p>
+            <p style={{ fontSize:10, color:"rgba(239,68,68,0.7)", fontWeight:700,
+              textTransform:"uppercase", letterSpacing:"0.07em", margin:"0 0 10px" }}>
+              Private Key — Keep Secret
+            </p>
+            <p style={{ fontSize:12, fontFamily:"monospace", color:"#f0f0f0", margin:0,
+              wordBreak:"break-all", lineHeight:1.7 }}>{key}</p>
           </div>
           <button type="button" onClick={copy}
-            style={{ width:"100%", padding:12, borderRadius:10, background: copied ? T.yesBg : T.glass, border:`1px solid ${copied ? T.yesBd : T.border}`, color: copied ? T.yes : T.muted, fontWeight:700, fontSize:13, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6, transition:"all 0.2s" }}>
-            {copied ? <><Check size={14} strokeWidth={2.5}/>Copied!</> : <><Copy size={14} strokeWidth={1.8}/>Copy to Clipboard</>}
+            style={{ width:"100%", padding:12, borderRadius:10,
+              background: copied ? T.yesBg : T.glass,
+              border:`1px solid ${copied ? T.yesBd : T.border}`,
+              color: copied ? T.yes : T.muted,
+              fontWeight:700, fontSize:13, cursor:"pointer",
+              display:"flex", alignItems:"center", justifyContent:"center", gap:6, transition:"all 0.2s" }}>
+            {copied
+              ? <><Check size={14} strokeWidth={2.5}/>Copied!</>
+              : <><Copy  size={14} strokeWidth={1.8}/>Copy to Clipboard</>}
           </button>
           <p style={{ fontSize:11, color:T.dim, margin:0, textAlign:"center", lineHeight:1.6 }}>
-            Close this window when done. The key is not stored anywhere.
+            Close this window when done. The key is not stored anywhere on our servers.
           </p>
           <button type="button" onClick={close}
-            style={{ padding:"9px 0", borderRadius:9, background:T.glass, border:`1px solid ${T.border}`, color:T.muted, fontWeight:600, fontSize:12, cursor:"pointer" }}>
+            style={{ padding:"9px 0", borderRadius:9, background:T.glass,
+              border:`1px solid ${T.border}`, color:T.muted, fontWeight:600, fontSize:12, cursor:"pointer" }}>
             Close
           </button>
         </div>
       )}
 
-      {/* ── error ── */}
+      {/* ── ERROR ── */}
       {step === "error" && (
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:12, padding:"8px 0" }}>
           <XCircle size={40} strokeWidth={1.5} style={{ color:T.no }}/>
-          <p style={{ fontSize:14, fontWeight:700, color:T.no, margin:0 }}>Could Not Export Key</p>
+          <p style={{ fontSize:14, fontWeight:700, color:T.no, margin:0 }}>Something Went Wrong</p>
           <p style={{ fontSize:12, color:T.muted, margin:0, textAlign:"center" }}>{err}</p>
           <button type="button" onClick={close}
-            style={{ padding:"9px 20px", borderRadius:8, background:T.glass, border:`1px solid ${T.border}`, color:T.muted, fontWeight:600, cursor:"pointer" }}>
+            style={{ padding:"9px 20px", borderRadius:8, background:T.glass,
+              border:`1px solid ${T.border}`, color:T.muted, fontWeight:600, cursor:"pointer" }}>
             Close
           </button>
         </div>
@@ -797,6 +1124,7 @@ function TopUpModal({ open, onClose, walletAddress, userEmail }) {
 function ReceiveModal({ open, onClose, walletAddress }) {
   const [copiedAddr, setCopiedAddr] = useState(false);
   const [copiedUri,  setCopiedUri]  = useState(false);
+  const { toast } = useToast();
 
   const uri = walletAddress ? `quai:${walletAddress}` : null;
 
@@ -804,15 +1132,19 @@ function ReceiveModal({ open, onClose, walletAddress }) {
     if (!walletAddress) return;
     try { await navigator.clipboard.writeText(walletAddress); }
     catch { const el = document.createElement("textarea"); el.value = walletAddress; document.body.appendChild(el); el.select(); document.execCommand("copy"); document.body.removeChild(el); }
-    setCopiedAddr(true); setTimeout(() => setCopiedAddr(false), 2000);
-  }, [walletAddress]);
+    setCopiedAddr(true);
+    toast.success("Address copied!", { sub: walletAddress.slice(0,12) + "…" });
+    setTimeout(() => setCopiedAddr(false), 2000);
+  }, [walletAddress, toast]);
 
   const copyUri = useCallback(async () => {
     if (!uri) return;
     try { await navigator.clipboard.writeText(uri); }
     catch { const el = document.createElement("textarea"); el.value = uri; document.body.appendChild(el); el.select(); document.execCommand("copy"); document.body.removeChild(el); }
-    setCopiedUri(true); setTimeout(() => setCopiedUri(false), 2000);
-  }, [uri]);
+    setCopiedUri(true);
+    toast.success("Payment URI copied!");
+    setTimeout(() => setCopiedUri(false), 2000);
+  }, [uri, toast]);
 
   return (
     <Modal open={open} onClose={onClose} title="Receive QUAI" maxWidth={420}>
@@ -974,6 +1306,18 @@ export default function WalletPage() {
   const [topUpOpen,   setTopUpOpen]   = useState(false);
   const [exportOpen,  setExportOpen]  = useState(false);
   const [txFilter,    setTxFilter]    = useState("All"); // "All" | "Received" | "Sent"
+
+  /* Resolve Supabase UUID from firebase_uid — needed for security questions */
+  const [supabaseUserId, setSupabaseUserId] = useState(null);
+  useEffect(() => {
+    if (!user?.uid) return;
+    supabase
+      .from("users")
+      .select("id")
+      .eq("firebase_uid", user.uid)
+      .maybeSingle()
+      .then(({ data }) => { if (data?.id) setSupabaseUserId(data.id); });
+  }, [user?.uid]);
 
   const price   = priceData?.current;
   const history = priceData?.history ?? [];
@@ -1366,7 +1710,7 @@ export default function WalletPage() {
       <SendModal    open={sendOpen}    onClose={()=>setSendOpen(false)}    balance={balance} quaiPrice={price?.price} walletAddress={walletAddress} uid={user?.uid} isDemo={isDemoMode}/>
       <ReceiveModal open={receiveOpen} onClose={()=>setReceiveOpen(false)} walletAddress={walletAddress}/>
       <TopUpModal   open={topUpOpen}   onClose={()=>setTopUpOpen(false)}   walletAddress={walletAddress} userEmail={user?.email}/>
-      <ExportKeyModal open={exportOpen} onClose={()=>setExportOpen(false)} uid={user?.uid} isDemo={isDemoMode}/>
+      <ExportKeyModal open={exportOpen} onClose={()=>setExportOpen(false)} uid={user?.uid} supabaseUserId={supabaseUserId} isDemo={isDemoMode}/>
     </div>
   );
 }

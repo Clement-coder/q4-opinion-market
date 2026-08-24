@@ -31,8 +31,10 @@ import { supabase, getFirebaseUID } from "../lib/supabase";
 import { onChainPredict }            from "../lib/contractService";
 import { getDemoMode, useDemoModeContext } from "../hooks/useDemoMode";
 import { demoStake }                 from "../data/demoStore";
+import { useToast }                  from "../context/ToastContext";
 import WalletPage   from "./WalletPage";
 import { Sk }       from "../components/Skeleton";
+import CustomSelect  from "../components/CustomSelect";
 
 /* ════════════════════════════════════════════════
    DESIGN TOKENS  (mirror landing page palette)
@@ -1533,11 +1535,6 @@ function Countdown({ deadline }) {
 function PageQuestionDetail({ questionId, onBack, onConfetti }) {
   const [tab, setTab]               = useState("How It Works");
   const [selected, setSelected]     = useState(null);
-  /*
-   * lockedSide — set permanently after the user's FIRST confirmed stake.
-   * Once set, the user cannot tap the other side button at all.
-   * They can keep adding new positions on the locked side indefinitely.
-   */
   const [lockedSide, setLockedSide] = useState(null);
   const [amount, setAmount]         = useState("");
   const [confirmed, setConfirmed]   = useState(false);
@@ -1549,6 +1546,7 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
   const { balance, priceData }          = useWallet();
   const { market, loading: mktLoading } = useMarket(questionId);
   const { isDemoMode }                  = useDemoModeContext();
+  const { toast }                       = useToast();
 
   /* ── derived market values ── */
   const totalPool        = market?.totalPool ?? 0;
@@ -1598,136 +1596,104 @@ function PageQuestionDetail({ questionId, onBack, onConfetti }) {
     // Client-side validations
     if (!amount || amtNum < MIN_STAKE) {
       setSubmitError(`Minimum stake is $${MIN_STAKE} USDT.`);
+      toast.warn(`Minimum stake is $${MIN_STAKE} USDT.`);
       return;
     }
     if (amtNum <= 0) {
       setSubmitError("Please enter a valid stake amount.");
+      toast.warn("Please enter a valid stake amount.");
       return;
     }
 
-    // ── Demo mode: persist stake to store, skip DB / contract ───────────
+    // ── Demo mode ────────────────────────────────────────────────────────
     if (isDemoMode) {
       setSubmitting(true);
       setSubmitError(null);
+      const tid = toast.loading("Placing position…", { sub: `$${amtNum} on ${selected}` });
       await new Promise(r => setTimeout(r, 900));
       demoStake({ market, side: selected, amtNum });
       setLockedSide(selected);
       setConfirmed(true);
       if (onConfetti) onConfetti();
       setSubmitting(false);
+      toast.update(tid, { type: "success", msg: "Position confirmed! 🎉", sub: `$${amtNum} USDT on ${selected}` });
       return;
     }
-    // ────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────
 
     if (!profile?.id) {
-      setSubmitError("You must be signed in to place a position.");
+      const msg = "You must be signed in to place a position.";
+      setSubmitError(msg); toast.error(msg);
       return;
     }
-    // Live mode: enforce real wallet balance
     if (!balanceOk) {
       const have = walletUsd !== null ? `$${walletUsd.toFixed(2)}` : "unknown";
-      setSubmitError(`Insufficient balance. You need $${amtNum.toFixed(2)} USDT but your wallet has ${have}.`);
+      const msg  = `Insufficient balance. Need $${amtNum.toFixed(2)} USDT, have ${have}.`;
+      setSubmitError(msg); toast.error(msg);
       return;
     }
-    // Guard: ensure the Firebase UID header is set before hitting Supabase RLS
     if (!getFirebaseUID()) {
-      setSubmitError("Authentication is still loading. Please wait a moment and try again.");
+      const msg = "Authentication loading. Please wait and try again.";
+      setSubmitError(msg); toast.warn(msg);
       return;
     }
     if (!market?.id || !isOpen) {
-      setSubmitError("This market is not accepting positions right now.");
+      const msg = "This market is not accepting positions right now.";
+      setSubmitError(msg); toast.warn(msg);
       return;
     }
     if (!selected) {
-      setSubmitError("Please choose YES or NO first.");
+      const msg = "Please choose YES or NO first.";
+      setSubmitError(msg); toast.warn(msg);
       return;
     }
 
     setSubmitting(true);
     setSubmitError(null);
-
+    const tid = toast.loading("Confirming position…", { sub: `$${amtNum} on ${selected}` });
     let stakeTxHash = null;
 
     try {
-      // ── Step 1: On-chain predict() — send QUAI stake to the contract ──────
       if (market.contractAddress) {
-        // Convert QUAI balance → QUAI amount for the stake.
-        // amtNum is in USDT; convert to QUAI using the live price.
         const quaiAmount = rate ? amtNum * rate : 0;
-        if (quaiAmount <= 0) {
-          throw new Error("Could not determine QUAI equivalent of your stake. Please try again.");
-        }
-
+        if (quaiAmount <= 0) throw new Error("Could not determine QUAI equivalent. Try again.");
         try {
           const result = await onChainPredict({
-            uid:                   user.uid,
-            marketContractAddress: market.contractAddress,
-            isYes:                 selected === "YES",
-            amountQuai:            quaiAmount,
+            uid: user.uid, marketContractAddress: market.contractAddress,
+            isYes: selected === "YES", amountQuai: quaiAmount,
           });
           stakeTxHash = result.hash;
-          console.log(`[handleConfirm] predict() tx: ${stakeTxHash}`);
         } catch (chainErr) {
           throw new Error(`On-chain stake failed: ${chainErr.message ?? chainErr}`);
         }
       }
 
-      // ── Step 2: Insert position row in Supabase ───────────────────────────
-      /*
-       * Multiple rows per user per market are allowed.
-       * RLS policy: user_id must equal the signed-in user's Supabase id.
-       */
-      const positionRow = {
-        user_id:   profile.id,
-        market_id: market.id,
-        side:      selected,
-        amount:    amtNum,
-        switched:  false,
-      };
+      const positionRow = { user_id: profile.id, market_id: market.id, side: selected, amount: amtNum, switched: false };
       if (stakeTxHash) positionRow.stake_tx_hash = stakeTxHash;
-
-      const { error: insertErr } = await supabase
-        .from("user_positions")
-        .insert(positionRow);
+      const { error: insertErr } = await supabase.from("user_positions").insert(positionRow);
       if (insertErr) throw insertErr;
 
-      // ── Step 3: Atomically update pool amounts in Supabase ────────────────
-      /*
-       * Uses a SECURITY DEFINER RPC to bypass RLS on market_outcomes.
-       */
-      const { error: poolErr } = await supabase.rpc("increment_pool", {
-        p_market_id: market.id,
-        p_outcome:   selected,
-        p_amount:    amtNum,
-      });
+      const { error: poolErr } = await supabase.rpc("increment_pool", { p_market_id: market.id, p_outcome: selected, p_amount: amtNum });
       if (poolErr) throw poolErr;
 
-      // Log the event (best-effort — don't block on failure)
-      supabase.from("market_events").insert({
-        market_id:        market.id,
-        event_type:       "position_placed",
-        user_id:          profile.id,
-        transaction_hash: stakeTxHash ?? null,
-        metadata:         { side: selected, amount: amtNum, txHash: stakeTxHash },
-      }).then(() => {});
+      supabase.from("market_events").insert({ market_id: market.id, event_type: "position_placed", user_id: profile.id, transaction_hash: stakeTxHash ?? null, metadata: { side: selected, amount: amtNum, txHash: stakeTxHash } }).then(() => {});
 
-      /* Lock the side permanently after the first confirmed stake */
       setLockedSide(selected);
       setConfirmed(true);
       if (onConfetti) onConfetti();
+      toast.update(tid, { type: "success", msg: "Position confirmed! 🎉", sub: `$${amtNum} USDT on ${selected}` });
     } catch (err) {
       console.error("[PageQuestionDetail] stake error:", err);
-      setSubmitError(
-        err.message ?? "Failed to save your position. Please try again."
-      );
+      const msg = err.message ?? "Failed to save your position. Please try again.";
+      setSubmitError(msg);
+      toast.update(tid, { type: "error", msg: "Position failed", sub: msg });
     } finally {
       setSubmitting(false);
     }
   };
 
-  /* Stake another position — resets amount/confirmed but keeps side locked */
   const handleStakeAnother = () => {
-    setSelected(lockedSide); // preserve the locked side
+    setSelected(lockedSide);
     setAmount("");
     setConfirmed(false);
     setSubmitError(null);
@@ -2319,6 +2285,7 @@ function PageMyConvictions() {
   const [tab, setTab]         = useState("Open");
   const [refundError, setRefundError] = useState(null);
   const { positions, loading, error, refresh, withdrawing, withdrawRefund } = usePositions();
+  const { toast } = useToast();
 
   const filtered = positions.filter(p => {
     if (tab === "Open")      return p.status === "active" || p.status === "closed";
@@ -2327,7 +2294,6 @@ function PageMyConvictions() {
     return true;
   });
 
-  // Map position shape → ConvictionCard shape (keep full position props for contract integration)
   const toCardShape = (p) => ({
     id:              p.id,
     question:        p.question,
@@ -2344,10 +2310,14 @@ function PageMyConvictions() {
 
   const handleWithdrawRefund = async (positionId) => {
     setRefundError(null);
+    const tid = toast.loading("Withdrawing refund…");
     try {
       await withdrawRefund(positionId);
+      toast.update(tid, { type: "success", msg: "Refund withdrawn!", sub: "Your stake has been returned." });
     } catch (err) {
-      setRefundError(err.message ?? "Refund failed. Please try again.");
+      const msg = err.message ?? "Refund failed. Please try again.";
+      setRefundError(msg);
+      toast.update(tid, { type: "error", msg: "Refund failed", sub: msg });
     }
   };
 
@@ -2867,13 +2837,18 @@ const REWARD_TABS = ["Unclaimed", "Claimed"];
 
 function RewardCard({ r, onClaim, claiming, claimError, setClaimError }) {
   const isClaiming = claiming === r.id;
+  const { toast } = useToast();
 
   const handleClaim = async () => {
     if (setClaimError) setClaimError(null);
+    const tid = toast.loading("Claiming reward…", { sub: `${r.reward.toFixed(2)} QUAI` });
     try {
       await onClaim(r.id);
+      toast.update(tid, { type: "success", msg: "Reward claimed! 🏆", sub: `+${r.reward.toFixed(2)} QUAI added to your wallet` });
     } catch (err) {
-      if (setClaimError) setClaimError(err.message ?? "Claim failed. Please try again.");
+      const msg = err.message ?? "Claim failed. Please try again.";
+      if (setClaimError) setClaimError(msg);
+      toast.update(tid, { type: "error", msg: "Claim failed", sub: msg });
     }
   };
 
@@ -2943,6 +2918,7 @@ function PageRewards() {
   const [tab, setTab]           = useState("Unclaimed");
   const [claimError, setClaimError] = useState(null);
   const { rewards, loading, error, claiming, claimReward, refresh } = useRewards();
+  const { toast } = useToast();
 
   const filtered = rewards.filter(r => tab === "Unclaimed" ? !r.claimed : r.claimed);
 
@@ -3816,139 +3792,415 @@ function AdminBarChart({ markets }) {
 }
 
 /**
- * User-facing dashboard platform breakdown charts.
- * Shows: category distribution donut + market status bars + YES/NO pool split.
+ * User-facing dashboard overview charts — full breakdown like the admin panel.
+ *
+ * Rows:
+ *   1. Three mini line-charts: positions over time · staked volume over time · win-rate trend
+ *   2. Donuts: category donut (my positions) · market status donut
+ *   3. YES/NO breakdown + wins/losses stacked bars
+ *   4. Per-category staking bars + position-size distribution histogram
  */
 function UserDashboardCharts({ markets, positions, wins = 0, losses = 0 }) {
-  const [hovCat, setHovCat] = useState(null);
-  const [hovStatus, setHovStatus] = useState(null);
+  // ── Time helpers (last 7 days) ──────────────────────────────────────────────
+  const today = new Date();
+  const days7 = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() - (6 - i));
+    return { label: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }), date: d };
+  });
 
-  // — Category donut —
+  // Positions placed per day
+  const posPerDay = days7.map(({ label, date }) => {
+    const dStr = date.toDateString();
+    const count = positions.filter(p => p.created_at && new Date(p.created_at).toDateString() === dStr).length;
+    return { x: label, y: count };
+  });
+
+  // Staked volume per day (sum of amounts)
+  const volPerDay = days7.map(({ label, date }) => {
+    const dStr = date.toDateString();
+    const vol  = positions
+      .filter(p => p.created_at && new Date(p.created_at).toDateString() === dStr)
+      .reduce((s, p) => s + Number(p.amount || 0), 0);
+    return { x: label, y: parseFloat(vol.toFixed(2)) };
+  });
+
+  // Running win-rate trend (cumulative win % up to each day)
+  const resolvedChron = [...positions]
+    .filter(p => p.status === "resolved" && p.created_at)
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+  let cumulWins = 0, cumulTotal = 0;
+  const winRateTrend = days7.map(({ label, date }) => {
+    const dStr = date.toDateString();
+    resolvedChron
+      .filter(p => new Date(p.created_at).toDateString() === dStr)
+      .forEach(p => { cumulTotal++; if (p.won === true) cumulWins++; });
+    return { x: label, y: cumulTotal > 0 ? parseFloat(((cumulWins / cumulTotal) * 100).toFixed(1)) : 0 };
+  });
+
+  // ── Category breakdown (positions) ─────────────────────────────────────────
   const CAT_COLORS = { Crypto: "#fbbf24", Sports: "#fb923c", Weather: "#38bdf8", Stocks: "#34d399" };
-  const catCounts = {};
-  markets.forEach((m) => { catCounts[m.category] = (catCounts[m.category] || 0) + 1; });
-  const catSlices = Object.entries(catCounts).map(([label, value]) => ({
-    label, value, color: CAT_COLORS[label] || "#a78bfa",
-  })).sort((a, b) => b.value - a.value);
+  const catMap = {};
+  positions.forEach(p => {
+    const cat = p.category || "Other";
+    if (!catMap[cat]) catMap[cat] = { count: 0, vol: 0 };
+    catMap[cat].count++;
+    catMap[cat].vol += Number(p.amount || 0);
+  });
+  const catSlices = Object.entries(catMap)
+    .map(([label, { count, vol }]) => ({ label, value: count, vol, color: CAT_COLORS[label] || "#a78bfa" }))
+    .sort((a, b) => b.value - a.value);
+  const maxCatVol = Math.max(...catSlices.map(c => c.vol), 1);
 
-  // — Market status bars —
-  const statuses = ["active", "closed", "resolved", "paused"];
-  const statusColors = { active: "#22c55e", closed: "#fbbf24", resolved: "#7c6ff7", paused: "#94a3b8" };
-  const statusCounts = statuses.map((s) => ({
-    label: s.charAt(0).toUpperCase() + s.slice(1),
-    value: markets.filter((m) => m.status === s).length,
-    color: statusColors[s],
-  }));
-  const maxStatus = Math.max(...statusCounts.map((s) => s.value), 1);
+  // ── Market status donut ─────────────────────────────────────────────────────
+  const statusColors = { active: "#22c55e", closed: "#fbbf24", resolved: "#7c6ff7", paused: "#94a3b8", cancelled: "#ef4444" };
+  const statusMap = {};
+  markets.forEach(m => { statusMap[m.status] = (statusMap[m.status] || 0) + 1; });
+  const statusSlices = Object.entries(statusMap)
+    .map(([label, value]) => ({ label: label.charAt(0).toUpperCase() + label.slice(1), value, color: statusColors[label] || T.textMuted }))
+    .filter(s => s.value > 0)
+    .sort((a, b) => b.value - a.value);
 
-  // — Position side breakdown (all positions, not just open) —
-  const yesPositions = positions.filter((p) => p.side === "YES").length;
-  const noPositions  = positions.filter((p) => p.side === "NO").length;
-  const totalPos     = yesPositions + noPositions || 1;
-
-  // — Win / Loss breakdown (resolved positions only) —
+  // ── YES/NO + Wins/Losses ────────────────────────────────────────────────────
+  const yesPositions  = positions.filter(p => p.side === "YES").length;
+  const noPositions   = positions.filter(p => p.side === "NO").length;
+  const totalPos      = yesPositions + noPositions || 1;
   const totalResolved = wins + losses;
+
+  // ── Position-size histogram (5 buckets) ────────────────────────────────────
+  const buckets = [
+    { label: "$1–5",    min: 0,   max: 5   },
+    { label: "$5–20",   min: 5,   max: 20  },
+    { label: "$20–50",  min: 20,  max: 50  },
+    { label: "$50–100", min: 50,  max: 100 },
+    { label: "$100+",   min: 100, max: Infinity },
+  ];
+  const histData = buckets.map(b => ({
+    label: b.label,
+    value: positions.filter(p => {
+      const a = Number(p.amount || 0);
+      return a > b.min && a <= b.max;
+    }).length,
+  }));
+  const maxHist = Math.max(...histData.map(h => h.value), 1);
+
+  // ── Average stake ───────────────────────────────────────────────────────────
+  const totalStaked  = positions.reduce((s, p) => s + Number(p.amount || 0), 0);
+  const avgStake     = positions.length > 0 ? totalStaked / positions.length : 0;
+  const currentWinRate = totalResolved > 0 ? Math.round((wins / totalResolved) * 100) : null;
 
   if (markets.length === 0 && positions.length === 0) return null;
 
   return (
-    <div className="admin-chart-grid">
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
 
-      {/* Category distribution donut */}
-      <GCard style={{ padding: "18px 22px" }}>
-        <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 16px" }}>
-          Markets by Category
-        </p>
-        {catSlices.length === 0 ? (
-          <p style={{ fontSize: 13, color: T.textDim }}>No market data yet.</p>
-        ) : (
-          <AdminDonutChart slices={catSlices} total={markets.length} centerLabel="Markets" />
-        )}
-      </GCard>
+      {/* ══ ROW 1: 3 mini line charts ══════════════════════════════════════════ */}
+      <div className="admin-chart-grid-3">
 
-      {/* Right panel: market status + my positions breakdown */}
-      <GCard style={{ padding: "18px 22px" }}>
-        <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px" }}>
-          Market Status Breakdown
-        </p>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 18 }}>
-          {statusCounts.map((s, i) => (
-            <div key={s.label}
-              style={{ cursor: "pointer" }}
-              onMouseEnter={() => setHovStatus(i)}
-              onMouseLeave={() => setHovStatus(null)}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ fontSize: 11, color: hovStatus === i ? s.color : T.textMuted, fontWeight: 600, transition: "color 0.15s" }}>{s.label}</span>
-                <span style={{ fontSize: 12, fontWeight: 800, color: s.color }}>{s.value}</span>
-              </div>
-              <div style={{ height: 5, borderRadius: 3, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
-                <div style={{
-                  width: `${(s.value / maxStatus) * 100}%`,
-                  height: "100%", borderRadius: 3,
-                  background: s.color,
-                  opacity: hovStatus === i ? 1 : 0.7,
-                  transition: "width 0.5s ease, opacity 0.15s",
-                  boxShadow: hovStatus === i ? `0 0 8px ${s.color}88` : "none",
-                }} />
-              </div>
+        {/* Positions placed trend */}
+        <GCard style={{ padding: "16px 18px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+            <div>
+              <p style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 4px" }}>Positions Placed</p>
+              <p style={{ fontSize: 26, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.04em" }}>{positions.length}</p>
             </div>
-          ))}
-        </div>
+            <div style={{ textAlign: "right" }}>
+              <span style={{ fontSize: 10, color: "#38bdf8", fontWeight: 700 }}>
+                {posPerDay.reduce((s, p) => s + p.y, 0)} this week
+              </span>
+            </div>
+          </div>
+          <AdminLineChart points={posPerDay} color="#38bdf8" label="positions" height={72} />
+        </GCard>
 
-        {/* My positions: YES/NO split */}
-        {positions.length > 0 && (
-          <>
-            <p style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 10px" }}>
-              My Positions — YES / NO
+        {/* Staked volume trend */}
+        <GCard style={{ padding: "16px 18px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+            <div>
+              <p style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 4px" }}>Total Staked</p>
+              <p style={{ fontSize: 26, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.04em" }}>
+                ${totalStaked.toFixed(2)}
+              </p>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <span style={{ fontSize: 10, color: "#fbbf24", fontWeight: 700 }}>
+                avg ${avgStake.toFixed(2)}
+              </span>
+            </div>
+          </div>
+          <AdminLineChart points={volPerDay} color="#fbbf24" label="volume" height={72} />
+        </GCard>
+
+        {/* Win-rate trend */}
+        <GCard style={{ padding: "16px 18px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+            <div>
+              <p style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 4px" }}>Win Rate</p>
+              <p style={{ fontSize: 26, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.04em" }}>
+                {currentWinRate !== null ? `${currentWinRate}%` : "—"}
+              </p>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <span style={{ fontSize: 10, color: T.yes, fontWeight: 700 }}>
+                {wins}W / {losses}L
+              </span>
+            </div>
+          </div>
+          <AdminLineChart points={winRateTrend} color={T.yes} label="winrate" height={72} />
+        </GCard>
+      </div>
+
+      {/* ══ ROW 2: Category donut + Market status donut ═══════════════════════ */}
+      <div className="admin-chart-grid">
+
+        {/* My positions by category — donut */}
+        <GCard style={{ padding: "18px 22px" }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 16px" }}>
+            My Positions by Category
+          </p>
+          {catSlices.length === 0 ? (
+            <EmptyState icon={PieChart} title="No positions yet" body="Start predicting to see your category breakdown." />
+          ) : (
+            <AdminDonutChart slices={catSlices} total={positions.length} centerLabel="Positions" />
+          )}
+        </GCard>
+
+        {/* Live markets by status — donut */}
+        <GCard style={{ padding: "18px 22px" }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 16px" }}>
+            Live Markets by Status
+          </p>
+          {statusSlices.length === 0 ? (
+            <EmptyState icon={BarChart3} title="No markets yet" body="Market status breakdown will appear here." />
+          ) : (
+            <AdminDonutChart slices={statusSlices} total={markets.length} centerLabel="Markets" />
+          )}
+        </GCard>
+      </div>
+
+      {/* ══ ROW 3: YES/NO split + Wins/Losses split ═══════════════════════════ */}
+      {positions.length > 0 && (
+        <div className="admin-chart-grid">
+
+          {/* YES / NO split */}
+          <GCard style={{ padding: "18px 22px" }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px" }}>
+              My Prediction Sides — YES / NO
             </p>
-            <div style={{ display: "flex", gap: 10, marginBottom: 8 }}>
-              <div style={{ flex: yesPositions || 1, padding: "10px", borderRadius: 8, background: T.yesBg, border: `1px solid ${T.yesBorder}`, textAlign: "center" }}>
-                <p style={{ fontSize: 18, fontWeight: 800, color: T.yes, margin: 0 }}>{yesPositions}</p>
-                <p style={{ fontSize: 10, color: T.yes, margin: "2px 0 0", opacity: 0.7 }}>YES</p>
+
+            {/* Big side cards */}
+            <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+              <div style={{ flex: yesPositions || 1, padding: "18px 14px", borderRadius: 12, background: T.yesBg, border: `1px solid ${T.yesBorder}`, textAlign: "center" }}>
+                <p style={{ fontSize: 28, fontWeight: 900, color: T.yes, margin: "0 0 2px", letterSpacing: "-0.04em" }}>{yesPositions}</p>
+                <p style={{ fontSize: 11, color: T.yes, margin: 0, fontWeight: 700, opacity: 0.8 }}>YES Positions</p>
+                <p style={{ fontSize: 12, color: T.yes, margin: "4px 0 0", fontWeight: 600 }}>
+                  {Math.round((yesPositions / totalPos) * 100)}%
+                </p>
               </div>
-              <div style={{ flex: noPositions || 1, padding: "10px", borderRadius: 8, background: T.noBg, border: `1px solid ${T.noBorder}`, textAlign: "center" }}>
-                <p style={{ fontSize: 18, fontWeight: 800, color: T.no, margin: 0 }}>{noPositions}</p>
-                <p style={{ fontSize: 10, color: T.no, margin: "2px 0 0", opacity: 0.7 }}>NO</p>
+              <div style={{ flex: noPositions || 1, padding: "18px 14px", borderRadius: 12, background: T.noBg, border: `1px solid ${T.noBorder}`, textAlign: "center" }}>
+                <p style={{ fontSize: 28, fontWeight: 900, color: T.no, margin: "0 0 2px", letterSpacing: "-0.04em" }}>{noPositions}</p>
+                <p style={{ fontSize: 11, color: T.no, margin: 0, fontWeight: 700, opacity: 0.8 }}>NO Positions</p>
+                <p style={{ fontSize: 12, color: T.no, margin: "4px 0 0", fontWeight: 600 }}>
+                  {Math.round((noPositions / totalPos) * 100)}%
+                </p>
               </div>
-            </div>
-            <div style={{ height: 6, borderRadius: 3, background: T.noBg, overflow: "hidden", border: `1px solid ${T.noBorder}` }}>
-              <div style={{ width: `${(yesPositions / totalPos) * 100}%`, height: "100%", background: T.yes, borderRadius: 3, transition: "width 0.5s ease" }} />
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, marginBottom: 14 }}>
-              <span style={{ fontSize: 10, color: T.yes, fontWeight: 700 }}>{Math.round((yesPositions / totalPos) * 100)}% YES</span>
-              <span style={{ fontSize: 10, color: T.no,  fontWeight: 700 }}>{Math.round((noPositions  / totalPos) * 100)}% NO</span>
             </div>
 
-            {/* Resolved: Wins / Losses */}
-            {totalResolved > 0 && (
+            {/* Stacked bar */}
+            <StackedBar segments={[
+              { label: "YES", value: yesPositions, color: T.yes },
+              { label: "NO",  value: noPositions,  color: T.no  },
+            ]} height={10} radius={5} />
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+              <span style={{ fontSize: 10, color: T.yes, fontWeight: 700 }}>
+                {Math.round((yesPositions / totalPos) * 100)}% YES
+              </span>
+              <span style={{ fontSize: 10, color: T.textDim }}>
+                {positions.length} total
+              </span>
+              <span style={{ fontSize: 10, color: T.no, fontWeight: 700 }}>
+                {Math.round((noPositions / totalPos) * 100)}% NO
+              </span>
+            </div>
+          </GCard>
+
+          {/* Wins / Losses split */}
+          <GCard style={{ padding: "18px 22px" }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px" }}>
+              Resolved Outcomes — Wins / Losses
+            </p>
+
+            {totalResolved === 0 ? (
+              <EmptyState icon={Trophy} title="No resolved positions" body="Your win/loss record will appear once markets you participated in are resolved." />
+            ) : (
               <>
-                <p style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 10px" }}>
-                  Resolved — Wins / Losses
-                </p>
-                <div style={{ display: "flex", gap: 10, marginBottom: 8 }}>
-                  <div style={{ flex: wins || 1, padding: "10px", borderRadius: 8, background: T.yesBg, border: `1px solid ${T.yesBorder}`, textAlign: "center" }}>
-                    <p style={{ fontSize: 18, fontWeight: 800, color: T.yes, margin: 0 }}>{wins}</p>
-                    <p style={{ fontSize: 10, color: T.yes, margin: "2px 0 0", opacity: 0.7 }}>Won</p>
+                {/* Big result cards */}
+                <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+                  <div style={{ flex: wins || 1, padding: "18px 14px", borderRadius: 12, background: T.yesBg, border: `1px solid ${T.yesBorder}`, textAlign: "center" }}>
+                    <p style={{ fontSize: 28, fontWeight: 900, color: T.yes, margin: "0 0 2px", letterSpacing: "-0.04em" }}>{wins}</p>
+                    <p style={{ fontSize: 11, color: T.yes, margin: 0, fontWeight: 700, opacity: 0.8 }}>Wins 🏆</p>
+                    <p style={{ fontSize: 12, color: T.yes, margin: "4px 0 0", fontWeight: 600 }}>
+                      {Math.round((wins / totalResolved) * 100)}%
+                    </p>
                   </div>
-                  <div style={{ flex: losses || 1, padding: "10px", borderRadius: 8, background: T.noBg, border: `1px solid ${T.noBorder}`, textAlign: "center" }}>
-                    <p style={{ fontSize: 18, fontWeight: 800, color: T.no, margin: 0 }}>{losses}</p>
-                    <p style={{ fontSize: 10, color: T.no, margin: "2px 0 0", opacity: 0.7 }}>Lost</p>
+                  <div style={{ flex: losses || 1, padding: "18px 14px", borderRadius: 12, background: T.noBg, border: `1px solid ${T.noBorder}`, textAlign: "center" }}>
+                    <p style={{ fontSize: 28, fontWeight: 900, color: T.no, margin: "0 0 2px", letterSpacing: "-0.04em" }}>{losses}</p>
+                    <p style={{ fontSize: 11, color: T.no, margin: 0, fontWeight: 700, opacity: 0.8 }}>Losses</p>
+                    <p style={{ fontSize: 12, color: T.no, margin: "4px 0 0", fontWeight: 600 }}>
+                      {Math.round((losses / totalResolved) * 100)}%
+                    </p>
                   </div>
                 </div>
-                <div style={{ height: 6, borderRadius: 3, background: T.noBg, overflow: "hidden", border: `1px solid ${T.noBorder}` }}>
-                  <div style={{ width: `${(wins / totalResolved) * 100}%`, height: "100%", background: T.yes, borderRadius: 3, transition: "width 0.5s ease" }} />
+
+                {/* Stacked bar */}
+                <StackedBar segments={[
+                  { label: "Wins",   value: wins,   color: T.yes },
+                  { label: "Losses", value: losses, color: T.no  },
+                ]} height={10} radius={5} />
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, marginBottom: 14 }}>
+                  <span style={{ fontSize: 10, color: T.yes, fontWeight: 700 }}>
+                    {Math.round((wins / totalResolved) * 100)}% Win Rate
+                  </span>
+                  <span style={{ fontSize: 10, color: T.textDim }}>
+                    {totalResolved} resolved
+                  </span>
+                  <span style={{ fontSize: 10, color: T.no, fontWeight: 700 }}>
+                    {Math.round((losses / totalResolved) * 100)}% Loss Rate
+                  </span>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
-                  <span style={{ fontSize: 10, color: T.yes, fontWeight: 700 }}>{Math.round((wins   / totalResolved) * 100)}% Win</span>
-                  <span style={{ fontSize: 10, color: T.no,  fontWeight: 700 }}>{Math.round((losses / totalResolved) * 100)}% Loss</span>
+
+                {/* Win-rate ring */}
+                <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "14px 16px", borderRadius: 12, background: T.glass, border: `1px solid ${T.border}` }}>
+                  <div style={{ position: "relative", flexShrink: 0 }}>
+                    <RingProgress value={wins} max={totalResolved} size={64} stroke={5} color={wins / totalResolved >= 0.5 ? T.yes : T.no} />
+                    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: "#fff" }}>{Math.round((wins / totalResolved) * 100)}%</span>
+                    </div>
+                  </div>
+                  <div>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: "#fff", margin: "0 0 3px" }}>Win Rate</p>
+                    <p style={{ fontSize: 11, color: T.textDim, margin: 0, lineHeight: 1.5 }}>
+                      {wins} wins out of {totalResolved} resolved markets.{" "}
+                      {wins / totalResolved >= 0.6
+                        ? "🔥 Strong performance!"
+                        : wins / totalResolved >= 0.4
+                        ? "Keep it up!"
+                        : "Room to improve."}
+                    </p>
+                  </div>
                 </div>
               </>
             )}
-          </>
-        )}
-      </GCard>
+          </GCard>
+        </div>
+      )}
+
+      {/* ══ ROW 4: Category volume bars + Stake-size histogram ════════════════ */}
+      {positions.length > 0 && (
+        <div className="admin-chart-grid">
+
+          {/* Category staking breakdown — horizontal bars */}
+          <GCard style={{ padding: "18px 22px", minWidth: 0 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 16px" }}>
+              Staking Volume by Category
+            </p>
+            {catSlices.length === 0 ? (
+              <p style={{ fontSize: 13, color: T.textDim }}>No data yet.</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {catSlices.map(cat => (
+                  <div key={cat.label} style={{ minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 5 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: cat.color, flexShrink: 0 }} />
+                        <span style={{ fontSize: 12, color: T.textMuted, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {cat.label}
+                        </span>
+                        <span style={{ fontSize: 10, color: T.textDim, flexShrink: 0 }}>({cat.value} pos)</span>
+                      </div>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: cat.color, flexShrink: 0 }}>
+                        ${cat.vol.toFixed(2)}
+                      </span>
+                    </div>
+                    <div style={{ height: 7, borderRadius: 4, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+                      <div style={{
+                        width: `${(cat.vol / maxCatVol) * 100}%`,
+                        height: "100%",
+                        background: `linear-gradient(90deg, ${cat.color}, ${cat.color}88)`,
+                        borderRadius: 4,
+                        transition: "width 0.5s ease",
+                        boxShadow: `0 0 8px ${cat.color}44`,
+                      }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </GCard>
+
+          {/* Stake-size distribution histogram */}
+          <GCard style={{ padding: "18px 22px", minWidth: 0 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 4px" }}>
+              Stake Size Distribution
+            </p>
+            <p style={{ fontSize: 11, color: T.textDim, margin: "0 0 16px" }}>
+              How many positions fall in each stake range.
+            </p>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 100, paddingBottom: 24, position: "relative" }}>
+              {/* Y-axis gridlines */}
+              {[0, 50, 100].map(pct => (
+                <div key={pct} style={{
+                  position: "absolute", left: 0, right: 0,
+                  bottom: 24 + (pct / 100) * 76,
+                  borderTop: "1px dashed rgba(255,255,255,0.05)",
+                  pointerEvents: "none",
+                }} />
+              ))}
+              {histData.map((b, i) => {
+                const barH = b.value > 0 ? Math.max(6, (b.value / maxHist) * 76) : 0;
+                const col  = ["#38bdf8", "#7c6ff7", "#fbbf24", "#fb923c", "#22c55e"][i];
+                return (
+                  <div key={b.label} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", position: "relative" }}>
+                    {b.value > 0 && (
+                      <div style={{
+                        position: "absolute",
+                        bottom: 24 + barH + 3,
+                        fontSize: 11, fontWeight: 700, color: col,
+                        whiteSpace: "nowrap",
+                      }}>
+                        {b.value}
+                      </div>
+                    )}
+                    <div style={{
+                      width: "100%", height: barH,
+                      borderRadius: "4px 4px 0 0",
+                      background: b.value > 0 ? `linear-gradient(180deg, ${col}, ${col}66)` : "rgba(255,255,255,0.04)",
+                      alignSelf: "flex-end",
+                      boxShadow: b.value > 0 ? `0 0 12px ${col}44` : "none",
+                      transition: "height 0.4s ease",
+                    }} />
+                    <span style={{
+                      position: "absolute", bottom: 3,
+                      fontSize: 9, fontWeight: 600, color: T.textDim,
+                      textAlign: "center", whiteSpace: "nowrap",
+                    }}>
+                      {b.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Summary strip */}
+            <div style={{ marginTop: 8, padding: "10px 12px", borderRadius: 8, background: T.glass, border: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 11, color: T.textDim }}>Average stake</span>
+              <span style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>${avgStake.toFixed(2)}</span>
+            </div>
+          </GCard>
+        </div>
+      )}
+
     </div>
   );
 }
@@ -4080,14 +4332,16 @@ function PageAdmin() {
   // Per-tab UI state
   const [roleUpdating,   setRoleUpdating]   = useState(null);
   const [statusUpdating, setStatusUpdating] = useState(null);
-  const [resolveTarget,  setResolveTarget]  = useState(null); // { market }
+  const [resolveTarget,  setResolveTarget]  = useState(null);
   const [resolveOutcome, setResolveOutcome] = useState("YES");
-  const [deleteTarget,   setDeleteTarget]   = useState(null); // { id, question, type: 'market'|'user' }
+  const [deleteTarget,   setDeleteTarget]   = useState(null);
   const [confirmRole,    setConfirmRole]    = useState(null);
   const [marketFilter,   setMarketFilter]   = useState("all");
   const [userSearch,     setUserSearch]     = useState("");
   const [posSearch,      setPosSearch]      = useState("");
-  const [viewUser,       setViewUser]       = useState(null); // user object for view modal
+  const [viewUser,       setViewUser]       = useState(null);
+
+  const { toast } = useToast();
 
   // Create market form
   const [createForm, setCreateForm] = useState({ question: "", category: "Crypto", deadline: "", data_source: "" });
@@ -4109,31 +4363,57 @@ function PageAdmin() {
 
   const handleToggleMarket = async (market) => {
     setStatusUpdating(market.id);
-    if (market.status === "active")  await pauseMarket(market.id);
-    else if (market.status === "paused") await activateMarket(market.id);
-    else if (market.status === "closed") await activateMarket(market.id);
+    const action = market.status === "active" ? "Pausing" : "Activating";
+    const tid = toast.loading(`${action} market…`);
+    try {
+      if (market.status === "active")       await pauseMarket(market.id);
+      else if (market.status === "paused")  await activateMarket(market.id);
+      else if (market.status === "closed")  await activateMarket(market.id);
+      const newStatus = market.status === "active" ? "paused" : "active";
+      toast.update(tid, { type: "success", msg: `Market ${newStatus}`, sub: market.question.slice(0, 60) });
+    } catch (err) {
+      toast.update(tid, { type: "error", msg: "Action failed", sub: err.message ?? String(err) });
+    }
     setStatusUpdating(null);
   };
 
   const handleResolve = async () => {
     if (!resolveTarget) return;
     setStatusUpdating(resolveTarget.market.id);
-    await resolveMarket(resolveTarget.market.id, resolveOutcome);
+    const tid = toast.loading(`Resolving as ${resolveOutcome}…`);
+    try {
+      await resolveMarket(resolveTarget.market.id, resolveOutcome);
+      toast.update(tid, { type: "success", msg: `Market resolved ${resolveOutcome}`, sub: resolveTarget.market.question.slice(0, 60) });
+    } catch (err) {
+      toast.update(tid, { type: "error", msg: "Resolve failed", sub: err.message ?? String(err) });
+    }
     setStatusUpdating(null);
     setResolveTarget(null);
   };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    if (deleteTarget.type === "market") await deleteMarket(deleteTarget.id);
-    if (deleteTarget.type === "user")   await deleteUser(deleteTarget.id);
+    const tid = toast.loading(`Deleting ${deleteTarget.type}…`);
+    try {
+      if (deleteTarget.type === "market") await deleteMarket(deleteTarget.id);
+      if (deleteTarget.type === "user")   await deleteUser(deleteTarget.id);
+      toast.update(tid, { type: "success", msg: `${deleteTarget.type === "market" ? "Market" : "User"} deleted`, sub: deleteTarget.question });
+    } catch (err) {
+      toast.update(tid, { type: "error", msg: "Delete failed", sub: err.message ?? String(err) });
+    }
     setDeleteTarget(null);
   };
 
   const handleRoleChange = async () => {
     if (!confirmRole) return;
     setRoleUpdating(confirmRole.userId);
-    await setUserRole(confirmRole.userId, confirmRole.newRole);
+    const tid = toast.loading(`Updating role to ${confirmRole.newRole}…`);
+    try {
+      await setUserRole(confirmRole.userId, confirmRole.newRole);
+      toast.update(tid, { type: "success", msg: "Role updated", sub: `${confirmRole.displayName} → ${confirmRole.newRole}` });
+    } catch (err) {
+      toast.update(tid, { type: "error", msg: "Role update failed", sub: err.message ?? String(err) });
+    }
     setRoleUpdating(null);
     setConfirmRole(null);
   };
@@ -4143,12 +4423,16 @@ function PageAdmin() {
     setCreateLoading(true);
     setCreateError(null);
     setCreateSuccess(null);
+    const tid = toast.loading("Creating market…");
     const { ok, error: err } = await createMarket(createForm);
     if (ok) {
       setCreateSuccess("Market created successfully!");
       setCreateForm({ question: "", category: "Crypto", deadline: "", data_source: "" });
+      toast.update(tid, { type: "success", msg: "Market created! 🚀", sub: createForm.question.slice(0, 60) });
     } else {
-      setCreateError(err ?? "Failed to create market.");
+      const msg = err ?? "Failed to create market.";
+      setCreateError(msg);
+      toast.update(tid, { type: "error", msg: "Create failed", sub: msg });
     }
     setCreateLoading(false);
   };
@@ -4631,10 +4915,12 @@ function PageAdmin() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                 <div>
                   <label style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Category *</label>
-                  <select required value={createForm.category} onChange={e => setCreateForm(f => ({ ...f, category: e.target.value }))}
-                    style={{ width: "100%", padding: "12px 14px", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, color: T.textPrimary, fontSize: 13, outline: "none", cursor: "pointer" }}>
-                    {["Crypto", "Sports", "Weather", "Stocks"].map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
+                  <CustomSelect
+                    value={createForm.category}
+                    onChange={val => setCreateForm(f => ({ ...f, category: val }))}
+                    options={["Crypto", "Sports", "Weather", "Stocks"]}
+                    placeholder="Pick category…"
+                  />
                 </div>
                 <div>
                   <label style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Deadline *</label>

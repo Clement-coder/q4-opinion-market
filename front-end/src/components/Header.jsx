@@ -251,13 +251,13 @@ export default function Navbar() {
           )}
         </div>
 
-        {/* ── Hamburger (mobile only) ── */}
+        {/* ── Hamburger (mobile only — hidden on desktop via .hdr-hamburger CSS) ── */}
         <button
           type="button"
           className="hdr-hamburger"
           onClick={() => setOpen((v) => !v)}
           style={{
-            display: "flex", alignItems: "center", justifyContent: "center",
+            alignItems: "center", justifyContent: "center",
             padding: 8, borderRadius: 6,
             border: "1px solid rgba(255,255,255,0.12)",
             background: open ? "rgba(255,255,255,0.07)" : "transparent",
