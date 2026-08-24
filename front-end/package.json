@@ -11,6 +11,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.109.0",
     "@tailwindcss/vite": "^4.2.0",
+    "@vercel/analytics": "^2.0.1",
     "@vitejs/plugin-react": "^4.6.0",
     "firebase": "^11.10.0",
     "quais": "^1.0.0-alpha.56",
