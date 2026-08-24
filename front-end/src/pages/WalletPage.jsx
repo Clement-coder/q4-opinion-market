@@ -7,9 +7,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Send, Download, RefreshCw, Eye, EyeOff, Copy, Check,
-  ArrowUpRight, ArrowDownLeft, Clock, XCircle,
-  TrendingUp, TrendingDown, Wifi, X,
-  AlertCircle, Loader,
+  ArrowUpRight, ArrowDownLeft, XCircle,
+  TrendingUp, TrendingDown, X,
+  AlertCircle, Loader, ArrowRight, ExternalLink, Plus,
 } from "../components/icons";
 import { useWallet } from "../context/WalletContext";
 import { useAuth }   from "../context/AuthContext";
@@ -17,6 +17,7 @@ import { useDemoModeContext } from "../context/DemoModeContext";
 import { QuaiLogo }  from "../components/icons";
 import q4LogoSrc     from "../assets/Q4_logo.jpeg";
 import { Sk }        from "../components/Skeleton";
+import { sendQuai, createCheckout } from "../services/blippay";
 
 /* ════════════════════════════════════════════════
    DESIGN TOKENS
@@ -224,27 +225,83 @@ function PriceChart({ history, positive, height = 140 }) {
 }
 
 /* ════════════════════════════════════════════════
-   QR CODE (pure SVG — no lib)
+   QR CODE — real scannable QR via `qrcode` lib
+   Encodes:  quai:<address>
+   Uses SVG output (no canvas, no DOM injection).
+   Encoded as data:image/svg+xml so it renders in
+   a plain <img> tag — works in every browser.
 ════════════════════════════════════════════════ */
-function SimpleQR({ data, size = 180 }) {
-  const seed  = data ? [...data].reduce((a,c)=>a+c.charCodeAt(0),0) : 42;
-  const cells = 25, cell = Math.floor(size/(cells+2)), off = cell;
-  const bits  = Array.from({length:cells},(_,r)=>
-    Array.from({length:cells},(_,c)=>{
-      if((r<7&&c<7)||(r<7&&c>=cells-7)||(r>=cells-7&&c<7)){
-        const outer=(r===0||r===6||c===0||c===6||r===cells-7||r===cells-1||c===cells-7||c===cells-1);
-        const inner=(r>=2&&r<=4&&c>=2&&c<=4)||(r>=2&&r<=4&&c>=cells-5&&c<=cells-3)||(r>=cells-5&&r<=cells-3&&c>=2&&c<=4);
-        return outer||inner?1:0;
-      }
-      const v=(seed*1103515245+r*cells*12345+c*12345)&0x7fffffff;
-      return (v>>(r*c%8))&1;
-    }));
+function WalletQR({ address, size = 200 }) {
+  const [imgSrc,  setImgSrc]  = useState(null);
+  const [qrError, setQrError] = useState(false);
+
+  useEffect(() => {
+    if (!address) return;
+    let cancelled = false;
+    setImgSrc(null);
+    setQrError(false);
+
+    // quai:<address> — standard Quai payment URI.
+    // BlipPay scan-to-send and any Quai-compatible wallet scanner reads this.
+    const uri = `quai:${address}`;
+
+    import("qrcode")
+      .then(mod => {
+        // Vite wraps CJS modules: the real exports land on mod.default or mod.b
+        // Probe both shapes so it works in dev (mod.default) and prod (mod.b)
+        const lib = mod.default ?? (mod.b?.default) ?? mod.b ?? mod;
+        if (typeof lib?.toString !== "function") throw new Error("qrcode not ready");
+
+        // toString with type:'svg' is pure-JS — no canvas, no DOM, works everywhere
+        return lib.toString(uri, {
+          type:                 "svg",
+          errorCorrectionLevel: "M",
+          margin:               2,
+          color: { dark: "#000000", light: "#ffffff" },
+        });
+      })
+      .then(svgString => {
+        if (cancelled) return;
+        // Encode SVG as a data URL so a plain <img> can display it without
+        // dangerouslySetInnerHTML — clean and safe.
+        const encoded = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`;
+        setImgSrc(encoded);
+      })
+      .catch(() => { if (!cancelled) setQrError(true); });
+
+    return () => { cancelled = true; };
+  }, [address]);
+
+  if (qrError) {
+    return (
+      <div style={{ width:size, height:size, background:"#fff", borderRadius:10,
+                    display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <p style={{ fontSize:10, color:"#999", textAlign:"center", padding:8, margin:0 }}>QR unavailable</p>
+      </div>
+    );
+  }
+
+  if (!imgSrc) {
+    return (
+      <div style={{ width:size, height:size, background:"#f2f2f2", borderRadius:10,
+                    display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <div style={{ width:22, height:22, border:"3px solid #ccc", borderTopColor:"#333",
+                      borderRadius:"50%", animation:"spin 0.8s linear infinite" }}/>
+      </div>
+    );
+  }
+
   return (
-    <svg width={size} height={size} style={{background:"#fff",borderRadius:8,display:"block"}}>
-      {bits.map((row,r)=>row.map((bit,c)=>bit?(
-        <rect key={`${r}-${c}`} x={off+c*cell} y={off+r*cell} width={cell} height={cell} fill="#080808"/>
-      ):null))}
-    </svg>
+    <div style={{ background:"#fff", borderRadius:12, padding:10, display:"inline-block",
+                  lineHeight:0, boxShadow:"0 6px 28px rgba(0,0,0,0.35)" }}>
+      <img
+        src={imgSrc}
+        alt={`Quai wallet QR – ${address}`}
+        width={size}
+        height={size}
+        style={{ display:"block", borderRadius:4 }}
+      />
+    </div>
   );
 }
 
@@ -277,44 +334,64 @@ function Modal({ open, onClose, title, children, maxWidth=460 }) {
 }
 
 /* ════════════════════════════════════════════════
-   SEND MODAL
+   SEND MODAL — real on-chain transaction via HKDF-derived wallet
+   The private key is derived in-memory from the user's Firebase UID.
+   It is never stored, shown, or sent over the network unless the user
+   explicitly opens "Export Key" from Wallet Details.
 ════════════════════════════════════════════════ */
-function SendModal({ open, onClose, balance, quaiPrice, isDemo }) {
-  const [step,      setStep]      = useState("form");
+function SendModal({ open, onClose, balance, quaiPrice, walletAddress, uid, isDemo }) {
+  const [step,      setStep]      = useState("form"); // form → confirm → done | error
   const [recipient, setRecipient] = useState("");
   const [amount,    setAmount]    = useState("");
   const [err,       setErr]       = useState("");
   const [sending,   setSending]   = useState(false);
   const [txHash,    setTxHash]    = useState("");
 
-  const FEE = 0.001;
-  const num = parseFloat(amount)||0;
-  const total = num + FEE;
-  const usd = quaiPrice ? (num*quaiPrice).toFixed(2) : null;
-  const feeUsd = quaiPrice ? (FEE*quaiPrice).toFixed(4) : null;
-  const ok = balance.quai >= total;
+  const FEE    = 0.001;
+  const num    = parseFloat(amount) || 0;
+  const total  = num + FEE;
+  const usd    = quaiPrice ? (num * quaiPrice).toFixed(2) : null;
+  const feeUsd = quaiPrice ? (FEE * quaiPrice).toFixed(4) : null;
+  const ok     = balance.quai >= total;
 
-  function reset(){ setStep("form");setRecipient("");setAmount("");setErr("");setTxHash(""); }
-  function close(){ reset();onClose(); }
+  function reset() { setStep("form"); setRecipient(""); setAmount(""); setErr(""); setTxHash(""); }
+  function close() { reset(); onClose(); }
 
-  function validate(){
-    if(!/^0x[0-9a-fA-F]{40}$/.test(recipient)){setErr("Invalid Quai address — must be 0x + 40 hex chars.");return false;}
-    if(num<=0){setErr("Enter a valid amount.");return false;}
-    if(!ok){setErr(`Insufficient balance — need ${total.toFixed(4)} QUAI (incl. fee).`);return false;}
+  function validate() {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(recipient)) {
+      setErr("Invalid Quai address — must be 0x + 40 hex chars."); return false;
+    }
+    if (num <= 0) { setErr("Enter a valid amount."); return false; }
+    if (!ok)      { setErr(`Insufficient balance — need ${total.toFixed(4)} QUAI (incl. fee).`); return false; }
     setErr(""); return true;
   }
 
-  async function confirm(){
+  async function confirm() {
     setSending(true);
-    try{
-      await new Promise(r=>setTimeout(r,1500));
-      setTxHash("0x"+Array.from({length:64},()=>Math.floor(Math.random()*16).toString(16)).join(""));
+    try {
+      if (isDemo) {
+        await new Promise(r => setTimeout(r, 1400));
+        setTxHash("0x" + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join(""));
+        setStep("done");
+        return;
+      }
+      const { hash } = await sendQuai({ uid, to: recipient, amountQuai: num });
+      setTxHash(hash);
       setStep("done");
-    }catch(e){setErr(e.message);setStep("error");}
-    finally{setSending(false);}
+    } catch (e) {
+      setErr(e.message);
+      setStep("error");
+    } finally {
+      setSending(false);
+    }
   }
 
-  const fieldStyle = { width:"100%", padding:"11px 14px", background:T.glass, border:`1px solid ${T.border}`, borderRadius:10, color:"#fff", fontSize:13, outline:"none", boxSizing:"border-box", transition:"border-color 0.15s" };
+  const fieldStyle = {
+    width: "100%", padding: "11px 14px",
+    background: T.glass, border: `1px solid ${T.border}`,
+    borderRadius: 10, color: "#fff", fontSize: 13, outline: "none",
+    boxSizing: "border-box", transition: "border-color 0.15s",
+  };
 
   return (
     <Modal open={open} onClose={close} title="Send QUAI">
@@ -323,85 +400,391 @@ function SendModal({ open, onClose, balance, quaiPrice, isDemo }) {
           🧪 <span><strong>Demo mode:</strong> This transaction is simulated. No real QUAI will be sent.</span>
         </div>
       )}
-      {step==="form" && (
-        <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          <div style={{display:"flex",alignItems:"center",gap:6,padding:"7px 12px",borderRadius:8,background:T.yesBg,border:`1px solid ${T.yesBd}`}}>
-            <QuaiLogo size={14}/> <span style={{fontSize:11,fontWeight:600,color:T.yes}}>Quai Network · Zone 0-0</span>
+
+      {/* ── form ── */}
+      {step === "form" && (
+        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 12px", borderRadius:8, background:T.yesBg, border:`1px solid ${T.yesBd}` }}>
+            <QuaiLogo size={14}/>
+            <span style={{ fontSize:11, fontWeight:600, color:T.yes }}>Quai Network · Zone 0-0</span>
           </div>
           <div>
-            <label style={{fontSize:11,fontWeight:700,color:T.dim,letterSpacing:"0.06em",textTransform:"uppercase",display:"block",marginBottom:6}}>Recipient Address</label>
-            <input type="text" placeholder="0x…" value={recipient} onChange={e=>setRecipient(e.target.value)}
-              style={{...fieldStyle,fontFamily:"monospace"}} onFocus={e=>e.target.style.borderColor=T.borderHi} onBlur={e=>e.target.style.borderColor=T.border}/>
+            <label style={{ fontSize:11, fontWeight:700, color:T.dim, letterSpacing:"0.06em", textTransform:"uppercase", display:"block", marginBottom:6 }}>
+              From
+            </label>
+            <p style={{ fontSize:11, fontFamily:"monospace", color:T.muted, margin:0, padding:"9px 12px", background:T.glass, border:`1px solid ${T.border}`, borderRadius:8 }}>
+              {walletAddress ?? "—"}
+            </p>
           </div>
           <div>
-            <label style={{fontSize:11,fontWeight:700,color:T.dim,letterSpacing:"0.06em",textTransform:"uppercase",display:"block",marginBottom:6}}>Amount (QUAI)</label>
-            <div style={{position:"relative"}}>
-              <input type="number" min="0" step="0.0001" placeholder="0.0000" value={amount} onChange={e=>setAmount(e.target.value)}
-                style={{...fieldStyle,paddingRight:72,fontSize:20,fontWeight:800,letterSpacing:"-0.02em"}} onFocus={e=>e.target.style.borderColor=T.borderHi} onBlur={e=>e.target.style.borderColor=T.border}/>
-              <span style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",fontSize:12,fontWeight:700,color:T.dim}}>QUAI</span>
+            <label style={{ fontSize:11, fontWeight:700, color:T.dim, letterSpacing:"0.06em", textTransform:"uppercase", display:"block", marginBottom:6 }}>
+              Recipient Address
+            </label>
+            <input
+              type="text"
+              placeholder="0x…"
+              value={recipient}
+              onChange={e => setRecipient(e.target.value)}
+              style={{ ...fieldStyle, fontFamily:"monospace" }}
+              onFocus={e => e.target.style.borderColor = T.borderHi}
+              onBlur={e => e.target.style.borderColor = T.border}
+            />
+          </div>
+          <div>
+            <label style={{ fontSize:11, fontWeight:700, color:T.dim, letterSpacing:"0.06em", textTransform:"uppercase", display:"block", marginBottom:6 }}>
+              Amount (QUAI)
+            </label>
+            <div style={{ position:"relative" }}>
+              <input
+                type="number"
+                min="0"
+                step="0.0001"
+                placeholder="0.0000"
+                value={amount}
+                onChange={e => setAmount(e.target.value)}
+                style={{ ...fieldStyle, paddingRight:72, fontSize:20, fontWeight:800, letterSpacing:"-0.02em" }}
+                onFocus={e => e.target.style.borderColor = T.borderHi}
+                onBlur={e => e.target.style.borderColor = T.border}
+              />
+              <span style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", fontSize:12, fontWeight:700, color:T.dim }}>QUAI</span>
             </div>
-            {usd && num>0 && <p style={{fontSize:11,color:T.muted,margin:"4px 0 0"}}>≈ ${usd} USDT</p>}
-            <button type="button" onClick={()=>setAmount(Math.max(0,balance.quai-FEE).toFixed(4))}
-              style={{marginTop:6,fontSize:11,color:T.violet,background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:600}}>
-              Use max ({Math.max(0,balance.quai-FEE).toFixed(4)} QUAI)
+            {usd && num > 0 && <p style={{ fontSize:11, color:T.muted, margin:"4px 0 0" }}>≈ ${usd} USD</p>}
+            <button
+              type="button"
+              onClick={() => setAmount(Math.max(0, balance.quai - FEE).toFixed(4))}
+              style={{ marginTop:6, fontSize:11, color:T.violet, background:"none", border:"none", cursor:"pointer", padding:0, fontWeight:600 }}
+            >
+              Use max ({Math.max(0, balance.quai - FEE).toFixed(4)} QUAI)
             </button>
           </div>
-          <div style={{padding:"10px 14px",borderRadius:10,background:T.glass,border:`1px solid ${T.border}`}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-              <span style={{fontSize:11,color:T.dim}}>Network Fee</span>
-              <span style={{fontSize:12,fontWeight:700,color:T.muted}}>{FEE} QUAI{feeUsd?` (~$${feeUsd} USDT)`:""}</span>
+          <div style={{ padding:"10px 14px", borderRadius:10, background:T.glass, border:`1px solid ${T.border}` }}>
+            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+              <span style={{ fontSize:11, color:T.dim }}>Est. Network Fee</span>
+              <span style={{ fontSize:12, fontWeight:700, color:T.muted }}>{FEE} QUAI{feeUsd ? ` (~$${feeUsd})` : ""}</span>
             </div>
-            <div style={{display:"flex",justifyContent:"space-between"}}>
-              <span style={{fontSize:11,color:T.dim}}>Total</span>
-              <span style={{fontSize:12,fontWeight:700,color:ok?T.text:T.no}}>{total.toFixed(4)} QUAI</span>
+            <div style={{ display:"flex", justifyContent:"space-between" }}>
+              <span style={{ fontSize:11, color:T.dim }}>Total</span>
+              <span style={{ fontSize:12, fontWeight:700, color: ok ? T.text : T.no }}>{total.toFixed(4)} QUAI</span>
             </div>
           </div>
-          {err && <div style={{display:"flex",gap:8,padding:"10px 14px",borderRadius:8,background:T.noBg,border:`1px solid ${T.noBd}`,color:T.no,fontSize:12}}><AlertCircle size={14} strokeWidth={2} style={{flexShrink:0,marginTop:1}}/>{err}</div>}
-          <button type="button" onClick={()=>{if(validate())setStep("confirm");}} style={{width:"100%",padding:13,borderRadius:10,background:"#fff",color:"#080808",fontWeight:800,fontSize:14,border:"none",cursor:"pointer"}}>
+          {err && (
+            <div style={{ display:"flex", gap:8, padding:"10px 14px", borderRadius:8, background:T.noBg, border:`1px solid ${T.noBd}`, color:T.no, fontSize:12 }}>
+              <AlertCircle size={14} strokeWidth={2} style={{ flexShrink:0, marginTop:1 }}/>{err}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => { if (validate()) setStep("confirm"); }}
+            style={{ width:"100%", padding:13, borderRadius:10, background:"#fff", color:"#080808", fontWeight:800, fontSize:14, border:"none", cursor:"pointer" }}
+          >
             Review Transaction
           </button>
         </div>
       )}
-      {step==="confirm" && (
-        <div style={{display:"flex",flexDirection:"column",gap:16}}>
-          <div style={{padding:16,borderRadius:12,background:T.glass,border:`1px solid ${T.border}`}}>
-            {[{l:"To",v:short(recipient),m:true},{l:"Amount",v:`${num.toFixed(4)} QUAI${usd?` (~$${usd})`:""}`},{l:"Fee",v:`${FEE} QUAI`},{l:"Network",v:"Quai Network · Zone 0-0"}].map(({l,v,m},i,a)=>(
-              <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:i<a.length-1?`1px solid ${T.border}`:"none"}}>
-                <span style={{fontSize:12,color:T.dim}}>{l}</span>
-                <span style={{fontSize:12,fontWeight:700,color:T.text,fontFamily:m?"monospace":"inherit"}}>{v}</span>
+
+      {/* ── confirm ── */}
+      {step === "confirm" && (
+        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+          <div style={{ padding:16, borderRadius:12, background:T.glass, border:`1px solid ${T.border}` }}>
+            {[
+              { l:"From",    v: short(walletAddress), m:true },
+              { l:"To",      v: short(recipient),     m:true },
+              { l:"Amount",  v: `${num.toFixed(4)} QUAI${usd ? ` (~$${usd})` : ""}` },
+              { l:"Fee",     v: `${FEE} QUAI` },
+              { l:"Network", v: "Quai Network · Zone 0-0" },
+            ].map(({ l, v, m }, i, a) => (
+              <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom: i < a.length - 1 ? `1px solid ${T.border}` : "none" }}>
+                <span style={{ fontSize:12, color:T.dim }}>{l}</span>
+                <span style={{ fontSize:12, fontWeight:700, color:T.text, fontFamily: m ? "monospace" : "inherit" }}>{v}</span>
               </div>
             ))}
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            <button type="button" onClick={()=>setStep("form")} style={{padding:12,borderRadius:10,background:T.glass,border:`1px solid ${T.border}`,color:T.muted,fontWeight:600,fontSize:13,cursor:"pointer"}}>Back</button>
-            <button type="button" onClick={confirm} disabled={sending} style={{padding:12,borderRadius:10,background:sending?"rgba(255,255,255,0.3)":"#fff",color:"#080808",fontWeight:800,fontSize:13,border:"none",cursor:sending?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-              {sending?<><Loader size={14} strokeWidth={2} style={{animation:"spin 0.7s linear infinite"}}/>Sending…</>:"Confirm Send"}
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+            <button type="button" onClick={() => setStep("form")}
+              style={{ padding:12, borderRadius:10, background:T.glass, border:`1px solid ${T.border}`, color:T.muted, fontWeight:600, fontSize:13, cursor:"pointer" }}>
+              Back
+            </button>
+            <button type="button" onClick={confirm} disabled={sending}
+              style={{ padding:12, borderRadius:10, background: sending ? "rgba(255,255,255,0.3)" : "#fff", color:"#080808", fontWeight:800, fontSize:13, border:"none", cursor: sending ? "not-allowed" : "pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+              {sending
+                ? <><Loader size={14} strokeWidth={2} style={{ animation:"spin 0.7s linear infinite" }}/>Sending…</>
+                : "Confirm Send"}
             </button>
           </div>
         </div>
       )}
-      {step==="done" && (
-        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16,padding:"8px 0"}}>
-          <div style={{width:64,height:64,borderRadius:"50%",background:T.yesBg,border:`2px solid ${T.yes}`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 0 28px rgba(34,197,94,0.4)",animation:"modal-in 0.4s cubic-bezier(0.34,1.56,0.64,1) both"}}>
-            <Check size={28} strokeWidth={2.5} style={{color:T.yes}}/>
+
+      {/* ── done ── */}
+      {step === "done" && (
+        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:16, padding:"8px 0" }}>
+          <div style={{ width:64, height:64, borderRadius:"50%", background:T.yesBg, border:`2px solid ${T.yes}`, display:"flex", alignItems:"center", justifyContent:"center", boxShadow:"0 0 28px rgba(34,197,94,0.4)", animation:"modal-in 0.4s cubic-bezier(0.34,1.56,0.64,1) both" }}>
+            <Check size={28} strokeWidth={2.5} style={{ color:T.yes }}/>
           </div>
-          <div style={{textAlign:"center"}}>
-            <p style={{fontSize:18,fontWeight:800,color:"#fff",margin:"0 0 4px"}}>Sent Successfully!</p>
-            <p style={{fontSize:12,color:T.muted,margin:0}}>{num.toFixed(4)} QUAI → {short(recipient)}</p>
+          <div style={{ textAlign:"center" }}>
+            <p style={{ fontSize:18, fontWeight:800, color:"#fff", margin:"0 0 4px" }}>Sent!</p>
+            <p style={{ fontSize:12, color:T.muted, margin:0 }}>{num.toFixed(4)} QUAI → {short(recipient)}</p>
           </div>
-          <div style={{width:"100%",padding:"10px 14px",borderRadius:10,background:T.glass,border:`1px solid ${T.border}`}}>
-            <p style={{fontSize:10,color:T.dim,margin:"0 0 3px",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>Transaction Hash</p>
-            <p style={{fontSize:11,fontFamily:"monospace",color:T.muted,margin:0,wordBreak:"break-all"}}>{txHash}</p>
+          <div style={{ width:"100%", padding:"10px 14px", borderRadius:10, background:T.glass, border:`1px solid ${T.border}` }}>
+            <p style={{ fontSize:10, color:T.dim, margin:"0 0 3px", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em" }}>Transaction Hash</p>
+            <p style={{ fontSize:11, fontFamily:"monospace", color:T.muted, margin:0, wordBreak:"break-all" }}>{txHash}</p>
           </div>
-          <button type="button" onClick={close} style={{width:"100%",padding:12,borderRadius:10,background:T.glass,border:`1px solid ${T.border}`,color:T.muted,fontWeight:600,fontSize:13,cursor:"pointer"}}>Close</button>
+          <a href={`https://quaiscan.io/tx/${txHash}`} target="_blank" rel="noopener noreferrer"
+            style={{ fontSize:12, color:T.violet, fontWeight:600, textDecoration:"none" }}>
+            View on Quaiscan ↗
+          </a>
+          <button type="button" onClick={close}
+            style={{ width:"100%", padding:12, borderRadius:10, background:T.glass, border:`1px solid ${T.border}`, color:T.muted, fontWeight:600, fontSize:13, cursor:"pointer" }}>
+            Close
+          </button>
         </div>
       )}
-      {step==="error" && (
-        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,padding:"8px 0"}}>
-          <XCircle size={48} strokeWidth={1.5} style={{color:T.no}}/>
-          <p style={{fontSize:16,fontWeight:700,color:T.no,margin:0}}>Transaction Failed</p>
-          <p style={{fontSize:12,color:T.muted,margin:0,textAlign:"center"}}>{err}</p>
-          <button type="button" onClick={()=>setStep("form")} style={{padding:"10px 24px",borderRadius:8,background:T.glass,border:`1px solid ${T.border}`,color:T.muted,fontWeight:600,cursor:"pointer"}}>Try Again</button>
+
+      {/* ── error ── */}
+      {step === "error" && (
+        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:14, padding:"8px 0" }}>
+          <XCircle size={48} strokeWidth={1.5} style={{ color:T.no }}/>
+          <p style={{ fontSize:16, fontWeight:700, color:T.no, margin:0 }}>Transaction Failed</p>
+          <p style={{ fontSize:12, color:T.muted, margin:0, textAlign:"center", maxWidth:300, lineHeight:1.6 }}>{err}</p>
+          <button type="button" onClick={() => setStep("form")}
+            style={{ padding:"10px 24px", borderRadius:8, background:T.glass, border:`1px solid ${T.border}`, color:T.muted, fontWeight:600, cursor:"pointer" }}>
+            Try Again
+          </button>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+/* ════════════════════════════════════════════════
+   EXPORT KEY MODAL — derives and shows the private key once
+   Intended for users who want to import their wallet into
+   MetaMask, Pelagus, or another Quai-compatible wallet.
+════════════════════════════════════════════════ */
+function ExportKeyModal({ open, onClose, uid, isDemo }) {
+  const [step,    setStep]    = useState("warn"); // warn → reveal | error
+  const [key,     setKey]     = useState("");
+  const [loading, setLoading] = useState(false);
+  const [err,     setErr]     = useState("");
+  const [copied,  setCopied]  = useState(false);
+
+  function reset() { setStep("warn"); setKey(""); setErr(""); setCopied(false); }
+  function close() { reset(); onClose(); }
+
+  async function reveal() {
+    if (isDemo) {
+      setKey("0x" + "demo".repeat(16));
+      setStep("reveal");
+      return;
+    }
+    setLoading(true);
+    try {
+      const { getOrCreateWallet } = await import("../services/blippay");
+      const { privateKey } = await getOrCreateWallet(uid);
+      setKey(privateKey);
+      setStep("reveal");
+    } catch (e) {
+      setErr(e.message);
+      setStep("error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function copy() {
+    try { await navigator.clipboard.writeText(key); }
+    catch { const el=document.createElement("textarea");el.value=key;document.body.appendChild(el);el.select();document.execCommand("copy");document.body.removeChild(el); }
+    setCopied(true); setTimeout(()=>setCopied(false), 2500);
+  }
+
+  return (
+    <Modal open={open} onClose={close} title="Export Private Key" maxWidth={480}>
+      {/* ── warning step ── */}
+      {step === "warn" && (
+        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+          <div style={{ padding:"14px 16px", borderRadius:12, background:"rgba(239,68,68,0.07)", border:"1px solid rgba(239,68,68,0.25)" }}>
+            <p style={{ fontSize:13, fontWeight:700, color:T.no, margin:"0 0 8px" }}>⚠ Never share your private key</p>
+            <ul style={{ fontSize:12, color:"rgba(255,255,255,0.6)", margin:0, paddingLeft:18, lineHeight:1.8 }}>
+              <li>Anyone with this key controls your wallet completely.</li>
+              <li>Q4 staff will <strong style={{ color:"rgba(255,255,255,0.8)" }}>never</strong> ask for it.</li>
+              <li>Store it offline in a secure location.</li>
+              <li>This key is derived from your account — it is the same every time you export it.</li>
+            </ul>
+          </div>
+          <p style={{ fontSize:12, color:T.muted, margin:0, lineHeight:1.6 }}>
+            Use this to import your Q4 wallet into <strong style={{ color:T.text }}>Pelagus</strong>, <strong style={{ color:T.text }}>MetaMask</strong>, or any Quai-compatible wallet app.
+          </p>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+            <button type="button" onClick={close}
+              style={{ padding:12, borderRadius:10, background:T.glass, border:`1px solid ${T.border}`, color:T.muted, fontWeight:600, fontSize:13, cursor:"pointer" }}>
+              Cancel
+            </button>
+            <button type="button" onClick={reveal} disabled={loading}
+              style={{ padding:12, borderRadius:10, background:"rgba(239,68,68,0.15)", border:"1px solid rgba(239,68,68,0.4)", color:T.no, fontWeight:700, fontSize:13, cursor: loading ? "not-allowed":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+              {loading ? <><Loader size={13} strokeWidth={2} style={{ animation:"spin 0.7s linear infinite" }}/>Deriving…</> : "Show Key →"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── reveal step ── */}
+      {step === "reveal" && (
+        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+          {isDemo && (
+            <div style={{ padding:"8px 12px", borderRadius:8, background:"rgba(234,179,8,0.08)", border:"1px solid rgba(234,179,8,0.25)", color:"#eab308", fontSize:11 }}>
+              🧪 Demo mode — this is a placeholder key, not real.
+            </div>
+          )}
+          <div style={{ padding:"14px 16px", borderRadius:12, background:"rgba(239,68,68,0.05)", border:"1px solid rgba(239,68,68,0.2)" }}>
+            <p style={{ fontSize:10, color:"rgba(239,68,68,0.7)", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.07em", margin:"0 0 10px" }}>Private Key — Keep Secret</p>
+            <p style={{ fontSize:12, fontFamily:"monospace", color:"#f0f0f0", margin:0, wordBreak:"break-all", lineHeight:1.7 }}>{key}</p>
+          </div>
+          <button type="button" onClick={copy}
+            style={{ width:"100%", padding:12, borderRadius:10, background: copied ? T.yesBg : T.glass, border:`1px solid ${copied ? T.yesBd : T.border}`, color: copied ? T.yes : T.muted, fontWeight:700, fontSize:13, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6, transition:"all 0.2s" }}>
+            {copied ? <><Check size={14} strokeWidth={2.5}/>Copied!</> : <><Copy size={14} strokeWidth={1.8}/>Copy to Clipboard</>}
+          </button>
+          <p style={{ fontSize:11, color:T.dim, margin:0, textAlign:"center", lineHeight:1.6 }}>
+            Close this window when done. The key is not stored anywhere.
+          </p>
+          <button type="button" onClick={close}
+            style={{ padding:"9px 0", borderRadius:9, background:T.glass, border:`1px solid ${T.border}`, color:T.muted, fontWeight:600, fontSize:12, cursor:"pointer" }}>
+            Close
+          </button>
+        </div>
+      )}
+
+      {/* ── error ── */}
+      {step === "error" && (
+        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:12, padding:"8px 0" }}>
+          <XCircle size={40} strokeWidth={1.5} style={{ color:T.no }}/>
+          <p style={{ fontSize:14, fontWeight:700, color:T.no, margin:0 }}>Could Not Export Key</p>
+          <p style={{ fontSize:12, color:T.muted, margin:0, textAlign:"center" }}>{err}</p>
+          <button type="button" onClick={close}
+            style={{ padding:"9px 20px", borderRadius:8, background:T.glass, border:`1px solid ${T.border}`, color:T.muted, fontWeight:600, cursor:"pointer" }}>
+            Close
+          </button>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+/* ════════════════════════════════════════════════
+   TOP UP MODAL — BlipPay managed-QUAI ramp
+════════════════════════════════════════════════ */
+function TopUpModal({ open, onClose, walletAddress, userEmail }) {
+  const [step,    setStep]    = useState("amount"); // amount → checkout → done | error
+  const [amountUsd, setAmountUsd] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [err,     setErr]     = useState("");
+
+  function reset() { setStep("amount"); setAmountUsd(""); setErr(""); }
+  function close() { reset(); onClose(); }
+
+  async function launch() {
+    setErr("");
+    const dollars = parseFloat(amountUsd);
+    if (!dollars || dollars < 5) { setErr("Minimum top-up is $5."); return; }
+    if (!walletAddress) { setErr("Wallet address not loaded yet."); return; }
+    setLoading(true);
+    try {
+      const cents  = Math.round(dollars * 100);
+      const result = await createCheckout(walletAddress, cents, userEmail ?? undefined);
+      // BlipPay returns checkout_url (not url)
+      const checkoutUrl = result.checkout_url ?? result.url;
+      if (!checkoutUrl) throw new Error("No checkout URL returned from BlipPay.");
+      window.open(checkoutUrl, "_blank", "noopener,noreferrer");
+      setStep("done");
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const fieldStyle = {
+    width:"100%", padding:"11px 14px",
+    background:T.glass, border:`1px solid ${T.border}`,
+    borderRadius:10, color:"#fff", fontSize:20, fontWeight:800,
+    outline:"none", boxSizing:"border-box",
+    letterSpacing:"-0.02em", transition:"border-color 0.15s",
+  };
+
+  return (
+    <Modal open={open} onClose={close} title="Top Up with USDT">
+      {step === "amount" && (
+        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+          <div style={{ padding:"12px 14px", borderRadius:10, background:"rgba(99,102,241,0.07)", border:"1px solid rgba(99,102,241,0.22)", display:"flex", gap:10 }}>
+            <QuaiLogo size={14} style={{ flexShrink:0, marginTop:1 }}/>
+            <p style={{ fontSize:12, color:"rgba(255,255,255,0.65)", margin:0, lineHeight:1.6 }}>
+              Pay with <strong style={{ color:"rgba(255,255,255,0.85)" }}>USDT</strong> via Stripe.
+              QUAI is delivered to your wallet automatically — powered by BlipPay.
+            </p>
+          </div>
+          <div>
+            <label style={{ fontSize:11, fontWeight:700, color:T.dim, letterSpacing:"0.06em", textTransform:"uppercase", display:"block", marginBottom:6 }}>
+              Amount (USD)
+            </label>
+            <div style={{ position:"relative" }}>
+              <input
+                type="number"
+                min="5"
+                step="1"
+                placeholder="25"
+                value={amountUsd}
+                onChange={e => setAmountUsd(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && launch()}
+                style={{ ...fieldStyle, paddingLeft:28, paddingRight:50 }}
+                onFocus={e => e.target.style.borderColor = T.borderHi}
+                onBlur={e => e.target.style.borderColor = T.border}
+              />
+              <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", fontSize:18, fontWeight:800, color:T.dim }}>$</span>
+              <span style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", fontSize:12, fontWeight:700, color:T.dim }}>USD</span>
+            </div>
+          </div>
+          {/* preset amounts */}
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
+            {[10, 25, 50, 100].map(v => (
+              <button key={v} type="button" onClick={() => setAmountUsd(String(v))}
+                style={{ padding:"8px 0", borderRadius:8, background: parseFloat(amountUsd) === v ? "rgba(124,111,247,0.18)" : T.glass, border:`1px solid ${parseFloat(amountUsd) === v ? "rgba(124,111,247,0.45)" : T.border}`, color: parseFloat(amountUsd) === v ? T.violet : T.muted, fontSize:12, fontWeight:700, cursor:"pointer", transition:"all 0.15s" }}>
+                ${v}
+              </button>
+            ))}
+          </div>
+          <div style={{ padding:"10px 14px", borderRadius:10, background:T.glass, border:`1px solid ${T.border}` }}>
+            <div style={{ display:"flex", justifyContent:"space-between" }}>
+              <span style={{ fontSize:11, color:T.dim }}>Delivery wallet</span>
+              <span style={{ fontSize:11, fontFamily:"monospace", color:T.muted }}>{short(walletAddress)}</span>
+            </div>
+          </div>
+          {err && (
+            <div style={{ display:"flex", gap:8, padding:"10px 14px", borderRadius:8, background:T.noBg, border:`1px solid ${T.noBd}`, color:T.no, fontSize:12 }}>
+              <AlertCircle size={14} strokeWidth={2} style={{ flexShrink:0, marginTop:1 }}/>{err}
+            </div>
+          )}
+          <button type="button" onClick={launch} disabled={loading}
+            style={{ width:"100%", padding:13, borderRadius:10, background: loading ? "rgba(255,255,255,0.3)" : "#fff", color:"#080808", fontWeight:800, fontSize:14, border:"none", cursor: loading ? "not-allowed" : "pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+            {loading
+              ? <><Loader size={14} strokeWidth={2} style={{ animation:"spin 0.7s linear infinite" }}/>Opening checkout…</>
+              : <>Continue to Stripe <ExternalLink size={14} strokeWidth={2.5}/></>}
+          </button>
+        </div>
+      )}
+      {step === "done" && (
+        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:16, padding:"8px 0" }}>
+          <div style={{ width:64, height:64, borderRadius:"50%", background:T.yesBg, border:`2px solid ${T.yes}`, display:"flex", alignItems:"center", justifyContent:"center", boxShadow:"0 0 28px rgba(34,197,94,0.4)" }}>
+            <Check size={28} strokeWidth={2.5} style={{ color:T.yes }}/>
+          </div>
+          <div style={{ textAlign:"center" }}>
+            <p style={{ fontSize:17, fontWeight:800, color:"#fff", margin:"0 0 6px" }}>Checkout Opened</p>
+            <p style={{ fontSize:12, color:T.muted, margin:0, lineHeight:1.7 }}>
+              Complete payment in the new tab.<br/>
+              QUAI will arrive in your wallet within a few minutes after confirmation.
+            </p>
+          </div>
+          <button type="button" onClick={close}
+            style={{ width:"100%", padding:12, borderRadius:10, background:T.glass, border:`1px solid ${T.border}`, color:T.muted, fontWeight:600, fontSize:13, cursor:"pointer" }}>
+            Done
+          </button>
         </div>
       )}
     </Modal>
@@ -412,31 +795,61 @@ function SendModal({ open, onClose, balance, quaiPrice, isDemo }) {
    RECEIVE MODAL
 ════════════════════════════════════════════════ */
 function ReceiveModal({ open, onClose, walletAddress }) {
-  const [copied, setCopied] = useState(false);
-  const copy = useCallback(async()=>{
-    if(!walletAddress) return;
-    try{ await navigator.clipboard.writeText(walletAddress); }
-    catch{ const el=document.createElement("textarea");el.value=walletAddress;document.body.appendChild(el);el.select();document.execCommand("copy");document.body.removeChild(el); }
-    setCopied(true); setTimeout(()=>setCopied(false),2000);
-  },[walletAddress]);
+  const [copiedAddr, setCopiedAddr] = useState(false);
+  const [copiedUri,  setCopiedUri]  = useState(false);
+
+  const uri = walletAddress ? `quai:${walletAddress}` : null;
+
+  const copyAddr = useCallback(async () => {
+    if (!walletAddress) return;
+    try { await navigator.clipboard.writeText(walletAddress); }
+    catch { const el = document.createElement("textarea"); el.value = walletAddress; document.body.appendChild(el); el.select(); document.execCommand("copy"); document.body.removeChild(el); }
+    setCopiedAddr(true); setTimeout(() => setCopiedAddr(false), 2000);
+  }, [walletAddress]);
+
+  const copyUri = useCallback(async () => {
+    if (!uri) return;
+    try { await navigator.clipboard.writeText(uri); }
+    catch { const el = document.createElement("textarea"); el.value = uri; document.body.appendChild(el); el.select(); document.execCommand("copy"); document.body.removeChild(el); }
+    setCopiedUri(true); setTimeout(() => setCopiedUri(false), 2000);
+  }, [uri]);
 
   return (
-    <Modal open={open} onClose={onClose} title="Receive QUAI">
-      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:18}}>
-        <div style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:8,background:T.yesBg,border:`1px solid ${T.yesBd}`}}>
-          <QuaiLogo size={14}/> <span style={{fontSize:11,fontWeight:600,color:T.yes}}>Quai Network · Zone 0-0</span>
+    <Modal open={open} onClose={onClose} title="Receive QUAI" maxWidth={420}>
+      <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:16 }}>
+
+        {/* network badge */}
+        <div style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 14px", borderRadius:8, background:T.yesBg, border:`1px solid ${T.yesBd}` }}>
+          <QuaiLogo size={14}/>
+          <span style={{ fontSize:11, fontWeight:600, color:T.yes }}>Quai Network · Zone 0-0</span>
         </div>
-        <div style={{padding:12,background:"#fff",borderRadius:14,boxShadow:"0 8px 32px rgba(0,0,0,0.5)"}}>
-          <SimpleQR data={walletAddress??"q4-wallet"} size={180}/>
-        </div>
-        <p style={{fontSize:11,color:T.dim,margin:0,textAlign:"center",lineHeight:1.6}}>Only send <strong style={{color:T.muted}}>QUAI</strong> to this address.<br/>Sending other assets may result in permanent loss.</p>
-        <div style={{width:"100%",padding:"12px 14px",borderRadius:12,background:T.glass,border:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:10}}>
-          <p style={{flex:1,fontSize:12,fontFamily:"monospace",color:T.text,margin:0,wordBreak:"break-all",letterSpacing:"0.03em"}}>{walletAddress??"Loading…"}</p>
-          <button type="button" onClick={copy} style={{width:36,height:36,borderRadius:8,background:copied?T.yesBg:T.glass,border:`1px solid ${copied?T.yesBd:T.border}`,display:"flex",alignItems:"center",justifyContent:"center",color:copied?T.yes:T.muted,cursor:"pointer",flexShrink:0,transition:"all 0.2s"}}>
-            {copied?<Check size={14} strokeWidth={2.5}/>:<Copy size={14} strokeWidth={1.8}/>}
+
+        {/* QR code — encodes  quai:<address> */}
+        <WalletQR address={walletAddress} size={200} />
+
+        {/* URI label */}
+        <p style={{ fontSize:10, color:T.dim, margin:0, letterSpacing:"0.04em" }}>
+          Encodes: <span style={{ fontFamily:"monospace", color:T.muted }}>quai:{walletAddress ? walletAddress.slice(0,10) + "…" : "…"}</span>
+        </p>
+
+        {/* address copy row */}
+        <div style={{ width:"100%", padding:"11px 14px", borderRadius:11, background:T.glass, border:`1px solid ${T.border}`, display:"flex", alignItems:"center", gap:10 }}>
+          <div style={{ flex:1, minWidth:0 }}>
+            <p style={{ fontSize:9, fontWeight:700, color:T.dim, textTransform:"uppercase", letterSpacing:"0.07em", margin:"0 0 3px" }}>Wallet Address</p>
+            <p style={{ fontSize:12, fontFamily:"monospace", color:T.text, margin:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+              {walletAddress ?? "Loading…"}
+            </p>
+          </div>
+          <button type="button" onClick={copyAddr}
+            style={{ width:34, height:34, borderRadius:8, background: copiedAddr ? T.yesBg : T.glass, border:`1px solid ${copiedAddr ? T.yesBd : T.border}`, display:"flex", alignItems:"center", justifyContent:"center", color: copiedAddr ? T.yes : T.muted, cursor:"pointer", flexShrink:0, transition:"all 0.2s" }}>
+            {copiedAddr ? <Check size={13} strokeWidth={2.5}/> : <Copy size={13} strokeWidth={1.8}/>}
           </button>
         </div>
-        {copied && <p style={{fontSize:11,color:T.yes,margin:0,fontWeight:600}}>✓ Address copied to clipboard</p>}
+
+        <p style={{ fontSize:11, color:T.dim, margin:0, textAlign:"center", lineHeight:1.7 }}>
+          Scan with <strong style={{ color:T.muted }}>BlipPay</strong> or any Quai-compatible wallet.<br/>
+          Only send <strong style={{ color:T.muted }}>QUAI</strong> to this address.
+        </p>
       </div>
     </Modal>
   );
@@ -558,6 +971,8 @@ export default function WalletPage() {
 
   const [sendOpen,    setSendOpen]    = useState(false);
   const [receiveOpen, setReceiveOpen] = useState(false);
+  const [topUpOpen,   setTopUpOpen]   = useState(false);
+  const [exportOpen,  setExportOpen]  = useState(false);
   const [txFilter,    setTxFilter]    = useState("All"); // "All" | "Received" | "Sent"
 
   const price   = priceData?.current;
@@ -577,27 +992,26 @@ export default function WalletPage() {
 
   /* ─── skeleton: show while auth resolving OR wallet loading ─── */
   if (authResolving || loading) return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      {/* page header skeleton */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <Sk.Box w={100} h={26} r={6} />
-          <Sk.Box w={260} h={13} r={4} />
-        </div>
-        <Sk.Box w={100} h={36} r={8} />
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      {/* page header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <Sk.Box w={80} h={22} r={6} />
+        <Sk.Box w={90} h={34} r={8} />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      {/* top cards — responsive: 2-col desktop, 1-col mobile via inline media */}
+      <div className="wallet-top-grid" style={{ display: "grid", gap: 16 }}>
         <Sk.WalletBalance />
         <Sk.WalletPriceCard />
       </div>
-      <Sk.WalletTxList count={5} />
+      {/* transactions */}
+      <Sk.WalletTxList count={4} />
       {/* wallet details */}
-      <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 22, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 14 }}>
-        <Sk.Box w={120} h={11} r={4} />
+      <div style={{ background: "#111111", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 22, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 12 }}>
+        <Sk.Box w={110} h={10} r={4} />
         {[0,1,2,3].map(i => (
-          <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: i < 3 ? "1px solid rgba(255,255,255,0.06)" : "none" }}>
-            <Sk.Box w={100} h={11} r={4} />
-            <Sk.Box w={180} h={13} r={4} />
+          <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderBottom: i < 3 ? "1px solid rgba(255,255,255,0.06)" : "none" }}>
+            <Sk.Box w={90} h={10} r={4} />
+            <Sk.Box w={160} h={12} r={4} />
           </div>
         ))}
       </div>
@@ -803,6 +1217,11 @@ export default function WalletPage() {
                 onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.13)"} onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.07)"}>
                 <Download size={14} strokeWidth={2}/> Receive
               </button>
+              <button type="button" onClick={()=>setTopUpOpen(true)}
+                style={{display:"flex",alignItems:"center",justifyContent:"center",gap:7,padding:"12px",borderRadius:11,background:"rgba(124,111,247,0.12)",border:"1px solid rgba(124,111,247,0.35)",color:T.violet,fontWeight:700,fontSize:13,cursor:"pointer",transition:"background 0.15s",gridColumn:"1 / -1"}}
+                onMouseEnter={e=>e.currentTarget.style.background="rgba(124,111,247,0.22)"} onMouseLeave={e=>e.currentTarget.style.background="rgba(124,111,247,0.12)"}>
+                <Plus size={14} strokeWidth={2.5}/> Top Up with USDT
+              </button>
             </div>
           </div>
         </div>
@@ -924,17 +1343,30 @@ export default function WalletPage() {
         {[
           {label:"Wallet Address", value:walletAddress??"—", mono:true,  copy:walletAddress, icon:false},
           {label:"Network",        value:"Quai Network · Zone 0-0", mono:false, icon:true},
-          {label:"Wallet Type",    value:"Embedded (BlipPay managed)", mono:false, icon:false},
+          {label:"Wallet Type",    value:"Embedded (HKDF-derived, non-custodial)", mono:false, icon:false},
           {label:"Account Owner",  value:user?.email??"—", mono:false, icon:false},
         ].map(({label,value,mono,copy,icon},i,a)=>(
           <DetailRow key={label} label={label} value={value} mono={mono} copy={copy} icon={icon} divider={i<a.length-1}/>
         ))}
 
+        {/* Export key row */}
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", paddingTop:14, borderTop:`1px solid ${T.border}`, marginTop:4 }}>
+          <div>
+            <p style={{ fontSize:10, fontWeight:700, color:T.dim, letterSpacing:"0.06em", textTransform:"uppercase", margin:"0 0 3px" }}>Private Key</p>
+            <p style={{ fontSize:12, color:T.muted, margin:0 }}>Export to import into Pelagus or any Quai wallet</p>
+          </div>
+          <button type="button" onClick={() => setExportOpen(true)}
+            style={{ flexShrink:0, padding:"7px 14px", borderRadius:8, background:"rgba(239,68,68,0.08)", border:"1px solid rgba(239,68,68,0.22)", color:"rgba(239,68,68,0.8)", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
+            Export Key
+          </button>
+        </div>
       </div>
 
       {/* ── MODALS ── */}
-      <SendModal    open={sendOpen}    onClose={()=>setSendOpen(false)}    balance={balance} quaiPrice={price?.price} isDemo={isDemoMode}/>
+      <SendModal    open={sendOpen}    onClose={()=>setSendOpen(false)}    balance={balance} quaiPrice={price?.price} walletAddress={walletAddress} uid={user?.uid} isDemo={isDemoMode}/>
       <ReceiveModal open={receiveOpen} onClose={()=>setReceiveOpen(false)} walletAddress={walletAddress}/>
+      <TopUpModal   open={topUpOpen}   onClose={()=>setTopUpOpen(false)}   walletAddress={walletAddress} userEmail={user?.email}/>
+      <ExportKeyModal open={exportOpen} onClose={()=>setExportOpen(false)} uid={user?.uid} isDemo={isDemoMode}/>
     </div>
   );
 }

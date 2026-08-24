@@ -426,15 +426,15 @@ function Sidebar({ active, onNavigate, onLogout }) {
       WebkitBackdropFilter: "blur(24px)",
       borderRight: `1px solid ${T.border}`,
       zIndex: 40,
-      overflowY: "auto",
+      overflow: "hidden",          /* outer never scrolls */
     }}>
-      {/* Logo */}
+      {/* ── Logo — always visible, never scrolls ── */}
       <div style={{ padding: "18px 20px 16px", display: "flex", alignItems: "center", justifyContent: "center", borderBottom: `1px solid ${T.border}`, flexShrink: 0 }}>
         <Q4Logo size={36} />
       </div>
 
-      {/* Nav */}
-      <nav style={{ flex: 1, padding: "10px 10px 6px" }}>
+      {/* ── Scrollable nav area ── */}
+      <nav style={{ flex: 1, padding: "10px 10px 6px", overflowY: "auto", minHeight: 0 }}>
         <p style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.1em", padding: "8px 10px 6px", textTransform: "uppercase" }}>Navigation</p>
         {NAV_ITEMS.slice(0, 7).map(({ key, label, icon: Icon, desc }) => {
           const isActive = active === key;
@@ -527,17 +527,19 @@ function Sidebar({ active, onNavigate, onLogout }) {
         })()}
       </nav>
 
-      {/* Bottom */}
-      <div style={{ padding: "12px 10px 20px", borderTop: `1px solid ${T.border}`, flexShrink: 0 }}>
-        {/* ── Demo / Live mode switcher ── */}
-        <div style={{ marginBottom: 8, padding: "10px 10px 10px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}` }}>
+      {/* ── Fixed bottom footer — never scrolls ── */}
+      <div style={{ flexShrink: 0, borderTop: `1px solid ${T.border}`, padding: "12px 10px 16px", display: "flex", flexDirection: "column", gap: 4 }}>
+
+        {/* Demo / Live mode switcher */}
+        <div style={{ padding: "10px 10px 10px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, marginBottom: 4 }}>
           <p style={{ margin: "0 0 8px", fontSize: 10, color: T.textDim, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>Account Mode</p>
           <div style={{ display: "flex", background: "rgba(255,255,255,0.05)", borderRadius: 8, padding: 3, gap: 3 }}>
             <button
               type="button"
               onClick={() => { if (!isDemoMode) toggleMode(); }}
               style={{
-                flex: 1, padding: "6px 0", borderRadius: 6, fontSize: 12, fontWeight: 600, border: "none", cursor: isDemoMode ? "default" : "pointer",
+                flex: 1, padding: "6px 0", borderRadius: 6, fontSize: 12, fontWeight: 600,
+                border: "none", cursor: isDemoMode ? "default" : "pointer",
                 background: isDemoMode ? "rgba(255,255,255,0.12)" : "transparent",
                 color: isDemoMode ? "#ffffff" : T.textMuted,
                 transition: "all 0.18s",
@@ -549,7 +551,8 @@ function Sidebar({ active, onNavigate, onLogout }) {
               type="button"
               onClick={() => { if (isDemoMode) toggleMode(); }}
               style={{
-                flex: 1, padding: "6px 0", borderRadius: 6, fontSize: 12, fontWeight: 600, border: "none", cursor: isDemoMode ? "pointer" : "default",
+                flex: 1, padding: "6px 0", borderRadius: 6, fontSize: 12, fontWeight: 600,
+                border: "none", cursor: isDemoMode ? "pointer" : "default",
                 background: !isDemoMode ? "rgba(34,197,94,0.18)" : "transparent",
                 color: !isDemoMode ? "#22c55e" : T.textMuted,
                 transition: "all 0.18s",
@@ -562,6 +565,8 @@ function Sidebar({ active, onNavigate, onLogout }) {
             {isDemoMode ? "Using local demo data — no real funds." : "Connected to blockchain & real data."}
           </p>
         </div>
+
+        {/* Landing page link */}
         <Link
           to="/"
           style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 8, color: T.textMuted, textDecoration: "none", fontSize: 13, fontWeight: 500, transition: "background 0.15s, color 0.15s" }}
@@ -570,10 +575,12 @@ function Sidebar({ active, onNavigate, onLogout }) {
         >
           <Globe size={16} strokeWidth={1.8} /> Landing Page
         </Link>
+
+        {/* Logout */}
         <button
           type="button"
           onClick={onLogout}
-          style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 8, color: "rgba(239,68,68,0.6)", background: "transparent", border: "none", cursor: "pointer", width: "100%", fontSize: 13, fontWeight: 500, transition: "background 0.15s, color 0.15s" }}
+          style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 8, color: "rgba(239,68,68,0.6)", background: "transparent", border: "none", cursor: "pointer", width: "100%", fontSize: 13, fontWeight: 500, transition: "background 0.15s, color 0.15s", textAlign: "left" }}
           onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.08)"; e.currentTarget.style.color = "#ef4444"; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(239,68,68,0.6)"; }}
         >
@@ -589,36 +596,35 @@ function Sidebar({ active, onNavigate, onLogout }) {
 ════════════════════════════════════════════════ */
 
 function TopHeader({ pageLabel, onOpenMobileSidebar, onNavigate, user, onOpenNotifications, unreadCount }) {
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-  const now = new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-  const firstName = user?.displayName?.split(" ")[0] ?? "there";
-  const initials  = user?.displayName
+  const initials = user?.displayName
     ? user.displayName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase()
     : "Q4";
   const { isDemoMode, toggleMode } = useDemoModeContext();
 
   return (
     <header style={{
-      height: 60,
+      height: 56,
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
-      padding: "0 24px",
-      background: "rgba(8,8,8,0.88)",
+      padding: "0 20px",
+      background: "rgba(8,8,8,0.96)",
       backdropFilter: "blur(20px)",
       WebkitBackdropFilter: "blur(20px)",
       borderBottom: `1px solid ${T.border}`,
-      position: "sticky",
+      position: "fixed",
       top: 0,
-      zIndex: 30,
+      left: 0,
+      right: 0,
+      zIndex: 35,
       flexShrink: 0,
+      gap: 12,
     }}>
-      {/* Left — hamburger (mobile) + logo (mobile) + page label */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      {/* Left — mobile hamburger + logo + page label */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, marginLeft: 240 }} className="dash-header-left">
 
-        {/* Mobile hamburger + logo row — shown on mobile via CSS */}
-        <div className="dash-mobile-left" style={{ display: "none", alignItems: "center", gap: 10 }}>
+        {/* Mobile hamburger + logo — shown via CSS class on ≤1024px */}
+        <div className="dash-mobile-left">
           <button
             type="button"
             onClick={onOpenMobileSidebar}
@@ -628,18 +634,17 @@ function TopHeader({ pageLabel, onOpenMobileSidebar, onNavigate, user, onOpenNot
           >
             <Menu size={16} strokeWidth={2} />
           </button>
-          <Q4Logo size={32} />
+          <Q4Logo size={28} />
         </div>
 
-        {/* Page label */}
-        <div>
-          <p style={{ fontSize: 14, fontWeight: 700, color: "#ffffff", margin: 0, letterSpacing: "-0.02em" }}>{pageLabel}</p>
-          <p style={{ fontSize: 11, color: T.textDim, margin: 0 }}>{greeting}, {firstName} · {now}</p>
-        </div>
+        {/* Page label — single line, no subtext */}
+        <p style={{ fontSize: 14, fontWeight: 700, color: "#ffffff", margin: 0, letterSpacing: "-0.02em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {pageLabel}
+        </p>
       </div>
 
-      {/* Right — notifications + avatar only */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      {/* Right — mode badge · bell · avatar — all on one line */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
 
         {/* Demo / Live mode badge */}
         <button
@@ -652,7 +657,7 @@ function TopHeader({ pageLabel, onOpenMobileSidebar, onNavigate, user, onOpenNot
             border: "none", cursor: "pointer", letterSpacing: "0.04em",
             background: isDemoMode ? "rgba(234,179,8,0.15)" : "rgba(34,197,94,0.15)",
             color: isDemoMode ? "#eab308" : "#22c55e",
-            transition: "all 0.18s",
+            transition: "all 0.18s", whiteSpace: "nowrap",
           }}
         >
           <span style={{ width: 6, height: 6, borderRadius: "50%", background: isDemoMode ? "#eab308" : "#22c55e", flexShrink: 0 }} />
@@ -664,7 +669,7 @@ function TopHeader({ pageLabel, onOpenMobileSidebar, onNavigate, user, onOpenNot
           type="button"
           onClick={onOpenNotifications}
           aria-label="Notifications"
-          style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", width: 34, height: 34, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 6, color: T.textMuted, cursor: "pointer", transition: "border-color 0.15s, color 0.15s" }}
+          style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", width: 34, height: 34, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 6, color: T.textMuted, cursor: "pointer", transition: "border-color 0.15s, color 0.15s", flexShrink: 0 }}
           onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.borderHover; e.currentTarget.style.color = T.textPrimary; }}
           onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; }}
         >
@@ -676,7 +681,7 @@ function TopHeader({ pageLabel, onOpenMobileSidebar, onNavigate, user, onOpenNot
           )}
         </button>
 
-        {/* User avatar — opens profile page */}
+        {/* User avatar */}
         <button
           type="button"
           onClick={() => onNavigate("profile")}
@@ -2430,6 +2435,7 @@ function PageMyConvictions() {
 ════════════════════════════════════════════════ */
 
 function PageProfile({ user, onLogout }) {
+  const { isDemoMode, toggleMode } = useDemoModeContext();
   const joinDate = user?.metadata?.creationTime
     ? new Date(user.metadata.creationTime).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
     : "—";
@@ -2482,6 +2488,44 @@ function PageProfile({ user, onLogout }) {
             </div>
           </div>
         ))}
+      </GCard>
+
+      {/* Account Mode switcher */}
+      <GCard style={{ padding: "20px 24px" }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px" }}>Account Mode</p>
+        <div style={{ display: "flex", background: "rgba(255,255,255,0.05)", borderRadius: 10, padding: 4, gap: 4, marginBottom: 10 }}>
+          <button
+            type="button"
+            onClick={() => { if (!isDemoMode) toggleMode(); }}
+            style={{
+              flex: 1, padding: "10px 0", borderRadius: 8, fontSize: 13, fontWeight: 700,
+              border: "none", cursor: isDemoMode ? "default" : "pointer",
+              background: isDemoMode ? "rgba(255,255,255,0.12)" : "transparent",
+              color: isDemoMode ? "#ffffff" : T.textMuted,
+              transition: "all 0.2s",
+            }}
+          >
+            Demo
+          </button>
+          <button
+            type="button"
+            onClick={() => { if (isDemoMode) toggleMode(); }}
+            style={{
+              flex: 1, padding: "10px 0", borderRadius: 8, fontSize: 13, fontWeight: 700,
+              border: "none", cursor: isDemoMode ? "pointer" : "default",
+              background: !isDemoMode ? "rgba(34,197,94,0.18)" : "transparent",
+              color: !isDemoMode ? "#22c55e" : T.textMuted,
+              transition: "all 0.2s",
+            }}
+          >
+            Live
+          </button>
+        </div>
+        <p style={{ fontSize: 12, color: T.textDim, margin: 0, lineHeight: 1.5 }}>
+          {isDemoMode
+            ? "Demo mode — using local simulated data. No real funds are moved."
+            : "Live mode — connected to the blockchain and real market data."}
+        </p>
       </GCard>
 
       {/* Sign out */}
@@ -2965,11 +3009,7 @@ function PageRewards() {
         </div>
       )}
 
-      {loading && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {[1,2,3,4].map(i => <Sk.RewardRow key={i} last={i===3} />)}
-        </div>
-      )}
+      {loading && <Sk.RewardsPage />}
 
       {!loading && filtered.length > 0 && (
         <div style={{ display: "grid", gap: 12 }} className="q-grid">
@@ -3166,9 +3206,422 @@ function PageHowItWorks({ onNavigate }) {
 }
 
 /* ════════════════════════════════════════════════
-   ADMIN CHART COMPONENTS
-   Pure SVG — no external charting lib required
+   ADMIN OVERVIEW — Full Chart Suite
+   Pure SVG, no external deps
 ════════════════════════════════════════════════ */
+
+/** Animated line chart — multi-series or single */
+function AdminLineChart({ points, color = "#22c55e", label = "", height = 100 }) {
+  const [hovered, setHovered] = useState(null);
+  const W = 500, H = height, pad = { t: 8, b: 22, l: 4, r: 4 };
+  const innerW = W - pad.l - pad.r, innerH = H - pad.t - pad.b;
+  if (!points || points.length < 2) return (
+    <div style={{ height, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>No data</span>
+    </div>
+  );
+  const vals = points.map(p => p.y);
+  const minV = Math.min(...vals), maxV = Math.max(...vals), rangeV = maxV - minV || 1;
+  const px = (i) => pad.l + (i / (points.length - 1)) * innerW;
+  const py = (v) => pad.t + innerH - ((v - minV) / rangeV) * innerH;
+  const pts = points.map((p, i) => `${px(i).toFixed(1)},${py(p.y).toFixed(1)}`).join(" ");
+  const area = `${pad.l},${H - pad.b} ${pts} ${pad.l + innerW},${H - pad.b}`;
+  const id = `lg-${label.replace(/\s/g, "")}`;
+  return (
+    <div style={{ position: "relative" }}>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height, display: "block", cursor: "crosshair" }}
+        preserveAspectRatio="none"
+        onMouseMove={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          const xRel = (e.clientX - r.left) / r.width;
+          const idx = Math.max(0, Math.min(points.length - 1, Math.round(xRel * (points.length - 1))));
+          setHovered({ idx, x: px(idx), y: py(points[idx].y), val: points[idx].y, label: points[idx].x });
+        }}
+        onMouseLeave={() => setHovered(null)}
+      >
+        <defs>
+          <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.28" />
+            <stop offset="100%" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {[0, 0.5, 1].map((f, i) => (
+          <line key={i} x1={pad.l} y1={pad.t + f * innerH} x2={pad.l + innerW} y2={pad.t + f * innerH}
+            stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+        ))}
+        <polygon points={area} fill={`url(#${id})`} />
+        <polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        {hovered && (
+          <>
+            <line x1={hovered.x} y1={pad.t} x2={hovered.x} y2={H - pad.b} stroke="rgba(255,255,255,0.25)" strokeWidth="1" strokeDasharray="3,3" />
+            <circle cx={hovered.x} cy={hovered.y} r="4" fill={color} stroke="#111111" strokeWidth="2" />
+          </>
+        )}
+        {[0, Math.floor((points.length - 1) / 2), points.length - 1].map((i, k) => (
+          <text key={k} x={px(i)} y={H - 4} fontSize="8" fill="rgba(255,255,255,0.28)" textAnchor={k === 0 ? "start" : k === 2 ? "end" : "middle"} fontFamily="sans-serif">{points[i].x}</text>
+        ))}
+      </svg>
+      {hovered && (
+        <div style={{ position: "absolute", top: 4, left: `clamp(4px, calc(${(hovered.x / W) * 100}% - 50px), calc(100% - 104px))`, background: "rgba(16,16,16,0.95)", border: `1px solid ${color}40`, borderRadius: 8, padding: "5px 10px", pointerEvents: "none", zIndex: 10 }}>
+          <p style={{ fontSize: 12, fontWeight: 800, color, margin: 0 }}>{typeof hovered.val === "number" ? hovered.val.toFixed(hovered.val < 10 ? 2 : 0) : hovered.val}</p>
+          {hovered.label && <p style={{ fontSize: 9, color: "rgba(255,255,255,0.4)", margin: "1px 0 0", whiteSpace: "nowrap" }}>{hovered.label}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Horizontal stacked bar — for win/loss ratios etc */
+function StackedBar({ segments, height = 10, radius = 5 }) {
+  const total = segments.reduce((s, g) => s + g.value, 0) || 1;
+  let cursor = 0;
+  return (
+    <div style={{ height, borderRadius: radius, overflow: "hidden", background: "rgba(255,255,255,0.05)", display: "flex" }}>
+      {segments.map((seg, i) => {
+        const pct = (seg.value / total) * 100;
+        cursor += pct;
+        return (
+          <div key={i} title={`${seg.label}: ${seg.value} (${pct.toFixed(1)}%)`}
+            style={{ width: `${pct}%`, height: "100%", background: seg.color, transition: "width 0.5s ease" }} />
+        );
+      })}
+    </div>
+  );
+}
+
+/** Full admin overview chart panel */
+function AdminOverviewPanel({ stats, markets, users, positions, events, oracleResults }) {
+  // Build time-series: registrations per day (last 7 days)
+  const today = new Date();
+  const days7 = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() - (6 - i));
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  });
+
+  // Users registered per day
+  const usersPerDay = days7.map((label, i) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() - (6 - i));
+    const dStr = d.toDateString();
+    const count = users.filter(u => u.created_at && new Date(u.created_at).toDateString() === dStr).length;
+    return { x: label, y: count };
+  });
+
+  // Positions placed per day
+  const posPerDay = days7.map((label, i) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() - (6 - i));
+    const dStr = d.toDateString();
+    const count = positions.filter(p => p.created_at && new Date(p.created_at).toDateString() === dStr).length;
+    return { x: label, y: count };
+  });
+
+  // Volume per day (sum of position amounts)
+  const volPerDay = days7.map((label, i) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() - (6 - i));
+    const dStr = d.toDateString();
+    const vol = positions.filter(p => p.created_at && new Date(p.created_at).toDateString() === dStr).reduce((s, p) => s + Number(p.amount || 0), 0);
+    return { x: label, y: parseFloat(vol.toFixed(2)) };
+  });
+
+  // Category breakdown
+  const CAT_COLORS = { Crypto: "#fbbf24", Sports: "#fb923c", Weather: "#38bdf8", Stocks: "#34d399" };
+  const cats = ["Crypto", "Sports", "Weather", "Stocks"];
+  const catData = cats.map(cat => ({
+    label: cat, color: CAT_COLORS[cat],
+    value: markets.filter(m => m.category === cat).length,
+    pool: markets.filter(m => m.category === cat).reduce((s, m) => s + m.totalPool, 0),
+  }));
+  const maxCatPool = Math.max(...catData.map(c => c.pool), 1);
+
+  // Market status breakdown
+  const statusData = [
+    { label: "Active",    color: "#22c55e", value: stats?.activeMarkets ?? 0  },
+    { label: "Resolved",  color: "#7c6ff7", value: stats?.resolvedMarkets ?? 0 },
+    { label: "Closed",    color: "#fbbf24", value: markets.filter(m => m.status === "closed").length },
+    { label: "Paused",    color: "#94a3b8", value: markets.filter(m => m.status === "paused").length },
+    { label: "Cancelled", color: "#ef4444", value: markets.filter(m => m.status === "cancelled").length },
+  ].filter(s => s.value > 0);
+
+  // YES/NO pool split across all markets
+  const totalYes = markets.reduce((s, m) => s + (m.yesPool || 0), 0);
+  const totalNo  = markets.reduce((s, m) => s + (m.noPool  || 0), 0);
+  const totalPool = totalYes + totalNo || 1;
+
+  // Events per type
+  const eventTypes = ["created", "position_placed", "resolved", "reward_claimed"];
+  const evColors   = { created: "#38bdf8", position_placed: "#22c55e", resolved: "#7c6ff7", reward_claimed: "#fbbf24" };
+  const eventCounts = eventTypes.map(t => ({
+    label: t.replace(/_/g, " "),
+    color: evColors[t] || T.textMuted,
+    value: events.filter(e => e.event_type === t).length,
+  })).filter(e => e.value > 0);
+  const maxEvent = Math.max(...eventCounts.map(e => e.value), 1);
+
+  // Oracle accuracy (YES vs NO resolutions)
+  const yesResolutions = oracleResults.filter(r => r.result_value === "YES").length;
+  const noResolutions  = oracleResults.filter(r => r.result_value === "NO").length;
+  const totalOracle    = yesResolutions + noResolutions || 1;
+
+  // User roles
+  const adminCount   = users.filter(u => u.role === "admin").length;
+  const regularCount = users.length - adminCount;
+
+  // Active users (joined in last 30 days)
+  const cutoff30 = new Date(); cutoff30.setDate(cutoff30.getDate() - 30);
+  const recentUsers = users.filter(u => u.created_at && new Date(u.created_at) > cutoff30).length;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+
+      {/* ── Row 1: 3 mini line charts ── */}
+      <div className="admin-chart-grid-3">
+
+        {/* User registrations trend */}
+        <GCard style={{ padding: "16px 18px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+            <div>
+              <p style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 4px" }}>User Registrations</p>
+              <p style={{ fontSize: 26, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.04em" }}>{stats?.totalUsers ?? 0}</p>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <span style={{ fontSize: 10, color: "#38bdf8", fontWeight: 700 }}>{recentUsers} last 30d</span>
+            </div>
+          </div>
+          <AdminLineChart points={usersPerDay} color="#38bdf8" label="users" height={72} />
+        </GCard>
+
+        {/* Positions placed trend */}
+        <GCard style={{ padding: "16px 18px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+            <div>
+              <p style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 4px" }}>Positions Placed</p>
+              <p style={{ fontSize: 26, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.04em" }}>{stats?.totalPositions ?? 0}</p>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <span style={{ fontSize: 10, color: "#22c55e", fontWeight: 700 }}>{posPerDay.reduce((s, p) => s + p.y, 0)} this week</span>
+            </div>
+          </div>
+          <AdminLineChart points={posPerDay} color="#22c55e" label="positions" height={72} />
+        </GCard>
+
+        {/* Volume trend */}
+        <GCard style={{ padding: "16px 18px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+            <div>
+              <p style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 4px" }}>Volume (QUAI)</p>
+              <p style={{ fontSize: 26, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.04em" }}>
+                {stats?.totalVolume != null ? (stats.totalVolume >= 1000 ? `${(stats.totalVolume/1000).toFixed(1)}K` : stats.totalVolume.toFixed(1)) : "—"}
+              </p>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <span style={{ fontSize: 10, color: "#fbbf24", fontWeight: 700 }}>{volPerDay.reduce((s, v) => s + v.y, 0).toFixed(1)} this week</span>
+            </div>
+          </div>
+          <AdminLineChart points={volPerDay} color="#fbbf24" label="volume" height={72} />
+        </GCard>
+      </div>
+
+      {/* ── Row 2: Donuts ── */}
+      <div className="admin-chart-grid">
+
+        {/* Market Status Donut */}
+        <GCard style={{ padding: "18px 22px" }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 16px" }}>Market Status Breakdown</p>
+          {statusData.length > 0 ? (
+            <AdminDonutChart
+              slices={statusData}
+              total={stats?.totalMarkets ?? 0}
+              centerLabel="Markets"
+            />
+          ) : (
+            <p style={{ fontSize: 13, color: T.textDim }}>No market data yet.</p>
+          )}
+        </GCard>
+
+        {/* User roles + activity donut */}
+        <GCard style={{ padding: "18px 22px" }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 16px" }}>User Breakdown</p>
+          {users.length > 0 ? (
+            <>
+              <AdminDonutChart
+                slices={[
+                  { label: "Regular",  value: regularCount, color: "#38bdf8" },
+                  { label: "Admin",    value: adminCount,   color: "#fbbf24" },
+                ].filter(s => s.value > 0)}
+                total={users.length}
+                centerLabel="Users"
+              />
+              <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 11, color: T.textMuted }}>Joined last 30 days</span>
+                <span style={{ fontSize: 16, fontWeight: 800, color: "#38bdf8" }}>{recentUsers}</span>
+              </div>
+            </>
+          ) : (
+            <p style={{ fontSize: 13, color: T.textDim }}>No user data yet.</p>
+          )}
+        </GCard>
+      </div>
+
+      {/* ── Row 3: Category bars + YES/NO split ── */}
+      <div className="admin-chart-grid">
+
+        {/* Category volume + count bars */}
+        <GCard style={{ padding: "18px 22px", minWidth: 0 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 16px" }}>Volume by Category</p>
+          {markets.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {catData.filter(c => c.value > 0 || c.pool > 0).map((cat) => (
+                <div key={cat.label} style={{ minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 5 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: cat.color, flexShrink: 0 }} />
+                      <span style={{ fontSize: 12, color: T.textMuted, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cat.label}</span>
+                      <span style={{ fontSize: 10, color: T.textDim, flexShrink: 0 }}>({cat.value})</span>
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: cat.color, flexShrink: 0 }}>
+                      {cat.pool >= 1000 ? `${(cat.pool/1000).toFixed(1)}K` : cat.pool.toFixed(1)} Q
+                    </span>
+                  </div>
+                  <div style={{ height: 6, borderRadius: 3, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+                    <div style={{
+                      width: `${(cat.pool / maxCatPool) * 100}%`, height: "100%",
+                      background: `linear-gradient(90deg, ${cat.color}, ${cat.color}88)`,
+                      borderRadius: 3, transition: "width 0.5s ease",
+                    }} />
+                  </div>
+                </div>
+              ))}
+              {catData.every(c => c.value === 0) && (
+                <p style={{ fontSize: 13, color: T.textDim, margin: 0 }}>No market data yet.</p>
+              )}
+            </div>
+          ) : (
+            <AdminBarChart markets={markets} />
+          )}
+        </GCard>
+
+        {/* YES/NO global pool split */}
+        <GCard style={{ padding: "18px 22px", minWidth: 0 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 16px" }}>Global YES / NO Pool Split</p>
+          <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+            <div style={{ flex: 1, padding: "16px", borderRadius: 12, background: T.yesBg, border: `1px solid ${T.yesBorder}`, textAlign: "center" }}>
+              <p style={{ fontSize: 22, fontWeight: 900, color: T.yes, margin: "0 0 3px" }}>{Math.round((totalYes / totalPool) * 100)}%</p>
+              <p style={{ fontSize: 10, color: T.yes, margin: 0, opacity: 0.8, fontWeight: 700 }}>YES POOL</p>
+              <p style={{ fontSize: 11, color: T.yes, margin: "4px 0 0" }}>{totalYes.toFixed(1)} Q</p>
+            </div>
+            <div style={{ flex: 1, padding: "16px", borderRadius: 12, background: T.noBg, border: `1px solid ${T.noBorder}`, textAlign: "center" }}>
+              <p style={{ fontSize: 22, fontWeight: 900, color: T.no, margin: "0 0 3px" }}>{Math.round((totalNo / totalPool) * 100)}%</p>
+              <p style={{ fontSize: 10, color: T.no, margin: 0, opacity: 0.8, fontWeight: 700 }}>NO POOL</p>
+              <p style={{ fontSize: 11, color: T.no, margin: "4px 0 0" }}>{totalNo.toFixed(1)} Q</p>
+            </div>
+          </div>
+          <StackedBar segments={[
+            { label: "YES", value: totalYes, color: T.yes },
+            { label: "NO",  value: totalNo,  color: T.no  },
+          ]} height={12} radius={6} />
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+            <span style={{ fontSize: 10, color: T.yes, fontWeight: 700 }}>{Math.round((totalYes / totalPool) * 100)}% YES</span>
+            <span style={{ fontSize: 10, color: T.textDim }}>Total: {(totalYes + totalNo).toFixed(1)} QUAI</span>
+            <span style={{ fontSize: 10, color: T.no, fontWeight: 700 }}>{Math.round((totalNo / totalPool) * 100)}% NO</span>
+          </div>
+
+          {/* Oracle outcomes */}
+          {oracleResults.length > 0 && (
+            <>
+              <div style={{ height: 1, background: T.border, margin: "16px 0" }} />
+              <p style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 10px" }}>Oracle Outcomes</p>
+              <div style={{ display: "flex", gap: 10, marginBottom: 8 }}>
+                <div style={{ flex: yesResolutions || 1, padding: "10px", borderRadius: 8, background: T.yesBg, border: `1px solid ${T.yesBorder}`, textAlign: "center" }}>
+                  <p style={{ fontSize: 16, fontWeight: 800, color: T.yes, margin: 0 }}>{yesResolutions}</p>
+                  <p style={{ fontSize: 9, color: T.yes, margin: "2px 0 0", fontWeight: 700 }}>YES resolved</p>
+                </div>
+                <div style={{ flex: noResolutions || 1, padding: "10px", borderRadius: 8, background: T.noBg, border: `1px solid ${T.noBorder}`, textAlign: "center" }}>
+                  <p style={{ fontSize: 16, fontWeight: 800, color: T.no, margin: 0 }}>{noResolutions}</p>
+                  <p style={{ fontSize: 9, color: T.no, margin: "2px 0 0", fontWeight: 700 }}>NO resolved</p>
+                </div>
+              </div>
+              <StackedBar segments={[
+                { label: "YES", value: yesResolutions, color: T.yes },
+                { label: "NO",  value: noResolutions,  color: T.no  },
+              ]} height={6} radius={3} />
+            </>
+          )}
+        </GCard>
+      </div>
+
+      {/* ── Row 4: Event activity bars + per-market YES/NO ── */}
+      <div className="admin-chart-grid">
+
+        {/* Event type breakdown */}
+        <GCard style={{ padding: "18px 22px", minWidth: 0 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px" }}>Platform Event Activity</p>
+          {eventCounts.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {eventCounts.map((ev) => (
+                <div key={ev.label} style={{ minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 5 }}>
+                    <span style={{ fontSize: 12, color: ev.color, fontWeight: 600, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.label}</span>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: ev.color, flexShrink: 0 }}>{ev.value}</span>
+                  </div>
+                  <div style={{ height: 7, borderRadius: 4, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+                    <div style={{ width: `${(ev.value / maxEvent) * 100}%`, height: "100%", background: `linear-gradient(90deg, ${ev.color}, ${ev.color}77)`, borderRadius: 4, transition: "width 0.5s ease", boxShadow: `0 0 8px ${ev.color}44` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState icon={Zap} title="No events yet" body="Platform events will appear here as activity happens." />
+          )}
+        </GCard>
+
+        {/* Per-market YES/NO pool bars */}
+        <GCard style={{ padding: "18px 22px", minWidth: 0 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px" }}>YES / NO Pool by Market (top 6)</p>
+          {markets.filter(m => (m.yesPool + m.noPool) > 0).length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {markets.filter(m => m.yesPool + m.noPool > 0).slice(0, 6).map(m => {
+                const total  = m.yesPool + m.noPool;
+                const yesPct = Math.round((m.yesPool / total) * 100);
+                const noPct  = 100 - yesPct;
+                return (
+                  <div key={m.id} style={{ minWidth: 0 }}>
+                    {/* Question — wraps naturally, no nowrap */}
+                    <p style={{
+                      fontSize: 11, color: T.textMuted, margin: "0 0 5px",
+                      fontWeight: 500, lineHeight: 1.4,
+                      overflow: "hidden", display: "-webkit-box",
+                      WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+                    }}>
+                      {m.question}
+                    </p>
+                    {/* Stacked bar */}
+                    <StackedBar segments={[
+                      { label: "YES", value: m.yesPool, color: T.yes },
+                      { label: "NO",  value: m.noPool,  color: T.no  },
+                    ]} height={7} radius={4} />
+                    {/* Pct labels below the bar */}
+                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: T.yes }}>{yesPct}% YES</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: T.no }}>{noPct}% NO</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p style={{ fontSize: 13, color: T.textDim, margin: 0 }}>No pool data yet.</p>
+          )}
+        </GCard>
+      </div>
+
+    </div>
+  );
+}
+
+
 
 /**
  * SVG Donut chart.
@@ -3399,7 +3852,7 @@ function UserDashboardCharts({ markets, positions, wins = 0, losses = 0 }) {
   if (markets.length === 0 && positions.length === 0) return null;
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }} className="dash-kpi-grid">
+    <div className="admin-chart-grid">
 
       {/* Category distribution donut */}
       <GCard style={{ padding: "18px 22px" }}>
@@ -3532,24 +3985,56 @@ const ADMIN_TABS = [
   { key: "create",     label: "+ New Market"},
 ];
 
-/* ── shared tab bar ── */
+/* ── shared tab bar — horizontal scrollable carousel ── */
 function AdminTabBar({ tab, setTab }) {
+  const scrollRef = useRef(null);
   return (
-    <div className="admin-tab-bar">
-      {ADMIN_TABS.map(t => (
-        <button key={t.key} type="button" onClick={() => setTab(t.key)}
-          style={{
-            padding: "7px 16px", borderRadius: 8, fontSize: 12, fontWeight: 600,
-            cursor: "pointer", border: "none",
-            background: tab === t.key ? (t.key === "create" ? "#22c55e" : "#ffffff") : "transparent",
-            color: tab === t.key ? (t.key === "create" ? "#000" : "#080808") : T.textMuted,
-            transition: "all 0.15s",
-            whiteSpace: "nowrap",
-            flexShrink: 0,
-          }}>
-          {t.label}
-        </button>
-      ))}
+    <div style={{ position: "relative" }}>
+      <div
+        ref={scrollRef}
+        style={{
+          display: "flex",
+          gap: 4,
+          overflowX: "auto",
+          scrollbarWidth: "none",
+          msOverflowStyle: "none",
+          padding: "4px",
+          background: "rgba(255,255,255,0.03)",
+          border: `1px solid ${T.border}`,
+          borderRadius: 12,
+          scrollSnapType: "x mandatory",
+          WebkitOverflowScrolling: "touch",
+        }}
+        className="admin-tab-scroll"
+      >
+        {ADMIN_TABS.map(t => (
+          <button key={t.key} type="button" onClick={() => setTab(t.key)}
+            style={{
+              padding: "8px 18px",
+              borderRadius: 8,
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+              border: "none",
+              flexShrink: 0,
+              scrollSnapAlign: "start",
+              whiteSpace: "nowrap",
+              transition: "all 0.15s",
+              background: tab === t.key
+                ? (t.key === "create" ? "#22c55e" : "#ffffff")
+                : "transparent",
+              color: tab === t.key
+                ? (t.key === "create" ? "#000" : "#080808")
+                : T.textMuted,
+              boxShadow: tab === t.key ? "0 2px 8px rgba(0,0,0,0.3)" : "none",
+            }}
+            onMouseEnter={(e) => { if (tab !== t.key) e.currentTarget.style.color = T.textPrimary; }}
+            onMouseLeave={(e) => { if (tab !== t.key) e.currentTarget.style.color = T.textMuted; }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -3602,6 +4087,7 @@ function PageAdmin() {
   const [marketFilter,   setMarketFilter]   = useState("all");
   const [userSearch,     setUserSearch]     = useState("");
   const [posSearch,      setPosSearch]      = useState("");
+  const [viewUser,       setViewUser]       = useState(null); // user object for view modal
 
   // Create market form
   const [createForm, setCreateForm] = useState({ question: "", category: "Crypto", deadline: "", data_source: "" });
@@ -3708,130 +4194,17 @@ function PageAdmin() {
             ))}
           </div>
 
-          {/* ── CHARTS ROW ── */}
-          {!statsLoading && stats && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }} className="dash-kpi-grid">
-
-              {/* Market Status Donut */}
-              <GCard style={{ padding: "18px 22px" }}>
-                <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 16px" }}>Market Status Breakdown</p>
-                <AdminDonutChart
-                  slices={[
-                    { label: "Active",   value: stats.activeMarkets,                                               color: "#22c55e" },
-                    { label: "Resolved", value: stats.resolvedMarkets,                                             color: "#7c6ff7" },
-                    { label: "Other",    value: Math.max(0, stats.totalMarkets - stats.activeMarkets - stats.resolvedMarkets), color: "#fbbf24" },
-                  ].filter(s => s.value > 0)}
-                  total={stats.totalMarkets}
-                  centerLabel="Markets"
-                />
-              </GCard>
-
-              {/* Category Volume Bars */}
-              <GCard style={{ padding: "18px 22px" }}>
-                <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 16px" }}>Volume by Category</p>
-                <AdminBarChart markets={markets} />
-              </GCard>
-            </div>
+          {/* ── FULL CHART SUITE ── */}
+          {!statsLoading && (
+            <AdminOverviewPanel
+              stats={stats}
+              markets={markets}
+              users={users}
+              positions={positions}
+              events={events}
+              oracleResults={oracleResults}
+            />
           )}
-
-          {/* Pool Distribution */}
-          {!marketsLoading && markets.length > 0 && (
-            <GCard style={{ padding: "18px 22px" }}>
-              <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px" }}>YES / NO Pool Split by Market</p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {markets.slice(0, 6).map(m => {
-                  const total = m.yesPool + m.noPool;
-                  if (total === 0) return null;
-                  const yesPct = Math.round((m.yesPool / total) * 100);
-                  return (
-                    <div key={m.id}>
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                        <p style={{ fontSize: 11, color: T.textMuted, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "60%" }}>{m.question}</p>
-                        <div style={{ display: "flex", gap: 10, flexShrink: 0 }}>
-                          <span style={{ fontSize: 10, fontWeight: 700, color: T.yes }}>{yesPct}% YES</span>
-                          <span style={{ fontSize: 10, fontWeight: 700, color: T.no }}>{100 - yesPct}% NO</span>
-                        </div>
-                      </div>
-                      <div style={{ height: 6, borderRadius: 3, background: T.noBg, overflow: "hidden", border: `1px solid ${T.noBorder}` }}>
-                        <div style={{ width: `${yesPct}%`, height: "100%", background: T.yes, borderRadius: 3, transition: "width 0.4s ease" }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </GCard>
-          )}
-
-          {/* Recent markets summary */}
-          <GCard style={{ padding: "18px 22px" }}>
-            <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px" }}>Recent Markets</p>
-            {marketsLoading ? (
-              <p style={{ fontSize: 13, color: T.textDim, margin: 0 }}>Loading…</p>
-            ) : markets.length === 0 ? (
-              <p style={{ fontSize: 13, color: T.textDim, margin: 0 }}>No markets yet.</p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                {markets.slice(0, 5).map((m, i) => (
-                  <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: i < Math.min(markets.length, 5) - 1 ? `1px solid ${T.border}` : "none" }}>
-                    <StatusBadge status={m.status} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.question}</p>
-                      <p style={{ fontSize: 11, color: T.textDim, margin: "2px 0 0" }}>{m.category} · Pool: {m.totalPool.toFixed(2)} QUAI</p>
-                    </div>
-                    <CategoryBadge category={m.category} />
-                  </div>
-                ))}
-              </div>
-            )}
-            {markets.length > 5 && (
-              <button type="button" onClick={() => setTab("markets")} style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: T.textDim, background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
-                View all {markets.length} markets →
-              </button>
-            )}
-          </GCard>
-
-          {/* Recent users */}
-          <GCard style={{ padding: "18px 22px" }}>
-            <p style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px" }}>Recent Users</p>
-            {usersLoading ? (
-              <p style={{ fontSize: 13, color: T.textDim, margin: 0 }}>Loading…</p>
-            ) : users.length === 0 ? (
-              <p style={{ fontSize: 13, color: T.textDim, margin: 0 }}>No users yet.</p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                {users.slice(0, 5).map((u, i) => {
-                  const initials = (u.display_name ?? u.email ?? "?").split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();
-                  return (
-                    <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: i < Math.min(users.length, 5) - 1 ? `1px solid ${T.border}` : "none" }}>
-                      <div style={{ width: 34, height: 34, borderRadius: "50%", background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden" }}>
-                        {u.avatar_url
-                          ? <img src={u.avatar_url} alt={u.display_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} referrerPolicy="no-referrer" />
-                          : <span style={{ fontSize: 11, fontWeight: 700, color: T.textMuted }}>{initials}</span>
-                        }
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary, margin: 0 }}>{u.display_name ?? "—"}</p>
-                        <p style={{ fontSize: 11, color: T.textDim, margin: "1px 0 0" }}>{u.email ?? "—"}</p>
-                      </div>
-                      <span style={{
-                        padding: "2px 8px", borderRadius: 999, fontSize: 10, fontWeight: 700,
-                        background: u.role === "admin" ? "rgba(251,191,36,0.15)" : T.glass,
-                        border: `1px solid ${u.role === "admin" ? "rgba(251,191,36,0.35)" : T.border}`,
-                        color: u.role === "admin" ? "#fbbf24" : T.textMuted,
-                      }}>
-                        {u.role}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {users.length > 5 && (
-              <button type="button" onClick={() => setTab("users")} style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: T.textDim, background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
-                View all {users.length} users →
-              </button>
-            )}
-          </GCard>
         </div>
       )}
 
@@ -3867,52 +4240,39 @@ function PageAdmin() {
 
           {!marketsLoading && visibleMarkets.length > 0 && (
             <GCard style={{ padding: 0, overflow: "hidden" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 110px 90px 100px 160px", gap: 10, padding: "10px 20px", background: T.glass, borderBottom: `1px solid ${T.border}` }}>
-                {["Question", "Category", "Status", "Pool (Q)", "Deadline", "Actions"].map(h => (
-                  <p key={h} style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>{h}</p>
-                ))}
+              <div className="admin-table-container">
+                <table className="admin-table">
+                  <thead>
+                    <tr>{["Question","Category","Status","Pool (Q)","Deadline","Actions"].map(h=><th key={h}>{h}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {visibleMarkets.map((m) => {
+                      const isUpdating = statusUpdating === m.id;
+                      const deadlineStr = m.deadline ? new Date(m.deadline).toLocaleDateString("en-GB", { day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" }) : "—";
+                      const canToggle  = ["active","paused","closed"].includes(m.status);
+                      const canResolve = ["active","closed"].includes(m.status);
+                      const toggleLabel = m.status==="active" ? "Pause" : m.status==="paused" ? "Activate" : m.status==="closed" ? "Activate" : null;
+                      const toggleColor = m.status==="active" ? "#fbbf24" : "#22c55e";
+                      return (
+                        <tr key={m.id}>
+                          <td style={{ fontSize: 12, fontWeight: 600, color: T.textPrimary, maxWidth: 260 }} title={m.question}>{m.question}</td>
+                          <td><CategoryBadge category={m.category} /></td>
+                          <td><StatusBadge status={m.status} /></td>
+                          <td style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary }}>{m.totalPool.toFixed(2)}</td>
+                          <td style={{ fontSize: 11, color: T.textDim }}>{deadlineStr}</td>
+                          <td>
+                            <div style={{ display: "flex", gap: 5 }}>
+                              {canToggle && <button type="button" onClick={() => handleToggleMarket(m)} disabled={isUpdating} style={{ padding:"4px 9px", borderRadius:6, fontSize:10, fontWeight:700, cursor:"pointer", border:"none", background:`${toggleColor}22`, color:toggleColor, opacity:isUpdating?0.5:1 }}>{isUpdating?"…":toggleLabel}</button>}
+                              {canResolve && <button type="button" onClick={() => { setResolveTarget({market:m}); setResolveOutcome("YES"); }} style={{ padding:"4px 9px", borderRadius:6, fontSize:10, fontWeight:700, cursor:"pointer", border:"none", background:"rgba(124,111,247,0.2)", color:"#a78bfa" }}>Resolve</button>}
+                              <button type="button" onClick={() => setDeleteTarget({id:m.id, question:m.question, type:"market"})} style={{ padding:"4px 9px", borderRadius:6, fontSize:10, fontWeight:700, cursor:"pointer", border:"none", background:"rgba(239,68,68,0.12)", color:"#ef4444" }}>Delete</button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-              {visibleMarkets.map((m, i) => {
-                const isUpdating = statusUpdating === m.id;
-                const deadline = m.deadline ? new Date(m.deadline) : null;
-                const deadlineStr = deadline ? deadline.toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
-                const canToggle = m.status === "active" || m.status === "paused" || m.status === "closed";
-                const canResolve = m.status === "active" || m.status === "closed";
-                const toggleLabel = m.status === "active" ? "Pause" : m.status === "paused" ? "Activate" : m.status === "closed" ? "Activate" : null;
-                const toggleColor = m.status === "active" ? "#fbbf24" : "#22c55e";
-
-                return (
-                  <div key={m.id}
-                    style={{ display: "grid", gridTemplateColumns: "1fr 100px 110px 90px 100px 160px", gap: 10, padding: "12px 20px", alignItems: "center", borderBottom: i < visibleMarkets.length - 1 ? `1px solid ${T.border}` : "none", transition: "background 0.15s" }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = T.glassHover; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-                  >
-                    <p style={{ fontSize: 12, fontWeight: 600, color: T.textPrimary, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={m.question}>{m.question}</p>
-                    <CategoryBadge category={m.category} />
-                    <StatusBadge status={m.status} />
-                    <p style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary, margin: 0 }}>{m.totalPool.toFixed(2)}</p>
-                    <p style={{ fontSize: 11, color: T.textDim, margin: 0 }}>{deadlineStr}</p>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      {canToggle && (
-                        <button type="button" onClick={() => handleToggleMarket(m)} disabled={isUpdating}
-                          style={{ padding: "4px 9px", borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: isUpdating ? "not-allowed" : "pointer", border: "none", background: `${toggleColor}22`, color: toggleColor, opacity: isUpdating ? 0.5 : 1, transition: "opacity 0.15s" }}>
-                          {isUpdating ? "…" : toggleLabel}
-                        </button>
-                      )}
-                      {canResolve && (
-                        <button type="button" onClick={() => { setResolveTarget({ market: m }); setResolveOutcome("YES"); }} disabled={isUpdating}
-                          style={{ padding: "4px 9px", borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: "pointer", border: "none", background: "rgba(124,111,247,0.2)", color: "#a78bfa", transition: "opacity 0.15s" }}>
-                          Resolve
-                        </button>
-                      )}
-                      <button type="button" onClick={() => setDeleteTarget({ id: m.id, question: m.question, type: "market" })}
-                        style={{ padding: "4px 9px", borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: "pointer", border: "none", background: "rgba(239,68,68,0.12)", color: "#ef4444" }}>
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
             </GCard>
           )}
         </div>
@@ -3956,73 +4316,190 @@ function PageAdmin() {
 
           {!usersLoading && visibleUsers.length > 0 && (
             <GCard style={{ padding: 0, overflow: "hidden" }}>
-              {/* Header */}
-              <div style={{ display: "grid", gridTemplateColumns: "36px 1fr 180px 90px 100px 70px", gap: 14, padding: "10px 20px", background: T.glass, borderBottom: `1px solid ${T.border}`, alignItems: "center" }}>
-                {["", "User", "Email", "Role", "Joined", ""].map((h, i) => (
-                  <p key={i} style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>{h}</p>
-                ))}
+              <div className="admin-table-container">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      {["User", "Email", "Role", "Joined", "Actions"].map(h => (
+                        <th key={h}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleUsers.map((u) => {
+                      const initials = (u.display_name ?? u.email ?? "?").split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();
+                      const isUpdating = roleUpdating === u.id;
+                      const joined = u.created_at
+                        ? new Date(u.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit" })
+                        : "—";
+                      return (
+                        <tr key={u.id}>
+                          <td>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                              <div style={{ width: 32, height: 32, borderRadius: "50%", background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+                                {u.avatar_url
+                                  ? <img src={u.avatar_url} alt={initials} style={{ width: "100%", height: "100%", objectFit: "cover" }} referrerPolicy="no-referrer" />
+                                  : <span style={{ fontSize: 10, fontWeight: 700, color: T.textMuted }}>{initials}</span>
+                                }
+                              </div>
+                              <span style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary }}>{u.display_name ?? "—"}</span>
+                            </div>
+                          </td>
+                          <td style={{ fontSize: 12, color: T.textMuted }}>{u.email ?? "—"}</td>
+                          <td>
+                            <button type="button"
+                              onClick={() => setConfirmRole({ userId: u.id, newRole: u.role === "admin" ? "user" : "admin", displayName: u.display_name ?? u.email ?? u.id })}
+                              disabled={isUpdating}
+                              style={{ padding: "3px 10px", borderRadius: 999, fontSize: 10, fontWeight: 700, cursor: isUpdating ? "not-allowed" : "pointer", border: "none", background: u.role === "admin" ? "rgba(251,191,36,0.15)" : T.glass, color: u.role === "admin" ? "#fbbf24" : T.textMuted, opacity: isUpdating ? 0.5 : 1 }}
+                              title={`Click to toggle role`}
+                            >
+                              {isUpdating ? "…" : u.role}
+                            </button>
+                          </td>
+                          <td style={{ fontSize: 11, color: T.textDim }}>{joined}</td>
+                          <td>
+                            <div style={{ display: "flex", gap: 6 }}>
+                              <button type="button"
+                                onClick={() => setViewUser(u)}
+                                style={{ padding: "4px 10px", borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: "pointer", border: "none", background: "rgba(124,111,247,0.15)", color: "#a78bfa" }}
+                              >View</button>
+                              <button type="button"
+                                onClick={() => setDeleteTarget({ id: u.id, question: u.display_name ?? u.email ?? "this user", type: "user" })}
+                                style={{ padding: "4px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: "pointer", border: "none", background: "rgba(239,68,68,0.1)", color: "#ef4444" }}
+                              >Del</button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-              {visibleUsers.map((u, i) => {
-                const initials = (u.display_name ?? u.email ?? "?").split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();
-                const isUpdating = roleUpdating === u.id;
-                const joined = u.created_at
-                  ? new Date(u.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit" })
-                  : "—";
+            </GCard>
+          )}
 
-                return (
-                  <div key={u.id} style={{ display: "grid", gridTemplateColumns: "36px 1fr 180px 90px 100px 70px", gap: 14, padding: "12px 20px", alignItems: "center", borderBottom: i < visibleUsers.length - 1 ? `1px solid ${T.border}` : "none", transition: "background 0.15s" }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = T.glassHover; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-                  >
-                    {/* Avatar */}
-                    <div style={{ width: 34, height: 34, borderRadius: "50%", background: T.glass, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
-                      {u.avatar_url
-                        ? <img src={u.avatar_url} alt={initials} style={{ width: "100%", height: "100%", objectFit: "cover" }} referrerPolicy="no-referrer" />
-                        : <span style={{ fontSize: 11, fontWeight: 700, color: T.textMuted }}>{initials}</span>
-                      }
-                    </div>
+          {/* ── User View Modal ── */}
+          {viewUser && (() => {
+            // Count positions for this user
+            const userPositions = positions.filter(p => p.user_id === viewUser.id || p.users?.id === viewUser.id);
+            const userPositionCount = userPositions.length;
+            const userYesCount  = userPositions.filter(p => p.side === "YES").length;
+            const userNoCount   = userPositions.filter(p => p.side === "NO").length;
+            const userVolume    = userPositions.reduce((s, p) => s + Number(p.amount || 0), 0);
+            const initials      = (viewUser.display_name ?? viewUser.email ?? "?").split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();
+            const joinedLabel   = viewUser.created_at
+              ? new Date(viewUser.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
+              : "—";
+            return (
+              <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+                onClick={() => setViewUser(null)}>
+                <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.78)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)" }} />
+                <div
+                  role="dialog" aria-modal="true" aria-label={`User: ${viewUser.display_name ?? viewUser.email}`}
+                  style={{ position: "relative", width: "100%", maxWidth: 520, background: "#0e0e0e", border: `1px solid ${T.borderHover}`, borderRadius: 22, overflow: "hidden", zIndex: 1, boxShadow: "0 40px 100px rgba(0,0,0,0.9)", maxHeight: "90vh", overflowY: "auto" }}
+                  onClick={e => e.stopPropagation()}>
 
-                    {/* Name */}
-                    <div style={{ minWidth: 0 }}>
-                      <p style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.display_name ?? "—"}</p>
-                    </div>
-
-                    {/* Email */}
-                    <p style={{ fontSize: 12, color: T.textMuted, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email ?? "—"}</p>
-
-                    {/* Role badge + toggle */}
-                    <div>
-                      <button type="button"
-                        onClick={() => setConfirmRole({ userId: u.id, newRole: u.role === "admin" ? "user" : "admin", displayName: u.display_name ?? u.email ?? u.id })}
-                        disabled={isUpdating}
-                        title={`Click to change role to ${u.role === "admin" ? "user" : "admin"}`}
-                        style={{
-                          padding: "3px 10px", borderRadius: 999, fontSize: 10, fontWeight: 700, cursor: isUpdating ? "not-allowed" : "pointer", border: "none",
-                          background: u.role === "admin" ? "rgba(251,191,36,0.15)" : T.glass,
-                          color: u.role === "admin" ? "#fbbf24" : T.textMuted,
-                          transition: "opacity 0.15s, background 0.15s",
-                          opacity: isUpdating ? 0.5 : 1,
-                        }}
-                        onMouseEnter={(e) => { if (!isUpdating) e.currentTarget.style.background = u.role === "admin" ? "rgba(251,191,36,0.25)" : "rgba(255,255,255,0.12)"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = u.role === "admin" ? "rgba(251,191,36,0.15)" : T.glass; }}
-                      >
-                        {isUpdating ? "…" : u.role}
+                  {/* Header band */}
+                  <div style={{ background: "linear-gradient(135deg, rgba(124,111,247,0.15), rgba(56,189,248,0.08))", borderBottom: `1px solid ${T.border}`, padding: "22px 24px 18px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                        <div style={{ width: 60, height: 60, borderRadius: "50%", background: T.glass, border: `2px solid ${viewUser.role === "admin" ? "rgba(251,191,36,0.5)" : "rgba(255,255,255,0.2)"}`, overflow: "hidden", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: viewUser.role === "admin" ? "0 0 16px rgba(251,191,36,0.25)" : "none" }}>
+                          {viewUser.avatar_url
+                            ? <img src={viewUser.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} referrerPolicy="no-referrer" />
+                            : <span style={{ fontSize: 20, fontWeight: 800, color: T.textMuted }}>{initials}</span>
+                          }
+                        </div>
+                        <div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <p style={{ fontSize: 18, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.02em" }}>{viewUser.display_name ?? "—"}</p>
+                            <span style={{ padding: "2px 9px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: viewUser.role === "admin" ? "rgba(251,191,36,0.2)" : T.glass, border: `1px solid ${viewUser.role === "admin" ? "rgba(251,191,36,0.45)" : T.border}`, color: viewUser.role === "admin" ? "#fbbf24" : T.textMuted }}>
+                              {viewUser.role}
+                            </span>
+                          </div>
+                          <p style={{ fontSize: 12, color: T.textDim, margin: "3px 0 0" }}>{viewUser.email ?? "—"}</p>
+                          <p style={{ fontSize: 11, color: T.textDim, margin: "2px 0 0" }}>Joined {joinedLabel}</p>
+                        </div>
+                      </div>
+                      <button type="button" onClick={() => setViewUser(null)}
+                        style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 8, padding: 8, color: T.textMuted, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <X size={14} strokeWidth={2} />
                       </button>
                     </div>
 
-                    {/* Joined */}
-                    <p style={{ fontSize: 11, color: T.textDim, margin: 0 }}>{joined}</p>
-
-                    {/* Delete */}
-                    <button type="button"
-                      onClick={() => setDeleteTarget({ id: u.id, question: u.display_name ?? u.email ?? "this user", type: "user" })}
-                      style={{ padding: "4px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: "pointer", border: "none", background: "rgba(239,68,68,0.1)", color: "#ef4444" }}
-                    >Del</button>
+                    {/* Mini stats row */}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                      {[
+                        { label: "Positions", value: userPositionCount, color: "#a78bfa" },
+                        { label: "YES bets",  value: userYesCount,      color: T.yes     },
+                        { label: "NO bets",   value: userNoCount,       color: T.no      },
+                        { label: "Volume Q",  value: userVolume.toFixed(1), color: "#fbbf24" },
+                      ].map(({ label, value, color }) => (
+                        <div key={label} style={{ padding: "10px", borderRadius: 10, background: "rgba(255,255,255,0.04)", border: `1px solid rgba(255,255,255,0.07)`, textAlign: "center" }}>
+                          <p style={{ fontSize: 15, fontWeight: 800, color, margin: "0 0 2px" }}>{value}</p>
+                          <p style={{ fontSize: 9, color: T.textDim, margin: 0, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase" }}>{label}</p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                );
-              })}
-            </GCard>
-          )}
+
+                  {/* Details section */}
+                  <div style={{ padding: "18px 24px" }}>
+                    <p style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 12px" }}>Account Details</p>
+                    {[
+                      { label: "User ID",      value: viewUser.id,                 mono: true  },
+                      { label: "Firebase UID", value: viewUser.firebase_uid ?? "—", mono: true  },
+                      { label: "Email",        value: viewUser.email ?? "—",        mono: false },
+                      { label: "Display Name", value: viewUser.display_name ?? "—", mono: false },
+                      { label: "Role",         value: viewUser.role ?? "user",      mono: false },
+                      { label: "Joined",       value: joinedLabel,                  mono: false },
+                      { label: "Last Updated", value: viewUser.updated_at ? new Date(viewUser.updated_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—", mono: false },
+                    ].map(({ label, value, mono }, i, arr) => (
+                      <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "10px 0", borderBottom: i < arr.length - 1 ? `1px solid ${T.border}` : "none", gap: 12 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: "0.05em", textTransform: "uppercase", flexShrink: 0, minWidth: 100 }}>{label}</span>
+                        <span style={{ fontSize: 12, color: T.textMuted, fontFamily: mono ? "monospace" : "inherit", textAlign: "right", wordBreak: "break-all", flex: 1 }}>{value}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Recent positions for this user */}
+                  {userPositions.length > 0 && (
+                    <div style={{ padding: "0 24px 18px" }}>
+                      <p style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 10px" }}>Recent Positions ({userPositionCount} total)</p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 0, borderRadius: 10, overflow: "hidden", border: `1px solid ${T.border}` }}>
+                        {userPositions.slice(0, 4).map((p, i) => {
+                          const isYes = p.side === "YES";
+                          return (
+                            <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: i % 2 === 0 ? "rgba(255,255,255,0.01)" : "transparent", borderBottom: i < Math.min(userPositions.length, 4) - 1 ? `1px solid ${T.border}` : "none" }}>
+                              <span style={{ padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 800, background: isYes ? T.yesBg : T.noBg, color: isYes ? T.yes : T.no, border: `1px solid ${isYes ? T.yesBorder : T.noBorder}`, flexShrink: 0 }}>{p.side}</span>
+                              <span style={{ fontSize: 11, color: T.textMuted, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.markets?.question ?? "—"}</span>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: T.textPrimary, flexShrink: 0 }}>{Number(p.amount || 0).toFixed(2)} Q</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {userPositions.length > 4 && (
+                        <p style={{ fontSize: 11, color: T.textDim, margin: "8px 0 0", textAlign: "center" }}>+{userPositions.length - 4} more positions</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div style={{ display: "flex", gap: 8, padding: "0 24px 22px" }}>
+                    <button type="button"
+                      onClick={() => { setConfirmRole({ userId: viewUser.id, newRole: viewUser.role === "admin" ? "user" : "admin", displayName: viewUser.display_name ?? viewUser.email ?? viewUser.id }); setViewUser(null); }}
+                      style={{ flex: 1, padding: "10px", borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: "pointer", border: `1px solid rgba(251,191,36,0.35)`, background: "rgba(251,191,36,0.1)", color: "#fbbf24" }}>
+                      Toggle Role → {viewUser.role === "admin" ? "User" : "Admin"}
+                    </button>
+                    <button type="button"
+                      onClick={() => { setDeleteTarget({ id: viewUser.id, question: viewUser.display_name ?? viewUser.email ?? "this user", type: "user" }); setViewUser(null); }}
+                      style={{ padding: "10px 16px", borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: "pointer", border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.1)", color: "#ef4444" }}>
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -4031,35 +4508,38 @@ function PageAdmin() {
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={{ position: "relative", maxWidth: 380 }}>
             <Users size={13} strokeWidth={1.8} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: T.textDim, pointerEvents: "none" }} />
-            <input type="text" placeholder="Search by user or market question…" value={posSearch} onChange={e => setPosSearch(e.target.value)}
+            <input type="text" placeholder="Search by user or market…" value={posSearch} onChange={e => setPosSearch(e.target.value)}
               style={{ width: "100%", padding: "10px 14px 10px 34px", background: T.glass, border: `1px solid ${T.border}`, borderRadius: 10, color: T.textPrimary, fontSize: 13, outline: "none", boxSizing: "border-box" }}
               onFocus={e => { e.target.style.borderColor = T.borderHover; }} onBlur={e => { e.target.style.borderColor = T.border; }} />
           </div>
           {positionsLoading && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{[1,2,3].map(i=><Sk.Box key={i} w="100%" h={60} r={10} />)}</div>}
-          {positionsError && <div style={{ padding: "12px 16px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", fontSize: 12, color: "#ef4444" }}>{positionsError}</div>}
+          {positionsError && <div style={{ padding:"12px 16px", borderRadius:8, background:"rgba(239,68,68,0.08)", border:"1px solid rgba(239,68,68,0.2)", fontSize:12, color:"#ef4444" }}>{positionsError}</div>}
           {!positionsLoading && visiblePositions.length === 0 && <GCard style={{ padding: 0 }}><EmptyState icon={BookMarked} title="No positions" body="No user positions found." /></GCard>}
           {!positionsLoading && visiblePositions.length > 0 && (
             <GCard style={{ padding: 0, overflow: "hidden" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 80px 80px 80px 100px", gap: 10, padding: "10px 20px", background: T.glass, borderBottom: `1px solid ${T.border}` }}>
-                {["User", "Market", "Side", "Amount (Q)", "Status", "Placed"].map(h => (
-                  <p key={h} style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>{h}</p>
-                ))}
+              <div className="admin-table-container">
+                <table className="admin-table">
+                  <thead>
+                    <tr>{["User", "Market", "Side", "Amount (Q)", "Status", "Placed"].map(h=><th key={h}>{h}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {visiblePositions.map((p) => {
+                      const isYes = p.side === "YES";
+                      const placed = p.created_at ? new Date(p.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "—";
+                      return (
+                        <tr key={p.id}>
+                          <td style={{ fontSize: 12, color: T.textPrimary }}>{p.users?.display_name ?? "—"}</td>
+                          <td style={{ fontSize: 11, color: T.textMuted, maxWidth: 200 }} title={p.markets?.question}>{p.markets?.question ?? "—"}</td>
+                          <td><span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "2px 10px", borderRadius: 999, fontSize: 11, fontWeight: 800, background: isYes ? T.yesBg : T.noBg, color: isYes ? T.yes : T.no, border: `1px solid ${isYes ? T.yesBorder : T.noBorder}` }}>{p.side}</span></td>
+                          <td style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary }}>{Number(p.amount ?? 0).toFixed(2)}</td>
+                          <td><StatusBadge status={p.markets?.status ?? "—"} /></td>
+                          <td style={{ fontSize: 11, color: T.textDim }}>{placed}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-              {visiblePositions.map((p, i) => {
-                const isYes = p.side === "YES";
-                const placed = p.created_at ? new Date(p.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "—";
-                return (
-                  <div key={p.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 80px 80px 80px 100px", gap: 10, padding: "11px 20px", alignItems: "center", borderBottom: i < visiblePositions.length - 1 ? `1px solid ${T.border}` : "none", transition: "background 0.15s" }}
-                    onMouseEnter={e => { e.currentTarget.style.background = T.glassHover; }} onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
-                    <p style={{ fontSize: 12, color: T.textPrimary, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.users?.display_name ?? "—"}</p>
-                    <p style={{ fontSize: 11, color: T.textMuted, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={p.markets?.question}>{p.markets?.question ?? "—"}</p>
-                    <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "2px 10px", borderRadius: 999, fontSize: 11, fontWeight: 800, background: isYes ? T.yesBg : T.noBg, color: isYes ? T.yes : T.no, border: `1px solid ${isYes ? T.yesBorder : T.noBorder}` }}>{p.side}</span>
-                    <p style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary, margin: 0 }}>{Number(p.amount ?? 0).toFixed(2)}</p>
-                    <StatusBadge status={p.markets?.status ?? "—"} />
-                    <p style={{ fontSize: 11, color: T.textDim, margin: 0 }}>{placed}</p>
-                  </div>
-                );
-              })}
             </GCard>
           )}
         </div>
@@ -4072,25 +4552,28 @@ function PageAdmin() {
           {!oracleLoading && oracleResults.length === 0 && <GCard style={{ padding: 0 }}><EmptyState icon={ShieldCheck} title="No oracle results" body="Oracle resolution records will appear here after markets resolve." /></GCard>}
           {!oracleLoading && oracleResults.length > 0 && (
             <GCard style={{ padding: 0, overflow: "hidden" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 100px 130px 140px", gap: 10, padding: "10px 20px", background: T.glass, borderBottom: `1px solid ${T.border}` }}>
-                {["Market", "Category", "Result", "Data Source", "Resolved At"].map(h => (
-                  <p key={h} style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>{h}</p>
-                ))}
+              <div className="admin-table-container">
+                <table className="admin-table">
+                  <thead>
+                    <tr>{["Market","Category","Result","Data Source","Resolved At"].map(h=><th key={h}>{h}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {oracleResults.map((r) => {
+                      const isYes = r.result_value === "YES";
+                      const resolvedAt = r.resolved_at ? new Date(r.resolved_at).toLocaleDateString("en-GB", { day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" }) : "—";
+                      return (
+                        <tr key={r.id}>
+                          <td style={{ fontSize:12, color:T.textPrimary, maxWidth:240 }} title={r.markets?.question}>{r.markets?.question ?? r.market_id}</td>
+                          <td><CategoryBadge category={r.markets?.category ?? "—"} /></td>
+                          <td><span style={{ display:"inline-flex", alignItems:"center", gap:4, padding:"2px 10px", borderRadius:999, fontSize:11, fontWeight:800, background:isYes?T.yesBg:T.noBg, color:isYes?T.yes:T.no, border:`1px solid ${isYes?T.yesBorder:T.noBorder}` }}>{r.result_value}</span></td>
+                          <td style={{ fontSize:11, color:T.textMuted }}>{r.data_source ?? "—"}</td>
+                          <td style={{ fontSize:11, color:T.textDim }}>{resolvedAt}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-              {oracleResults.map((r, i) => {
-                const isYes = r.result_value === "YES";
-                const resolvedAt = r.resolved_at ? new Date(r.resolved_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
-                return (
-                  <div key={r.id} style={{ display: "grid", gridTemplateColumns: "1fr 100px 100px 130px 140px", gap: 10, padding: "12px 20px", alignItems: "center", borderBottom: i < oracleResults.length - 1 ? `1px solid ${T.border}` : "none", transition: "background 0.15s" }}
-                    onMouseEnter={e => { e.currentTarget.style.background = T.glassHover; }} onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
-                    <p style={{ fontSize: 12, color: T.textPrimary, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.markets?.question}>{r.markets?.question ?? r.market_id}</p>
-                    <CategoryBadge category={r.markets?.category ?? "—"} />
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 10px", borderRadius: 999, fontSize: 11, fontWeight: 800, background: isYes ? T.yesBg : T.noBg, color: isYes ? T.yes : T.no, border: `1px solid ${isYes ? T.yesBorder : T.noBorder}` }}>{r.result_value}</span>
-                    <p style={{ fontSize: 11, color: T.textMuted, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.data_source ?? "—"}</p>
-                    <p style={{ fontSize: 11, color: T.textDim, margin: 0 }}>{resolvedAt}</p>
-                  </div>
-                );
-              })}
             </GCard>
           )}
         </div>
@@ -4103,25 +4586,28 @@ function PageAdmin() {
           {!eventsLoading && events.length === 0 && <GCard style={{ padding: 0 }}><EmptyState icon={Zap} title="No events" body="Market events will appear here as activity happens." /></GCard>}
           {!eventsLoading && events.length > 0 && (
             <GCard style={{ padding: 0, overflow: "hidden" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 140px 120px 130px", gap: 10, padding: "10px 20px", background: T.glass, borderBottom: `1px solid ${T.border}` }}>
-                {["Market", "Event", "User", "Timestamp"].map(h => (
-                  <p key={h} style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>{h}</p>
-                ))}
+              <div className="admin-table-container">
+                <table className="admin-table">
+                  <thead>
+                    <tr>{["Market","Event","User","Timestamp"].map(h=><th key={h}>{h}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {events.map((ev) => {
+                      const ts = ev.created_at ? new Date(ev.created_at).toLocaleDateString("en-GB", { day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" }) : "—";
+                      const evColors = { created:"#38bdf8", position_placed:"#22c55e", resolved:"#7c6ff7", reward_claimed:"#fbbf24" };
+                      const evColor = evColors[ev.event_type] || T.textMuted;
+                      return (
+                        <tr key={ev.id}>
+                          <td style={{ fontSize:12, color:T.textPrimary, maxWidth:240 }} title={ev.markets?.question}>{ev.markets?.question ?? ev.market_id}</td>
+                          <td><span style={{ display:"inline-flex", alignItems:"center", gap:4, padding:"2px 9px", borderRadius:999, fontSize:10, fontWeight:700, background:`${evColor}18`, color:evColor, border:`1px solid ${evColor}30` }}>{ev.event_type.replace("_"," ")}</span></td>
+                          <td style={{ fontSize:11, color:T.textMuted }}>{ev.users?.display_name ?? "system"}</td>
+                          <td style={{ fontSize:11, color:T.textDim }}>{ts}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-              {events.map((ev, i) => {
-                const ts = ev.created_at ? new Date(ev.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
-                const evColors = { created: "#38bdf8", position_placed: "#22c55e", resolved: "#7c6ff7", reward_claimed: "#fbbf24" };
-                const evColor = evColors[ev.event_type] || T.textMuted;
-                return (
-                  <div key={ev.id} style={{ display: "grid", gridTemplateColumns: "1fr 140px 120px 130px", gap: 10, padding: "11px 20px", alignItems: "center", borderBottom: i < events.length - 1 ? `1px solid ${T.border}` : "none", transition: "background 0.15s" }}
-                    onMouseEnter={e => { e.currentTarget.style.background = T.glassHover; }} onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
-                    <p style={{ fontSize: 12, color: T.textPrimary, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={ev.markets?.question}>{ev.markets?.question ?? ev.market_id}</p>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 9px", borderRadius: 999, fontSize: 10, fontWeight: 700, background: `${evColor}18`, color: evColor, border: `1px solid ${evColor}30` }}>{ev.event_type.replace("_", " ")}</span>
-                    <p style={{ fontSize: 11, color: T.textMuted, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.users?.display_name ?? "system"}</p>
-                    <p style={{ fontSize: 11, color: T.textDim, margin: 0 }}>{ts}</p>
-                  </div>
-                );
-              })}
             </GCard>
           )}
         </div>
@@ -4331,7 +4817,12 @@ export default function DashboardPage() {
           overflow-x: hidden;
         }
 
+        /* Fixed header left content — indented past sidebar on desktop */
+        .dash-header-left { margin-left: 240px; }
+
         .dash-mobile-only { display: none; }
+        /* dash-mobile-left: hidden by default, shown via media query.
+           Must NOT have display:none inline — use CSS class only. */
         .dash-mobile-left { display: none; align-items: center; gap: 10px; }
 
         /* ── page header action rows ── */
@@ -4401,8 +4892,28 @@ export default function DashboardPage() {
           grid-template-columns: repeat(3, 1fr);
           gap: 8px;
         }
+        /* 2-col chart grid used in admin overview & user dashboard */
+        .admin-chart-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 14px;
+        }
+        /* 3-col chart grid for wider overview rows */
+        .admin-chart-grid-3 {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 14px;
+        }
 
         /* ── Admin ── */
+        .admin-tab-scroll {
+          display: flex;
+          gap: 4px;
+          overflow-x: auto;
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
+        .admin-tab-scroll::-webkit-scrollbar { display: none; }
         .admin-tab-bar {
           display: flex;
           gap: 2px;
@@ -4410,7 +4921,7 @@ export default function DashboardPage() {
           background: rgba(255,255,255,0.04);
           border: 1px solid rgba(255,255,255,0.08);
           border-radius: 10px;
-          flex-wrap: wrap;
+          flex-wrap: nowrap;
           width: 100%;
           overflow-x: auto;
           scrollbar-width: none;
@@ -4435,8 +4946,6 @@ export default function DashboardPage() {
         .admin-table-container {
           overflow-x: auto;
           -webkit-overflow-scrolling: touch;
-          border-radius: 12px;
-          border: 1px solid rgba(255,255,255,0.08);
           width: 100%;
         }
         .admin-table { width: 100%; min-width: 560px; border-collapse: collapse; }
@@ -4466,23 +4975,26 @@ export default function DashboardPage() {
            TABLET  ≤ 1024px
         ════════════════════════ */
         @media (max-width: 1024px) {
-          .dash-sidebar-desktop { display: none; }
-          .dash-main-area { margin-left: 0; }
-          .dash-mobile-only { display: block; }
-          .dash-mobile-left { display: flex; }
+          .dash-sidebar-desktop { display: none !important; }
+          .dash-main-area { margin-left: 0 !important; }
+          .dash-mobile-only { display: block !important; }
+          .dash-mobile-left { display: flex !important; }
+          .dash-header-left { margin-left: 0 !important; }
 
-          main { padding: 20px 16px 32px !important; }
+          main { padding: 76px 16px 32px !important; }
 
-          .dash-kpi-grid-3  { grid-template-columns: repeat(2, 1fr); gap: 12px; }
-          .dash-kpi-grid-5  { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-          .dash-sec-grid    { grid-template-columns: 1fr; gap: 10px; }
-          .dash-kpi-grid    { grid-template-columns: 1fr; gap: 10px; }
-          .dash-detail-grid { grid-template-columns: 1fr; }
-          .q-grid           { grid-template-columns: 1fr; }
-          .dash-how-grid    { grid-template-columns: repeat(2, 1fr); }
-          .reward-how-grid  { grid-template-columns: 1fr; gap: 10px; }
-          .results-stats-grid   { grid-template-columns: repeat(2, 1fr); }
-          .positions-stats-grid { grid-template-columns: repeat(2, 1fr); }
+          .dash-kpi-grid-3    { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+          .dash-kpi-grid-5    { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+          .dash-sec-grid      { grid-template-columns: 1fr; gap: 10px; }
+          .dash-kpi-grid      { grid-template-columns: 1fr; gap: 10px; }
+          .dash-detail-grid   { grid-template-columns: 1fr; }
+          .q-grid             { grid-template-columns: 1fr; }
+          .dash-how-grid      { grid-template-columns: repeat(2, 1fr); }
+          .reward-how-grid    { grid-template-columns: 1fr; gap: 10px; }
+          .results-stats-grid    { grid-template-columns: repeat(2, 1fr); }
+          .positions-stats-grid  { grid-template-columns: repeat(2, 1fr); }
+          .admin-chart-grid   { grid-template-columns: 1fr; gap: 12px; }
+          .admin-chart-grid-3 { grid-template-columns: 1fr; gap: 12px; }
 
           .admin-header     { flex-direction: column; align-items: stretch; }
           .admin-stats-grid { grid-template-columns: repeat(2, 1fr); }
@@ -4493,17 +5005,19 @@ export default function DashboardPage() {
            MOBILE  ≤ 640px
         ════════════════════════ */
         @media (max-width: 640px) {
-          main { padding: 16px 12px 28px !important; }
+          main { padding: 72px 12px 28px !important; }
 
-          .dash-kpi-grid-3  { grid-template-columns: 1fr; gap: 10px; }
-          .dash-kpi-grid-5  { grid-template-columns: repeat(2, 1fr); gap: 8px; }
-          .dash-kpi-grid    { grid-template-columns: 1fr; gap: 10px; }
-          .dash-sec-grid    { grid-template-columns: 1fr; gap: 10px; }
-          .dash-how-grid    { grid-template-columns: 1fr; gap: 10px; }
-          .reward-how-grid  { grid-template-columns: 1fr; gap: 10px; }
-          .results-stats-grid   { grid-template-columns: repeat(2, 1fr); gap: 8px; }
-          .positions-stats-grid { grid-template-columns: 1fr; gap: 8px; }
-          .q-grid           { grid-template-columns: 1fr; gap: 10px; }
+          .dash-kpi-grid-3    { grid-template-columns: 1fr; gap: 10px; }
+          .dash-kpi-grid-5    { grid-template-columns: 1fr; gap: 8px; }
+          .dash-kpi-grid      { grid-template-columns: 1fr; gap: 10px; }
+          .dash-sec-grid      { grid-template-columns: 1fr; gap: 10px; }
+          .dash-how-grid      { grid-template-columns: 1fr; gap: 10px; }
+          .reward-how-grid    { grid-template-columns: 1fr; gap: 10px; }
+          .results-stats-grid    { grid-template-columns: 1fr; gap: 8px; }
+          .positions-stats-grid  { grid-template-columns: 1fr; gap: 8px; }
+          .q-grid             { grid-template-columns: 1fr; gap: 10px; }
+          .admin-chart-grid   { grid-template-columns: 1fr; gap: 10px; }
+          .admin-chart-grid-3 { grid-template-columns: 1fr; gap: 10px; }
 
           .market-question  { font-size: 13px !important; }
 
@@ -4518,8 +5032,6 @@ export default function DashboardPage() {
           .admin-table-container {
             margin: 0 -12px;
             border-radius: 0;
-            border-left: none;
-            border-right: none;
           }
         }
 
@@ -4527,9 +5039,7 @@ export default function DashboardPage() {
            SMALL MOBILE  ≤ 400px
         ════════════════════════ */
         @media (max-width: 400px) {
-          main { padding: 12px 10px 24px !important; }
-          .dash-kpi-grid-5  { grid-template-columns: 1fr; gap: 8px; }
-          .results-stats-grid { grid-template-columns: 1fr; gap: 6px; }
+          main { padding: 68px 10px 24px !important; }
         }
       `}</style>
       
@@ -4558,7 +5068,7 @@ export default function DashboardPage() {
         <div className="dash-main-area" style={{ overflowX: "hidden" }}>
           <TopHeader pageLabel={pageLabelMap[page] || page} onOpenMobileSidebar={() => setMobileSidebarOpen(true)} onNavigate={handleNavigate} user={user} onOpenNotifications={() => setNotifOpen(true)} unreadCount={unreadCount} />
 
-          <main style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "28px 28px 48px", position: "relative" }}>
+          <main style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "84px 28px 48px", position: "relative" }}>
             <Confetti active={showConfetti} />
             <div style={{ maxWidth: 1160, margin: "0 auto", width: "100%" }}>
               {page === "dashboard"       && <PageDashboard onNavigate={handleNavigate} />}

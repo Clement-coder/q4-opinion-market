@@ -185,46 +185,109 @@ export async function getWalletQiCode(address) {
   }
 }
 
-// ─── wallet helpers ───────────────────────────────────────────────────────────
+// ─── wallet key derivation ────────────────────────────────────────────────────
 
 /**
- * Derive a deterministic embedded wallet address for a user.
- * Forces the address into Cyprus-1 zone (first byte 0x00–0x1F) so that
- * quai_getBalance works against the public RPC at rpc.quai.network/cyprus1.
- * We iterate SHA-256 with a nonce suffix until the first byte is in range.
+ * App-level wallet secret — combined with the user's Firebase UID via HKDF
+ * to produce a deterministic private key.  This value is baked into the
+ * client bundle, so it is NOT a secret in the cryptographic sense — anyone
+ * who inspects the bundle can read it.  Its purpose is to make the derived
+ * key unique to Q4 (i.e. the same UID used on a different platform produces
+ * a completely different key), not to provide secrecy.
+ *
+ * IMPORTANT: never change this value after launch.  Changing it rotates
+ * every user's private key and makes all existing wallet addresses unreachable.
+ */
+const WALLET_APP_SECRET = "q4-embedded-wallet-v2-quai-cyprus1";
+
+/**
+ * Derive a deterministic secp256k1 private key for a user using HKDF-SHA-256.
+ *
+ * Algorithm:
+ *   1. Import the user's Firebase UID as HKDF key material.
+ *   2. Derive 32 bytes using HKDF-SHA-256 with:
+ *        salt  = UTF-8(WALLET_APP_SECRET)
+ *        info  = UTF-8("q4-wallet-v2:" + uid + ":" + nonce)
+ *   3. Use the 32 bytes directly as a secp256k1 private key.
+ *   4. Instantiate a quais Wallet and check the address zone.
+ *   5. If the address is NOT in Cyprus-1 (first byte > 0x1F), increment the
+ *      nonce and repeat until we find one that is — typically ≤ 8 iterations.
+ *
+ * The private key and wallet are kept in an in-memory cache (Map) that lives
+ * for the page session only.  Nothing is written to localStorage or any DB.
  *
  * @param {string} uid  Firebase user UID
- * @returns {Promise<string>}  Quai Cyprus-1 compatible 0x address (42 chars)
+ * @returns {Promise<{ wallet: import("quais").Wallet, address: string, privateKey: string }>}
  */
-export async function deriveWalletAddress(uid) {
-  const encoder = new TextEncoder();
+async function deriveWalletKeypair(uid) {
+  const { Wallet } = await import("quais");
+  const enc  = new TextEncoder();
+  const salt = enc.encode(WALLET_APP_SECRET);
+
+  // Import UID as raw HKDF key material
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(uid),
+    "HKDF",
+    false,
+    ["deriveKey", "deriveBits"],
+  );
+
   for (let nonce = 0; nonce < 256; nonce++) {
-    const data  = encoder.encode(`q4-wallet-v1:${uid}:${nonce}`);
-    const hash  = await crypto.subtle.digest("SHA-256", data);
-    const bytes = Array.from(new Uint8Array(hash));
-    // Cyprus-1 zone: first byte must be 0x00–0x1F
-    if (bytes[0] <= 0x1f) {
-      return `0x${bytes.slice(0, 20).map(b => b.toString(16).padStart(2, "0")).join("")}`;
+    const info = enc.encode(`q4-wallet-v2:${uid}:${nonce}`);
+
+    const rawBits = await crypto.subtle.deriveBits(
+      { name: "HKDF", hash: "SHA-256", salt, info },
+      keyMaterial,
+      256, // 32 bytes
+    );
+
+    const privateKey = "0x" + Array.from(new Uint8Array(rawBits))
+      .map(b => b.toString(16).padStart(2, "0"))
+      .join("");
+
+    let wallet;
+    try {
+      wallet = new Wallet(privateKey);
+    } catch {
+      // Invalid scalar (> curve order) — extremely rare, skip
+      continue;
+    }
+
+    // Cyprus-1 zone: first byte of address must be 0x00–0x1F
+    const firstByte = parseInt(wallet.address.slice(2, 4), 16);
+    if (firstByte <= 0x1f) {
+      return { wallet, address: wallet.address, privateKey };
     }
   }
-  // Fallback: force first byte to 0x00
-  const data  = encoder.encode(`q4-wallet-v1:${uid}:0`);
-  const hash  = await crypto.subtle.digest("SHA-256", data);
-  const bytes = Array.from(new Uint8Array(hash));
-  bytes[0] = 0x00;
-  return `0x${bytes.slice(0, 20).map(b => b.toString(16).padStart(2, "0")).join("")}`;
+
+  // Fallback: should never happen in practice (probability ≈ 1/32^256)
+  throw new Error("Could not derive a Cyprus-1 wallet address after 256 iterations.");
+}
+
+// In-memory session cache — keyed by Firebase UID
+const _walletCache = new Map(); // uid → { wallet, address, privateKey }
+
+/**
+ * Retrieve (or derive on first call) the embedded Quai wallet for a user.
+ * Result is memoised for the page session; the private key is never persisted.
+ *
+ * @param {string} uid  Firebase user UID
+ * @returns {Promise<{ wallet: import("quais").Wallet, address: string, privateKey: string }>}
+ */
+export async function getOrCreateWallet(uid) {
+  if (_walletCache.has(uid)) return _walletCache.get(uid);
+  const result = await deriveWalletKeypair(uid);
+  _walletCache.set(uid, result);
+  return result;
 }
 
 /**
- * Derive or retrieve the wallet address for a user.
- * Uses an in-memory Map as a lightweight session cache so we don't re-hash
- * on every render, but we never write to localStorage.
+ * Convenience: return only the wallet address for a UID.
+ * Used by WalletContext to populate the address display without exposing the key.
  */
-const _addressCache = new Map();
-export async function getOrCreateWallet(uid) {
-  if (_addressCache.has(uid)) return _addressCache.get(uid);
-  const address = await deriveWalletAddress(uid);
-  _addressCache.set(uid, address);
+export async function deriveWalletAddress(uid) {
+  const { address } = await getOrCreateWallet(uid);
   return address;
 }
 
@@ -285,13 +348,15 @@ export async function getWalletBalance(address) {
  * Fetch recent transactions for a Quai address.
  *
  * NOTE: Quai Network has no transaction-index API (no eth_getTransactionsByAddress,
- * no event logs index). The only way to find txs is to scan blocks one by one,
- * which takes 200+ seconds for a 200-block window — completely unusable in a browser.
+ * no event logs index). The only way to find txs is to scan blocks one by one.
  *
- * This implementation uses a small parallel batch (10 blocks max) with a hard
- * 8-second timeout so the wallet page always loads quickly. Users with recent
- * transactions in the last 10 blocks will see them; otherwise the list is empty.
+ * This implementation scans the last 20 blocks in parallel with a hard
+ * 10-second timeout so the wallet page always loads quickly. Users with recent
+ * transactions in the last 20 blocks will see them; otherwise the list is empty.
  * A "View on Quaiscan" link is provided in the UI for full history.
+ *
+ * Block structure note: Quai blocks do NOT have a root-level `timestamp` or `number`.
+ * Both live under `block.woHeader.timestamp` and `block.woHeader.number`.
  *
  * @param {string} address
  * @returns {Promise<Array<Transaction>>}
@@ -299,22 +364,22 @@ export async function getWalletBalance(address) {
 export async function getTransactions(address) {
   if (!address) return [];
   try {
-    const addr       = address.toLowerCase();
-    const latestHex  = await Promise.race([
+    const addr      = address.toLowerCase();
+    const latestHex = await Promise.race([
       quaiRpc("eth_blockNumber", []),
       new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 5000)),
     ]);
     const latestBlock = parseInt(latestHex, 16);
 
-    // Fetch the last 10 blocks in parallel (each block takes ~1.4s, 10 in parallel ≈ 2s)
-    const SCAN_DEPTH = 10;
+    // Fetch the last 20 blocks in parallel
+    const SCAN_DEPTH = 20;
     const blockNums  = Array.from({ length: SCAN_DEPTH }, (_, k) => latestBlock - k);
 
     const blockResults = await Promise.allSettled(
       blockNums.map(n =>
         Promise.race([
           quaiRpc("quai_getBlockByNumber", [`0x${n.toString(16)}`, true]),
-          new Promise((_, rej) => setTimeout(() => rej(new Error("block timeout")), 6000)),
+          new Promise((_, rej) => setTimeout(() => rej(new Error("block timeout")), 8000)),
         ])
       )
     );
@@ -323,6 +388,13 @@ export async function getTransactions(address) {
     for (const result of blockResults) {
       if (result.status !== "fulfilled" || !result.value?.transactions) continue;
       const block = result.value;
+
+      // Quai block structure: timestamp and number are in woHeader, not root
+      const woHeader    = block.woHeader ?? {};
+      const tsHex       = woHeader.timestamp ?? "0x0";
+      const blockNumHex = woHeader.number    ?? "0x0";
+      const blockTs     = new Date(parseInt(tsHex, 16) * 1000);
+      const blockNum    = parseInt(blockNumHex, 16);
 
       for (const tx of block.transactions) {
         const from = (tx.from || "").toLowerCase();
@@ -341,9 +413,9 @@ export async function getTransactions(address) {
           from:        tx.from,
           to:          tx.to,
           hash:        tx.hash,
-          timestamp:   new Date(parseInt(block.timestamp || "0", 16) * 1000),
+          timestamp:   blockTs,
           status:      "confirmed",
-          blockNumber: parseInt(block.number || "0x0", 16),
+          blockNumber: blockNum,
         });
 
         if (txs.length >= 20) break;
@@ -356,4 +428,54 @@ export async function getTransactions(address) {
     console.warn("[getTransactions] failed:", e.message);
     return [];
   }
+}
+
+// ─── send transaction ─────────────────────────────────────────────────────────
+
+/**
+ * Sign and broadcast a QUAI transfer on Cyprus-1.
+ *
+ * The wallet is derived from the user's Firebase UID via HKDF — the private
+ * key never leaves memory and is never passed in by the caller.
+ *
+ * @param {{ uid: string, to: string, amountQuai: number }} opts
+ * @returns {Promise<{ hash: string, from: string }>}
+ */
+export async function sendQuai({ uid, to, amountQuai }) {
+  if (!uid || !to || !amountQuai) throw new Error("uid, to, and amountQuai are required");
+
+  const { wallet } = await getOrCreateWallet(uid);
+  const { JsonRpcProvider } = await import("quais");
+
+  // Connect wallet to the Cyprus-1 provider
+  const provider      = new JsonRpcProvider(QUAI_RPC);
+  const connectedWallet = wallet.connect(provider);
+
+  // Get nonce and gas price from the network
+  const [nonceHex, gasPriceHex] = await Promise.all([
+    quaiRpc("quai_getTransactionCount", [wallet.address, "pending"]),
+    quaiRpc("eth_gasPrice", []),
+  ]);
+
+  const nonce    = parseInt(nonceHex, 16);
+  const gasPrice = BigInt(gasPriceHex);
+  const gasLimit = BigInt(21_000);
+
+  // Convert QUAI amount to Wei (18 decimals)
+  const valueWei = BigInt(Math.round(amountQuai * 1e18));
+
+  const tx = {
+    to,
+    value:    valueWei,
+    nonce,
+    gasPrice,
+    gasLimit,
+    chainId:  BigInt(9),  // Quai mainnet Cyprus-1
+    type:     0,
+  };
+
+  const signedTx   = await connectedWallet.signTransaction(tx);
+  const txHash     = await quaiRpc("quai_sendRawTransaction", [signedTx]);
+
+  return { hash: txHash, from: wallet.address };
 }
