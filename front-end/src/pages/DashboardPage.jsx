@@ -4513,7 +4513,7 @@ function PageAdmin() {
   const { toast } = useToast();
 
   // Create market form
-  const [createForm, setCreateForm] = useState({ question: "", category: "Crypto", deadline: "", data_source: "" });
+  const [createForm, setCreateForm] = useState({ question: "", category: "Crypto", deadline: "", data_source: "", coin_id: "", target_value: "", resolution_field: "price", resolution_op: "gt" });
   const [createLoading, setCreateLoading] = useState(false);
   const [createError,   setCreateError]   = useState(null);
   const [createSuccess, setCreateSuccess] = useState(null);
@@ -4596,7 +4596,7 @@ function PageAdmin() {
     const { ok, error: err } = await createMarket(createForm);
     if (ok) {
       setCreateSuccess("Market created successfully!");
-      setCreateForm({ question: "", category: "Crypto", deadline: "", data_source: "" });
+      setCreateForm({ question: "", category: "Crypto", deadline: "", data_source: "", coin_id: "", target_value: "", resolution_field: "price", resolution_op: "gt" });
       toast.update(tid, { type: "success", msg: "Market created! 🚀", sub: createForm.question.slice(0, 60) });
     } else {
       const msg = err ?? "Failed to create market.";
@@ -5106,6 +5106,47 @@ function PageAdmin() {
                   onChange={e => setCreateForm(f => ({ ...f, data_source: e.target.value }))}
                   style={{ width: "100%", padding: "12px 14px", background: T.glass, border: `1px solid ${T.border}`, borderRadius: 10, color: T.textPrimary, fontSize: 13, outline: "none", boxSizing: "border-box" }}
                   onFocus={e => { e.target.style.borderColor = T.borderHover; }} onBlur={e => { e.target.style.borderColor = T.border; }} />
+              </div>
+
+              {/* Resolution spec — powers auto-resolution by the oracle edge function */}
+              <div style={{ padding: "14px 16px", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: `1px solid ${T.border}` }}>
+                <p style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 12px" }}>
+                  Auto-Resolution Spec <span style={{ color: T.textMuted, fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>— leave blank for manual resolve</span>
+                </p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <label style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 5 }}>Coin / Asset ID</label>
+                    <input type="text" placeholder="bitcoin / ethereum / AAPL / London" value={createForm.coin_id}
+                      onChange={e => setCreateForm(f => ({ ...f, coin_id: e.target.value }))}
+                      style={{ width: "100%", padding: "10px 12px", background: T.glass, border: `1px solid ${T.border}`, borderRadius: 8, color: T.textPrimary, fontSize: 12, outline: "none", boxSizing: "border-box" }}
+                      onFocus={e => { e.target.style.borderColor = T.borderHover; }} onBlur={e => { e.target.style.borderColor = T.border; }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 5 }}>Target Value</label>
+                    <input type="number" step="any" placeholder="e.g. 95000" value={createForm.target_value}
+                      onChange={e => setCreateForm(f => ({ ...f, target_value: e.target.value }))}
+                      style={{ width: "100%", padding: "10px 12px", background: T.glass, border: `1px solid ${T.border}`, borderRadius: 8, color: T.textPrimary, fontSize: 12, outline: "none", boxSizing: "border-box" }}
+                      onFocus={e => { e.target.style.borderColor = T.borderHover; }} onBlur={e => { e.target.style.borderColor = T.border; }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 5 }}>Resolution Field</label>
+                    <CustomSelect
+                      value={createForm.resolution_field}
+                      onChange={val => setCreateForm(f => ({ ...f, resolution_field: val }))}
+                      options={["price", "close_price", "score", "rain_mm", "temp_c"]}
+                      placeholder="price"
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 5 }}>Operator</label>
+                    <CustomSelect
+                      value={createForm.resolution_op}
+                      onChange={val => setCreateForm(f => ({ ...f, resolution_op: val }))}
+                      options={["gt", "gte", "lt", "lte", "eq"]}
+                      placeholder="gt (greater than)"
+                    />
+                  </div>
+                </div>
               </div>
 
               {createError && <p style={{ fontSize: 12, color: "#ef4444", margin: 0, padding: "10px 14px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>{createError}</p>}

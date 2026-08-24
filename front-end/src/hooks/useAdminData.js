@@ -75,8 +75,16 @@ export function useAdminMarkets() {
       .update({ status: "resolved", resolved_outcome: outcome, updated_at: now }).eq("id", marketId);
     if (!err) {
       setMarkets(p => p.map(m => m.id===marketId ? {...m, status:"resolved", resolved_outcome:outcome} : m));
-      await supabase.from("oracle_results").insert({ market_id: marketId, result_value: outcome, resolved_at: now, data_source: "admin_manual" });
-      await supabase.from("market_events").insert({ market_id: marketId, event_type: "resolved", metadata: { outcome, resolved_by: "admin" } });
+      const { data: me } = await supabase.from("users").select("id").maybeSingle();
+      await supabase.from("oracle_results").insert({
+        market_id: marketId, result_value: outcome,
+        resolved_at: now, data_source: "admin_manual",
+      });
+      await supabase.from("market_events").insert({
+        market_id: marketId, event_type: "resolved",
+        user_id: me?.id ?? null,
+        metadata: { outcome, resolved_by: "admin" },
+      });
     }
     return !err;
   }, []);
@@ -87,15 +95,29 @@ export function useAdminMarkets() {
     return !err;
   }, []);
 
-  const createMarket = useCallback(async ({ question, category, deadline, data_source }) => {
+  const createMarket = useCallback(async ({ question, category, deadline, data_source, coin_id, target_value, resolution_field, resolution_op }) => {
     const { data, error: err } = await supabase.from("markets")
-      .insert({ question, category, deadline, data_source, status: "active" }).select("*").single();
+      .insert({
+        question, category, deadline, data_source, status: "active",
+        // Resolution spec — optional; auto-resolution works when these are set
+        coin_id:          coin_id          ?? null,
+        target_value:     target_value     ?? null,
+        resolution_field: resolution_field ?? null,
+        resolution_op:    resolution_op    ?? null,
+        target_time:      deadline,          // oracle checks at deadline
+      })
+      .select("*").single();
     if (err) return { ok: false, error: err.message };
     await supabase.from("market_outcomes").insert([
-      { market_id: data.id, outcome: "YES", pool_amount: 0 },
-      { market_id: data.id, outcome: "NO",  pool_amount: 0 },
+      { market_id: data.id, outcome: "YES", pool_amount: 0, participant_count: 0 },
+      { market_id: data.id, outcome: "NO",  pool_amount: 0, participant_count: 0 },
     ]);
-    await supabase.from("market_events").insert({ market_id: data.id, event_type: "created", metadata: { created_by: "admin" } });
+    const { data: me } = await supabase.from("users").select("id").maybeSingle();
+    await supabase.from("market_events").insert({
+      market_id: data.id, event_type: "created",
+      user_id: me?.id ?? null,
+      metadata: { created_by: "admin" },
+    });
     fetchMarkets(true);
     return { ok: true, market: data };
   }, [fetchMarkets]);

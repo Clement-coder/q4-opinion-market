@@ -92,7 +92,7 @@ export function useNotifications() {
       setNotifications(updated);
       return;
     }
-    await supabase.from("notifications").update({ read: true }).eq("id", id);
+    await supabase.from("notifications").update({ read: true }).eq("id", id).eq("user_id", profile.id);
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
   }, [isDemoMode, refreshKey]);
 
