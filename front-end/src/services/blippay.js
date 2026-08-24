@@ -199,6 +199,51 @@ export async function getWalletQiCode(address) {
 }
 
 /**
+ * Derive a deterministic QI (BIP47) payment code for a user.
+ *
+ * Uses the same HKDF-derived entropy as the Quai wallet (same uid + app secret),
+ * but feeds it into QiHDWallet.fromMnemonic() so the payment code is permanently
+ * linked to the user's Q4 identity without any external registration.
+ *
+ * The payment code is a 116-char PM8TJ... string (BIP47) that anyone can use
+ * to send QI to this wallet in a privacy-preserving way.
+ *
+ * @param {string} uid  Firebase user UID
+ * @returns {Promise<string>}  BIP47 QI payment code
+ */
+export async function deriveQiPaymentCode(uid) {
+  const { QiHDWallet, Mnemonic } = await import("quais");
+  const enc  = new TextEncoder();
+  const salt = enc.encode(WALLET_APP_SECRET);
+
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(uid),
+    "HKDF",
+    false,
+    ["deriveBits"],
+  );
+
+  // Use nonce=0 always — the entropy only needs to be valid (< curve order),
+  // and a 256-bit value from HKDF is virtually always valid BIP39 entropy.
+  const info    = enc.encode(`q4-qi-payment-code-v1:${uid}:0`);
+  const rawBits = await crypto.subtle.deriveBits(
+    { name: "HKDF", hash: "SHA-256", salt, info },
+    keyMaterial,
+    256,
+  );
+
+  const entropyHex = "0x" + Array.from(new Uint8Array(rawBits))
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
+
+  const mnemonic = Mnemonic.fromEntropy(entropyHex);
+  const qiWallet = QiHDWallet.fromMnemonic(mnemonic);
+  return qiWallet.getPaymentCode(0);
+}
+
+
+/**
  * Register (or update) this wallet address on the BlipPay referral leaderboard.
  *
  * Flow:
@@ -206,12 +251,9 @@ export async function getWalletQiCode(address) {
  *   2. Sign the message with the wallet's private key (EIP-191 personal_sign)
  *   3. PUT  /api/referrals/profile    → submit address + challengeId + signature
  *
- * This links the Q4 embedded wallet address to a BlipPay profile so that
- * `getWalletQiCode` can look it up by contactQuaiAddress.
- *
  * @param {string} uid          Firebase user UID (used to derive the wallet key)
  * @param {string} displayName  Display name to set on the BlipPay profile
- * @returns {Promise<{ shortCode: string, shortUrl: string, contactQiPaymentCode: string|null }>}
+ * @returns {Promise<{ shortCode: string, shortUrl: string }>}
  */
 export async function registerWalletWithBlipPay(uid, displayName) {
   const { wallet, address } = await getOrCreateWallet(uid);

@@ -18,7 +18,7 @@ import {
   getWalletBalance,
   getTransactions,
   getQuaiPriceFull,
-  getWalletQiCode,
+  deriveQiPaymentCode,
 } from "../services/blippay";
 
 const WalletContext = createContext(null);
@@ -79,10 +79,10 @@ export function WalletProvider({ children }) {
         ]);
 
       const [priceResult, balResult, txResult, qiResult] = await Promise.allSettled([
-        withTimeout(getQuaiPriceFull(7),       8000, null),
-        withTimeout(getWalletBalance(address), 6000, { quai: 0 }),
-        withTimeout(getTransactions(address),  9000, []),
-        withTimeout(getWalletQiCode(address),  5000, null),
+        withTimeout(getQuaiPriceFull(7),         8000, null),
+        withTimeout(getWalletBalance(address),   6000, { quai: 0 }),
+        withTimeout(getTransactions(address),    9000, []),
+        withTimeout(deriveQiPaymentCode(uid),    5000, null),
       ]);
 
       if (!isMounted.current) return;

@@ -1751,9 +1751,9 @@ export default function WalletPage() {
       {/* ══ BLIPPAY CONNECT ══ */}
       {!isDemoMode && walletAddress && (() => {
         const isRegistered = blipProfile != null;
-        const isPending    = blipProfile === undefined; // still fetching
+        const isPending    = blipProfile === undefined;
 
-        if (isPending) return null; // don't flash UI while loading
+        if (isPending) return null;
 
         return (
           <div style={{
@@ -1762,7 +1762,6 @@ export default function WalletPage() {
           }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                {/* BlipPay logo placeholder */}
                 <div style={{
                   width: 40, height: 40, borderRadius: 10, flexShrink: 0,
                   background: isRegistered ? "rgba(34,197,94,0.12)" : "rgba(255,255,255,0.06)",
@@ -1774,12 +1773,12 @@ export default function WalletPage() {
                 </div>
                 <div>
                   <p style={{ fontSize: 13, fontWeight: 700, color: "#ffffff", margin: 0 }}>
-                    {isRegistered ? "Connected to BlipPay" : "Connect to BlipPay"}
+                    {isRegistered ? "Listed on BlipPay Leaderboard" : "Join BlipPay Leaderboard"}
                   </p>
                   <p style={{ fontSize: 11, color: T.muted, margin: "2px 0 0" }}>
                     {isRegistered
-                      ? `@${blipProfile.shortCode ?? blipProfile.displayName ?? "profile"} · wallet identified on Quai network`
-                      : "Register your wallet so BlipPay recognises it as a Quai address"}
+                      ? `@${blipProfile.shortCode ?? blipProfile.displayName ?? "profile"} · your wallet is publicly visible on Quai network`
+                      : "Register your wallet address on the BlipPay referral leaderboard"}
                   </p>
                 </div>
               </div>
@@ -1790,7 +1789,7 @@ export default function WalletPage() {
                     style={{
                       padding: "7px 14px", borderRadius: 8, fontSize: 11, fontWeight: 700,
                       background: "transparent", border: `1px solid ${T.border}`,
-                      color: T.muted, textDecoration: "none", cursor: "pointer",
+                      color: T.muted, textDecoration: "none",
                       transition: "border-color 0.15s, color 0.15s",
                     }}
                     onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.yes; e.currentTarget.style.color = T.yes; }}
@@ -1805,9 +1804,7 @@ export default function WalletPage() {
                   onClick={async () => {
                     try {
                       await blipRegister(user.uid, user.displayName ?? user.email ?? "Q4 Predictor");
-                      // Refresh WalletContext qiCode now that address is registered
-                      refresh();
-                    } catch { /* error already set in hook */ }
+                    } catch { /* error shown below */ }
                   }}
                   style={{
                     padding: "7px 18px", borderRadius: 8, fontSize: 12, fontWeight: 700,
@@ -1815,7 +1812,7 @@ export default function WalletPage() {
                     background: isRegistered ? "rgba(34,197,94,0.12)" : "rgba(34,197,94,0.9)",
                     color: isRegistered ? "rgba(34,197,94,0.8)" : "#000000",
                     opacity: blipRegistering ? 0.6 : 1,
-                    transition: "opacity 0.15s, background 0.15s",
+                    transition: "opacity 0.15s",
                   }}
                 >
                   {blipRegistering ? "Connecting…" : isRegistered ? "Re-sync" : "Connect"}
@@ -1823,37 +1820,6 @@ export default function WalletPage() {
               </div>
             </div>
 
-            {/* QI payment code row — shown once registered */}
-            {isRegistered && blipProfile.contactQiPaymentCode && (
-              <div style={{
-                marginTop: 14, paddingTop: 14, borderTop: `1px solid ${T.border}`,
-                display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
-              }}>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ fontSize: 9, fontWeight: 700, color: T.dim, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 3px" }}>
-                    QI Payment Code
-                  </p>
-                  <p style={{ fontSize: 11, color: "#f0f0f0", fontFamily: "monospace", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {blipProfile.contactQiPaymentCode}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => navigator.clipboard.writeText(blipProfile.contactQiPaymentCode)}
-                  style={{
-                    flexShrink: 0, padding: "5px 12px", borderRadius: 6, fontSize: 11,
-                    fontWeight: 600, cursor: "pointer", background: "transparent",
-                    border: `1px solid ${T.border}`, color: T.muted, transition: "border-color 0.15s, color 0.15s",
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.yes; e.currentTarget.style.color = T.yes; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.muted; }}
-                >
-                  Copy
-                </button>
-              </div>
-            )}
-
-            {/* Error */}
             {blipError && (
               <p style={{ fontSize: 11, color: "#ef4444", margin: "10px 0 0" }}>
                 {blipError}
@@ -1871,6 +1837,7 @@ export default function WalletPage() {
           {label:"Network",        value:"Quai Network · Zone 0-0", mono:false, icon:true},
           {label:"Wallet Type",    value:"Embedded (HKDF-derived, non-custodial)", mono:false, icon:false},
           {label:"Account Owner",  value:user?.email??"—", mono:false, icon:false},
+          ...(qiCode ? [{label:"QI Payment Code", value:qiCode, mono:true, copy:qiCode, icon:false}] : []),
         ].map(({label,value,mono,copy,icon},i,a)=>(
           <DetailRow key={label} label={label} value={value} mono={mono} copy={copy} icon={icon} divider={i<a.length-1}/>
         ))}
