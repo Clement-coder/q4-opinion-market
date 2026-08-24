@@ -324,41 +324,10 @@ h1, h2, h3, h4 {
   pointer-events: none;
 }
 
-/* ─── Dashboard layout ─── */
+/* ─── Dashboard layout — authoritative rules live in DashboardPage.jsx <style> ─── */
+/* These are fallback defaults only; the scoped <style> block overrides them. */
 .dash-sidebar-desktop { display: block; }
 .dash-mobile-only     { display: none;  }
-.dash-mobile-menu     { display: none !important; }
-
-@media (max-width: 1024px) {
-  .dash-sidebar-desktop { display: none; }
-  .dash-mobile-only     { display: block; }
-  .dash-main-area       { margin-left: 0 !important; }
-  .dash-mobile-menu     { display: flex !important; }
-  .dash-mobile-left     { display: flex !important; }
-}
-
-/* Default column counts (desktop) */
-.dash-kpi-grid  { grid-template-columns: repeat(3, 1fr); }
-.dash-sec-grid  { grid-template-columns: repeat(3, 1fr); }
-.q-grid         { grid-template-columns: repeat(3, 1fr); }
-
-/* Responsive grids inside dashboard */
-@media (max-width: 900px) {
-  .dash-kpi-grid    { grid-template-columns: repeat(2,1fr) !important; }
-  .dash-sec-grid    { grid-template-columns: repeat(2,1fr) !important; }
-  .dash-main-grid   { grid-template-columns: 1fr !important; }
-  .dash-conv-grid   { grid-template-columns: repeat(3,1fr) !important; }
-  .dash-how-grid    { grid-template-columns: repeat(2,1fr) !important; }
-  .dash-detail-grid { grid-template-columns: 1fr !important; }
-  .q-grid           { grid-template-columns: repeat(2,1fr) !important; }
-}
-@media (max-width: 600px) {
-  .dash-kpi-grid  { grid-template-columns: 1fr !important; }
-  .dash-sec-grid  { grid-template-columns: 1fr !important; }
-  .dash-conv-grid { grid-template-columns: repeat(2,1fr) !important; }
-  .dash-how-grid  { grid-template-columns: repeat(2,1fr) !important; }
-  .q-grid         { grid-template-columns: 1fr !important; }
-}
 
 /* ─── Galaxy button animations ─── */
 @keyframes galaxy-yes-drift {

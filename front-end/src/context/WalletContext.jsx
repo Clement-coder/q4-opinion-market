@@ -65,8 +65,8 @@ export function WalletProvider({ children }) {
     }, 12_000);
 
     try {
-      // Address derivation is local (SHA-256 only) — always fast
-      const address = await getOrCreateWallet(uid);
+      // Address derivation uses HKDF — fast, deterministic, no network call
+      const { address } = await getOrCreateWallet(uid);
       if (!isMounted.current) return;
       setWalletAddress(address);
 
